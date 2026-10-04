@@ -80,11 +80,17 @@ backend/
   Cargo.toml         Rust dependencies
   src/main.rs        HTTP server, CLI, health endpoint, static files
 frontend/
-  src/App.svelte     Desktop shell and sample Messages window
-  src/AppIcon.svelte Original vector icons
-  src/desktop.js     Fixed fictional scene content
-  src/styles.css    Desktop and responsive layout
-  public/           Local wallpaper, icon, and favicon assets
+  src/App.svelte            Composes the desktop and Messages scene
+  src/Desktop.svelte        Menu bar, desktop files, Dock, window placement
+  src/MessagesWindow.svelte Measured Mojave Messages chrome and conversation
+  src/messages-scene.js     Fixed Apple reference scene for visual comparison
+  src/AppIcon.svelte        Offline application and desktop icon loader
+  src/styles.css           Global styles and responsive desktop placement
+  src/messages.css         Source-space Messages geometry and appearance
+  src/fonts.css            Local OFL Inter fallback; native Apple font preferred
+  public/                  Local wallpaper, icons, message imagery, font, favicon
+tools/
+  compare-mojave.mjs        Equal-size PNG overlays, difference maps, regional errors
 ```
 
 ## Future controller-to-puppet boundary
@@ -97,7 +103,7 @@ Rust should own shared scene/take state and saved messages, with SQLite persiste
 
 ## Artwork
 
-The desktop now uses Apple's original Mojave Day photograph as a local asset for this visual experiment. Apple retains its rights; public availability is not commercial production clearance. The favicon and initial vector icons are original illustrations. No Apple system font file or complete UI screenshot is bundled. See [Mojave fidelity research](docs/mojave-fidelity.md) for references, measured details, asset provenance, and production-use limitations.
+The desktop uses Apple's Mojave Day photograph and detailed pre-Big-Sur application artwork. Messages is reconstructed with DOM text, CSS chrome, SVG controls, and discrete portrait/photo/emoji content assets from Apple's Mojave guide. No complete UI screenshot is rendered as the application, and no Apple font is bundled. Apple retains its artwork rights; public availability and an icon mirror's repository license are not commercial production clearance. The cross-platform font fallback is Inter under OFL-1.1. See [Mojave fidelity research](docs/mojave-fidelity.md) for primary references, exact provenance, measured comparisons, and remaining differences.
 
 ## Verification
 

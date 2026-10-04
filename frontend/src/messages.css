@@ -1,0 +1,588 @@
+.messages-window {
+  --messages-background: #f5f6f6;
+  --messages-incoming: #dfdde3;
+  position: relative;
+  width: 928px;
+  height: 710px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--messages-background);
+  color: #171717;
+  font-family: -apple-system, BlinkMacSystemFont, 'Mojave UI', sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 22px;
+  transform: scale(var(--window-scale, 0.75));
+  transform-origin: top left;
+  box-shadow: 0 23px 52px rgb(0 0 0 / 30%), 0 4px 13px rgb(0 0 0 / 19%);
+  -webkit-font-smoothing: antialiased;
+}
+
+.messages-window *,
+.messages-window *::before,
+.messages-window *::after {
+  box-sizing: border-box;
+}
+
+.messages-window::after {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  border: 2px solid rgb(171 171 171 / 62%);
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 50%);
+  pointer-events: none;
+}
+
+.messages-window button,
+.messages-window input {
+  margin: 0;
+  font: inherit;
+  opacity: 1;
+  appearance: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+.messages-window button {
+  padding: 0;
+  cursor: default;
+}
+
+.messages-window input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+}
+
+.messages-toolbar {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 79px;
+  border-bottom: 1px solid #bcbdbd;
+}
+
+.messages-toolbar-sidebar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 376px;
+  border-right: 1px solid #bfc0c0;
+  background: linear-gradient(#d6d6d6, #d4d4d4);
+  box-shadow: inset 0 2px 0 rgb(255 255 255 / 40%);
+}
+
+.messages-traffic-lights {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  display: flex;
+  gap: 12px;
+}
+
+.messages-window .traffic-light {
+  width: 16px;
+  height: 17px;
+  border: 1px solid rgb(0 0 0 / 7%);
+  border-radius: 50%;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 15%);
+}
+
+.messages-window .traffic-light.close {
+  background: #ff6058;
+}
+
+.messages-window .traffic-light.minimize {
+  background: #ffbe2f;
+}
+
+.messages-window .traffic-light.zoom {
+  background: #29c840;
+}
+
+.messages-search {
+  position: absolute;
+  top: 38px;
+  left: 29px;
+  display: flex;
+  align-items: center;
+  width: 269px;
+  height: 29px;
+  border-radius: 6px;
+  background: #c1c1c1;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 3%), 0 1px 0 rgb(255 255 255 / 20%);
+}
+
+.messages-search svg {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  margin-left: 10px;
+  fill: none;
+  stroke: #4a4a4a;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.messages-search input {
+  width: 225px;
+  height: 27px;
+  padding: 0 7px;
+  background: transparent;
+  color: #898989;
+  font-size: 18px;
+}
+
+.messages-search input::placeholder {
+  color: #898989;
+  opacity: 1;
+}
+
+.messages-window .messages-compose-button {
+  position: absolute;
+  top: 37px;
+  left: 312px;
+  width: 46px;
+  height: 30px;
+  border: 1px solid #bcbcbc;
+  border-radius: 6px;
+  background: linear-gradient(#fafafa, #f1f1f1);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 10%), inset 0 1px 0 white;
+}
+
+.messages-compose-button svg {
+  display: block;
+  width: 25px;
+  height: 23px;
+  margin: 1px auto 0;
+}
+
+.compose-outline {
+  fill: none;
+  stroke: #353535;
+  stroke-width: 2.2;
+  stroke-linecap: square;
+  stroke-linejoin: round;
+}
+
+.compose-pencil {
+  fill: #353535;
+  stroke: #f5f5f5;
+  stroke-width: 0.7;
+}
+
+.compose-pencil-end {
+  fill: none;
+  stroke: #f5f5f5;
+  stroke-width: 1;
+}
+
+.messages-recipient-toolbar {
+  position: absolute;
+  inset: 0 0 0 376px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 38%), transparent 8px, transparent 68px, rgb(0 0 0 / 1%)),
+    linear-gradient(90deg, #cfd0d2 0%, #bec0c2 13%, #b1b4b3 23%, #a9a9a9 32%, #a9aaaa 41%, #b2b3b5 50%, #b8bcbf 59%, #c2c4c6 68%, #d6d8d9 77%, #e5e5e5 86%, #e8e8e8 100%);
+}
+
+.messages-recipient {
+  position: absolute;
+  top: 41px;
+  left: 19px;
+  white-space: nowrap;
+  font-size: 18px;
+  line-height: 23px;
+  letter-spacing: -0.3px;
+}
+
+.messages-recipient span {
+  margin-right: 7px;
+  color: #606060;
+  letter-spacing: 0;
+}
+
+.messages-window .messages-details {
+  position: absolute;
+  top: 42px;
+  right: 23px;
+  border: 0;
+  background: transparent;
+  color: #4597e6;
+  font-size: 18px;
+  line-height: 23px;
+  letter-spacing: -0.25px;
+}
+
+.messages-sidebar {
+  position: absolute;
+  top: 79px;
+  bottom: 0;
+  left: 0;
+  width: 376px;
+  overflow: hidden;
+  border-right: 1px solid #c7c7c7;
+  background: #d6d6d6;
+}
+
+.messages-conversations {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.messages-conversations li {
+  position: relative;
+  display: flex;
+  height: 88.5px;
+  padding: 10px 18px 0 28px;
+}
+
+.messages-conversations li::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 28px;
+  height: 2px;
+  background: rgb(177 177 177 / 15%);
+}
+
+.messages-conversations li.selected {
+  background: #4595f6;
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 22%), inset 0 -1px 0 rgb(255 255 255 / 14%);
+}
+
+.messages-conversations li.selected::after {
+  display: none;
+}
+
+.conversation-portrait {
+  flex: 0 0 67px;
+  width: 67px;
+  height: 67px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.conversation-copy {
+  flex: 1;
+  min-width: 0;
+  padding-left: 11px;
+}
+
+.conversation-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  height: 22px;
+  white-space: nowrap;
+}
+
+.conversation-name {
+  color: #424242;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 22px;
+  letter-spacing: -0.45px;
+}
+
+.conversation-time {
+  color: #838383;
+  font-size: 17px;
+  line-height: 22px;
+  letter-spacing: -0.25px;
+}
+
+.conversation-preview {
+  margin: 0;
+  color: #808080;
+  font-size: 17.3px;
+  font-weight: 400;
+  line-height: 22px;
+  letter-spacing: -0.3px;
+}
+
+.preview-line {
+  display: block;
+  height: 22px;
+  white-space: nowrap;
+}
+
+.preview-emoji {
+  display: inline-block;
+  width: 20px;
+  height: 22px;
+  vertical-align: -5px;
+}
+
+.preview-emoji.before {
+  margin-right: 0;
+}
+
+.preview-emoji.after {
+  margin-left: 0;
+}
+
+.selected .conversation-name {
+  color: #f3f5fa;
+}
+
+.selected .conversation-time,
+.selected .conversation-preview {
+  color: #b9d8fb;
+}
+
+.messages-conversation {
+  position: absolute;
+  top: 79px;
+  right: 0;
+  bottom: 0;
+  left: 376px;
+  background: var(--messages-background);
+  box-shadow: inset 1px 0 0 #cecece;
+}
+
+.message-history {
+  position: absolute;
+  inset: 0 0 57px;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message-history > li {
+  position: absolute;
+}
+
+.message-photo {
+  top: 0;
+  left: 24px;
+  width: 387px;
+  height: 157px;
+}
+
+.photo-content {
+  position: relative;
+  z-index: 1;
+  width: 387px;
+  height: 157px;
+  overflow: hidden;
+  border-radius: 0 0 17px 16px;
+}
+
+.photo-content img {
+  display: block;
+  width: 387px;
+  height: 156px;
+  margin-top: 1px;
+  object-fit: cover;
+}
+
+.message-bubble {
+  border-radius: 18px;
+  font-size: 18px;
+  line-height: 22px;
+  letter-spacing: -0.28px;
+}
+
+.message-bubble p {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 7px 13px;
+  white-space: nowrap;
+}
+
+.message-bubble.incoming {
+  background: var(--messages-incoming);
+}
+
+.message-bubble.outgoing {
+  color: #e9f4ff;
+  background: linear-gradient(#39a3f0, #359eee);
+}
+
+.bubble-tail {
+  position: absolute;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  overflow: visible;
+}
+
+.bubble-tail.incoming {
+  left: -6px;
+}
+
+.bubble-tail.outgoing {
+  right: -6px;
+  transform: scaleX(-1);
+}
+
+.photo-response {
+  top: 171px;
+  right: 26px;
+  width: 249px;
+  height: 57px;
+}
+
+.photo-thanks {
+  top: 242px;
+  left: 24px;
+  width: 312px;
+  height: 56px;
+}
+
+.camping-invitation {
+  top: 313px;
+  left: 24px;
+  width: 312px;
+  height: 78px;
+}
+
+.message-emoji {
+  top: 412px;
+  left: 319px;
+  width: 210px;
+  height: 70px;
+}
+
+.message-emoji img {
+  position: absolute;
+  display: block;
+}
+
+.grinning-emoji {
+  top: 1px;
+  left: 0;
+}
+
+.camping-emoji {
+  top: 5px;
+  left: 70px;
+}
+
+.park-emoji {
+  top: 0;
+  left: 143px;
+}
+
+.message-bubble.camping-response {
+  top: 500px;
+  right: 26px;
+  width: 107px;
+  height: 35px;
+  background: linear-gradient(#1088f2, #0d84f1);
+}
+
+.camping-response p {
+  padding: 6px 12px 7px;
+}
+
+.message-delivered {
+  position: absolute;
+  top: 44px;
+  right: -6px;
+  color: #8a8a8a;
+  font-size: 15px;
+  font-weight: 550;
+  line-height: 20px;
+  letter-spacing: 0;
+}
+
+.messages-composer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 57px;
+  border-top: 1px solid #e2e2e2;
+  background: #f0f0f0;
+  box-shadow: 0 -1px 0 #eeeeef, inset 0 1px 0 rgb(255 255 255 / 40%);
+}
+
+.messages-input-capsule {
+  position: absolute;
+  top: 11px;
+  right: 52px;
+  left: 21px;
+  height: 34px;
+  overflow: hidden;
+  border: 1px solid #c7c7c7;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 3%), inset 0 1px 1px rgb(0 0 0 / 3%);
+}
+
+.messages-input-capsule input {
+  display: block;
+  width: calc(100% - 38px);
+  height: 32px;
+  padding: 0 13px;
+  background: transparent;
+  color: #c5c5c5;
+  font-size: 18px;
+  line-height: 32px;
+}
+
+.messages-input-capsule input::placeholder {
+  color: #c5c5c5;
+  opacity: 1;
+}
+
+.messages-window .messages-emoji-button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: #949494;
+}
+
+.messages-emoji-button svg {
+  display: block;
+  width: 28px;
+  height: 28px;
+}
+
+.smiley-outline,
+.smiley-mouth {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.smiley-eye {
+  fill: currentColor;
+}
+
+.messages-window .messages-microphone-button {
+  position: absolute;
+  top: 18px;
+  right: 17px;
+  width: 20px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: #ababab;
+}
+
+.messages-microphone-button svg {
+  display: block;
+  width: 20px;
+  height: 28px;
+}
+
+.messages-microphone-button rect {
+  fill: currentColor;
+}
+
+.messages-microphone-button path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

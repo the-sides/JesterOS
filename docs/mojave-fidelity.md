@@ -39,3 +39,64 @@ The roughly 16-image-pixel traffic lights suggest about 4/3 scaling relative to 
 Downloading a publicly hosted wallpaper or icon is not evidence of a redistribution license. The Apple Newsroom ZIP legal notice explicitly limits those media to personal/editorial, non-commercial use. This repository's local visual experiment is not a claim of commercial film/TV clearance. Obtain appropriate clearance before shipping Apple artwork in a production prop product or using it commercially. Reference images must not be substituted for the actual DOM application.
 
 Native San Francisco font rendering and Core Animation/AppKit rendering are separate from browser rendering. A cross-platform browser recreation cannot claim zero pixel differences from a macOS capture merely because its layout looks close. Any final comparison must disclose font fallback, image scaling, changed content, and nonzero residuals.
+
+## Typography
+
+[Apple's San Francisco license](https://developer.apple.com/fonts/) explicitly prohibits embedding the font in software and using it for non-Apple-platform mock-ups. No SF font is bundled. On macOS, the browser's native `-apple-system` font remains preferred. Other platforms use a local, unmodified [Inter variable font](https://github.com/rsms/inter), distributed under the SIL Open Font License 1.1; its full license is included at `frontend/public/fonts/LICENSE.txt`.
+
+This fallback is visually similar, not metrically identical to Mojave's SF UI font. Cross-platform font rasterization remains a measurable limitation, not a reason to hide text from the comparison.
+
+## Comparison method
+
+`tools/compare-mojave.mjs` accepts equally sized reference/render PNGs and an output directory. It writes a 50/50 overlay, a 4×-amplified RGB difference image, and regional JSON metrics. It does not register, resize, recolor, or mask UI content. Metrics include every reference pixel with alpha ≥ 250; Apple's transparent padding and partially transparent outer edges are excluded. RGB errors use 8-bit sRGB values. Normalized RMSE is the channel root-mean-square error divided by 255, expressed as a percentage; it is **not a similarity score**.
+
+The reference is cropped from 934×713 to its 928×710 window canvas. Initial UI evidence is preserved locally as `artifacts/mojave/before-normalized.png`: the original 880×570 window was cropped at (180, 151), then explicitly stretched to 928×710 for a rough visual baseline. That baseline has different content and aspect ratio; its 31.582% normalized RMSE is not an apples-to-apples geometry or content comparison. Subsequent exact-size captures use the same sample conversation and require no resizing.
+
+Generated screenshots and comparison artifacts remain local under ignored `artifacts/`; they are not shipped as application UI assets.
+
+## Reconstructed scene and icon provenance
+
+`MessagesWindow.svelte` reconstructs the guide's Shelley Willems conversation with selectable-looking but inactive controls. Names, times, previews, and message text are actual DOM text. Toolbar, sidebar, bubbles, composer, traffic lights, and control glyphs are CSS/SVG, not screenshot slices.
+
+The discrete content assets in `frontend/public/messages/` are crops of the primary guide PNG. Coordinates below are (x, y, width, height) in the original 934×713 image:
+
+| Asset | Crop |
+| --- | --- |
+| Shelley portrait | (28, 89, 67, 67) |
+| Chris portrait | (28, 178, 67, 67) |
+| Amber portrait | (28, 266, 67, 67) |
+| Charles portrait | (28, 355, 67, 67) |
+| Greg portrait | (28, 444, 67, 67) |
+| Euna portrait | (28, 532, 67, 67) |
+| Ryan portrait | (28, 621, 67, 67) |
+| Silhouette photograph | (400, 80, 387, 155) |
+| Grinning face | (695, 492, 65, 68) |
+| Camping | (765, 496, 70, 65) |
+| National park | (838, 491, 67, 70) |
+| Thumbs up | (105, 377, 20, 22) |
+| Sleeping | (242, 221, 20, 22) |
+
+Apple retains rights in these images. The public guide is a comparison source, not a redistribution or commercial-production license.
+
+The ten application PNGs in `frontend/public/icons/` were extracted from ICNS files in [YaxinCheng/macOS10icons](https://github.com/YaxinCheng/macOS10icons). That repository explicitly identifies **Catalina 10.15.5**, not Mojave 10.14. These are detailed pre-Big-Sur Apple icons with appropriate period silhouettes; exact Mojave icon-byte equivalence has **not** been established. The mirror's MIT license does not establish a license to Apple's artwork. Highest available embedded PNG representations were resized to 128×128 locally.
+
+Source ICNS paths under the mirror's `docs/`:
+
+- Finder: `com.apple.finder/Finder.icns`
+- Launchpad: `com.apple.launchpad.launcher/Launchpad.icns`
+- Safari: `com.apple.Safari/compass.icns`
+- Mail: `com.apple.mail/ApplicationIcon.icns`
+- Contacts: `com.apple.AddressBook/Contacts.icns`
+- Calendar: `com.apple.iCal/App.icns`
+- Notes: `com.apple.Notes/AppIcon.icns`
+- Messages: `com.apple.iChat/MessagesAppIcon.icns`
+- Photos: `com.apple.Photos/AppIcon.icns`
+- System Preferences: `com.apple.systempreferences/PrefApp.icns`
+
+Folder, drive, PDF, and Trash SVGs are original illustrations. Calendar's extracted artwork displays July 17 rather than the menu bar's September 24 scene date. These remain fidelity differences, not authentic Mojave CoreTypes assets.
+
+## Verified reconstruction checkpoint
+
+The rebuilt production desktop was served by Rust at `http://localhost:3000` and viewed in Chromium at 1440×900, DPR 1. The Messages frame is 696×532.5 at the default 0.75 scale; every image loaded locally, with no page errors or horizontal document overflow.
+
+For the first exact-size comparison, the browser window was positioned at (20, 42) and its scale set to 1, avoiding the Dock without hiding it or changing the window skin. The resulting element screenshot is exactly 928×710. Initial normalized RMSE: **7.900%** overall, 6.421% toolbar, 8.231% sidebar, 8.218% conversation, 4.312% composer. About 10.171% of opaque reference pixels have an RGB-channel error above 8. The overlay shows real font, image-resampling, and subpixel-row-placement differences. This is not pixel identity.

@@ -1,0 +1,11 @@
+@font-face {
+  font-family: 'Mojave UI';
+  src: url('/fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  --system-font: -apple-system, BlinkMacSystemFont, 'Mojave UI', sans-serif;
+}
