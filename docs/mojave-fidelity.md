@@ -42,9 +42,18 @@ Native San Francisco font rendering and Core Animation/AppKit rendering are sepa
 
 ## Typography
 
-[Apple's San Francisco license](https://developer.apple.com/fonts/) explicitly prohibits embedding the font in software and using it for non-Apple-platform mock-ups. No SF font is bundled. On macOS, the browser's native `-apple-system` font remains preferred. Other platforms use a local, unmodified [Inter variable font](https://github.com/rsms/inter), distributed under the SIL Open Font License 1.1; its full license is included at `frontend/public/fonts/LICENSE.txt`.
+[Apple's San Francisco license](https://developer.apple.com/fonts/) explicitly prohibits embedding the font in software and using it for non-Apple-platform mock-ups. No SF font is bundled. On Apple platforms, the browser's native `-apple-system` font remains preferred for UI text. Other platforms explicitly use the local, unmodified [Inter variable font](https://github.com/rsms/inter). Conversation text uses a separately calibrated, bundled [Liberation Sans](https://github.com/liberationfonts/liberation-fonts) regular font. Both are SIL Open Font License 1.1 fonts; their full licenses are included at `frontend/public/fonts/LICENSE.txt` and `Liberation-LICENSE.txt`.
 
 This fallback is visually similar, not metrically identical to Mojave's SF UI font. Cross-platform font rasterization remains a measurable limitation, not a reason to hide text from the comparison.
+
+CDP `CSS.getPlatformFontsForNode` exposed an important renderer detail: Chromium on this Linux machine resolves the `-apple-system` stack to installed Liberation Sans **before** reaching Inter. The initial checkpoint therefore used Liberation Sans, not the intended Inter fallback. The startup code now prefers the native alias only on Apple platforms. The calibrated checkpoint verified actual custom Inter UI glyphs and actual custom Liberation Sans conversation glyphs; both font faces were loaded, not merely declared in CSS.
+
+Bundled font SHA-256:
+
+- InterVariable.woff2: `693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3`
+- LiberationSans-Regular.ttf: `baccc64becc3eb7d104b7c84d99f5314a0a1f896e2b3ea6c2f22fc08d2003bee`
+
+Liberation Sans was copied unmodified from the installed 2.1-series `/usr/share/fonts/liberation/LiberationSans-Regular.ttf`; its upstream copyright and OFL notice are retained. Its use is a measured visual approximation, not a claim that Mojave Messages uses Liberation Sans.
 
 ## Comparison method
 
@@ -93,10 +102,18 @@ Source ICNS paths under the mirror's `docs/`:
 - Photos: `com.apple.Photos/AppIcon.icns`
 - System Preferences: `com.apple.systempreferences/PrefApp.icns`
 
-Folder, drive, PDF, and Trash SVGs are original illustrations. Calendar's extracted artwork displays July 17 rather than the menu bar's September 24 scene date. These remain fidelity differences, not authentic Mojave CoreTypes assets.
+Folder, drive, PDF, and Trash SVGs are original illustrations, not authentic Mojave CoreTypes assets. Calendar retains the extracted paper artwork but reconstructs its date face with SVG text as **SEP 24**, matching the static September 24 menu-bar scene rather than incorrectly showing the source asset's July 17. The [period TechRepublic desktop gallery](https://www.techrepublic.com/pictures/apple-macos-mojave-a-look-at-the-new-features/) provides additional evidence of the date-aware, tilted-paper Dock icon.
 
 ## Verified reconstruction checkpoint
 
 The rebuilt production desktop was served by Rust at `http://localhost:3000` and viewed in Chromium at 1440×900, DPR 1. The Messages frame is 696×532.5 at the default 0.75 scale; every image loaded locally, with no page errors or horizontal document overflow.
 
 For the first exact-size comparison, the browser window was positioned at (20, 42) and its scale set to 1, avoiding the Dock without hiding it or changing the window skin. The resulting element screenshot is exactly 928×710. Initial normalized RMSE: **7.900%** overall, 6.421% toolbar, 8.231% sidebar, 8.218% conversation, 4.312% composer. About 10.171% of opaque reference pixels have an RGB-channel error above 8. The overlay shows real font, image-resampling, and subpixel-row-placement differences. This is not pixel identity.
+
+## Calibrated reconstruction checkpoint
+
+Overlay-guided changes aligned portrait rows to measured integer y positions, removed photograph resampling, calibrated conversation text to 19px Liberation Sans with its measured inset, selected Inter explicitly for non-Apple UI text, and matched the Dock calendar date to the scene.
+
+The production render at the same 928×710/DPR-1 comparison pose measures **7.007% normalized RMSE** overall; regional values are 6.451% toolbar, 7.208% sidebar, 7.185% conversation, and 4.335% composer. About 8.734% of opaque reference pixels exceed an RGB-channel error of 8. The first-to-calibrated exact-size RMSE reduction is approximately 11.3%; neither result is zero.
+
+These figures include text and artwork edges. Remaining errors include SF-versus-open-font glyph shapes and spacing, native rasterization versus browser rasterization, rounded-edge/bubble-tail details, control glyphs, and minor source-image edge differences. Desktop icons from Catalina and original CoreTypes-style illustrations are separately disclosed; a whole-desktop pixel-identity result has not been established.

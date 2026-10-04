@@ -6,6 +6,19 @@
   font-display: block;
 }
 
+@font-face {
+  font-family: 'Mojave Message';
+  src: url('/fonts/LiberationSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
 :root {
+  --system-font: 'Mojave UI', sans-serif;
+  --message-font: 'Mojave Message', sans-serif;
+}
+
+:root.native-apple-font {
   --system-font: -apple-system, BlinkMacSystemFont, 'Mojave UI', sans-serif;
 }

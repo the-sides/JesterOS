@@ -8,7 +8,7 @@
   border-radius: 10px;
   background: var(--messages-background);
   color: #171717;
-  font-family: -apple-system, BlinkMacSystemFont, 'Mojave UI', sans-serif;
+  font-family: var(--system-font);
   font-size: 18px;
   font-weight: 400;
   line-height: 22px;
@@ -231,8 +231,12 @@
 .messages-conversations li {
   position: relative;
   display: flex;
-  height: 88.5px;
+  height: 89px;
   padding: 10px 18px 0 28px;
+}
+
+.messages-conversations li:nth-child(3n + 2) {
+  height: 88px;
 }
 
 .messages-conversations li::after {
@@ -372,16 +376,17 @@
 .photo-content img {
   display: block;
   width: 387px;
-  height: 156px;
+  height: 155px;
   margin-top: 1px;
-  object-fit: cover;
+  object-fit: fill;
 }
 
 .message-bubble {
   border-radius: 18px;
-  font-size: 18px;
+  font-family: var(--message-font);
+  font-size: 19px;
   line-height: 22px;
-  letter-spacing: -0.28px;
+  letter-spacing: 0;
 }
 
 .message-bubble p {
@@ -390,6 +395,10 @@
   margin: 0;
   padding: 7px 13px;
   white-space: nowrap;
+}
+
+.message-bubble.incoming p {
+  padding-left: 15px;
 }
 
 .message-bubble.incoming {

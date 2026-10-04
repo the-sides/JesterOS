@@ -87,7 +87,7 @@ frontend/
   src/AppIcon.svelte        Offline application and desktop icon loader
   src/styles.css           Global styles and responsive desktop placement
   src/messages.css         Source-space Messages geometry and appearance
-  src/fonts.css            Local OFL Inter fallback; native Apple font preferred
+  src/fonts.css            Local OFL UI/message fonts; native Apple UI font preferred
   public/                  Local wallpaper, icons, message imagery, font, favicon
 tools/
   compare-mojave.mjs        Equal-size PNG overlays, difference maps, regional errors
@@ -103,7 +103,7 @@ Rust should own shared scene/take state and saved messages, with SQLite persiste
 
 ## Artwork
 
-The desktop uses Apple's Mojave Day photograph and detailed pre-Big-Sur application artwork. Messages is reconstructed with DOM text, CSS chrome, SVG controls, and discrete portrait/photo/emoji content assets from Apple's Mojave guide. No complete UI screenshot is rendered as the application, and no Apple font is bundled. Apple retains its artwork rights; public availability and an icon mirror's repository license are not commercial production clearance. The cross-platform font fallback is Inter under OFL-1.1. See [Mojave fidelity research](docs/mojave-fidelity.md) for primary references, exact provenance, measured comparisons, and remaining differences.
+The desktop uses Apple's Mojave Day photograph and detailed pre-Big-Sur application artwork. Messages is reconstructed with DOM text, CSS chrome, SVG controls, and discrete portrait/photo/emoji content assets from Apple's Mojave guide. No complete UI screenshot is rendered as the application, and no Apple font is bundled. Apple retains its artwork rights; public availability and an icon mirror's repository license are not commercial production clearance. Cross-platform typography uses Inter UI and Liberation Sans conversation text under OFL-1.1. See [Mojave fidelity research](docs/mojave-fidelity.md) for primary references, exact provenance, measured comparisons, and remaining differences.
 
 ## Verification
 

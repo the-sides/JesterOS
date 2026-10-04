@@ -1,5 +1,5 @@
 :root {
-  --ui-font: -apple-system, BlinkMacSystemFont, 'Mojave UI', sans-serif;
+  --ui-font: var(--system-font);
   --menu-ink: #171717;
   --menu-glass: rgb(247 247 247 / 73%);
   --dock-glass: rgb(229 228 228 / 49%);
