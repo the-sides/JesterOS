@@ -84,7 +84,7 @@ frontend/
   src/AppIcon.svelte Original vector icons
   src/desktop.js     Fixed fictional scene content
   src/styles.css    Desktop and responsive layout
-  public/           Original wallpaper and favicon
+  public/           Local wallpaper, icon, and favicon assets
 ```
 
 ## Future controller-to-puppet boundary
@@ -97,7 +97,7 @@ Rust should own shared scene/take state and saved messages, with SQLite persiste
 
 ## Artwork
 
-The wallpaper, favicon, and icon illustrations were authored locally for this project. No Apple wallpaper, system font file, or screenshot is bundled. Apple's [September 2018 Mojave announcement](https://www.apple.com/newsroom/2018/09/macos-mojave-is-available-today/) was used as an era reference. System fonts use the browser's locally available macOS-style font stack.
+The desktop now uses Apple's original Mojave Day photograph as a local asset for this visual experiment. Apple retains its rights; public availability is not commercial production clearance. The favicon and initial vector icons are original illustrations. No Apple system font file or complete UI screenshot is bundled. See [Mojave fidelity research](docs/mojave-fidelity.md) for references, measured details, asset provenance, and production-use limitations.
 
 ## Verification
 
