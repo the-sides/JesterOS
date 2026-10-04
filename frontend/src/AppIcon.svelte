@@ -1,5 +1,5 @@
 <script module>
-  const vectorIcons = new Set(['folder', 'drive', 'pdf', 'trash']);
+  const vectorIcons = new Set(['drive', 'pdf', 'trash']);
 </script>
 
 <script>
@@ -7,7 +7,7 @@
 </script>
 
 {#if name === 'calendar'}
-  <span class="app-icon calendar-icon" aria-hidden="true">
+  <span class="app-icon composite-icon calendar-icon" aria-hidden="true">
     <img src="/icons/calendar.png" alt="" draggable="false" />
     <svg viewBox="0 0 128 128">
       <defs>
@@ -28,11 +28,19 @@
       </g>
     </svg>
   </span>
+{:else if name === 'downloads'}
+  <span class="app-icon composite-icon" aria-hidden="true">
+    <img src="/icons/folder.png" alt="" draggable="false" />
+    <svg viewBox="0 0 128 128">
+      <path d="M59 48h10v22h13L64 89 46 70h13Z" transform="translate(0 1)" fill="#b8e7f8" opacity=".65" />
+      <path d="M59 48h10v22h13L64 89 46 70h13Z" fill="#2e8cb9" opacity=".65" />
+    </svg>
+  </span>
 {:else}
   <img class="app-icon" src={`/icons/${name}.${vectorIcons.has(name) ? 'svg' : 'png'}`} alt="" aria-hidden="true" draggable="false" />
 {/if}
 
 <style>
-  .calendar-icon { position: relative; display: block; }
-  .calendar-icon img, .calendar-icon svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .composite-icon { position: relative; display: block; }
+  .composite-icon img, .composite-icon svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 </style>

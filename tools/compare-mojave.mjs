@@ -69,8 +69,8 @@ const report = {
   regions: Object.fromEntries(Object.entries(regions).map(([name, bounds]) => [name, measure(bounds)])),
 };
 mkdirSync(output, { recursive: true });
-magick(reference, render, '-background', 'white', '-alpha', 'remove', '-alpha', 'off', '-compose', 'blend', '-define', 'compose:args=50,50', '-composite', join(output, 'overlay.png'));
-magick(reference, render, '-background', 'white', '-alpha', 'remove', '-alpha', 'off', '-compose', 'difference', '-composite', '-evaluate', 'multiply', '4', join(output, 'difference-4x.png'));
+magick(reference, render, '-colorspace', 'sRGB', '-type', 'TrueColor', '-background', 'white', '-alpha', 'remove', '-alpha', 'off', '-compose', 'blend', '-define', 'compose:args=50,50', '-composite', join(output, 'overlay.png'));
+magick(reference, render, '-colorspace', 'sRGB', '-type', 'TrueColor', '-background', 'white', '-alpha', 'remove', '-alpha', 'off', '-compose', 'difference', '-composite', '-evaluate', 'multiply', '4', join(output, 'difference-4x.png'));
 writeFileSync(join(output, 'metrics.json'), `${JSON.stringify(report, null, 2)}\n`);
 for (const [source, name] of [[reference, 'reference.png'], [render, 'render.png']]) {
   const destination = join(output, name);

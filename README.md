@@ -107,6 +107,14 @@ The desktop uses Apple's Mojave Day photograph and detailed pre-Big-Sur applicat
 
 ## Verification
 
-The production build and Rust-served desktop were exercised in Chromium at 1440×900, 1280×800, 1024×768, and 390×844. The desktop, Messages window, and dock stayed within the viewport; production assets loaded only from the local origin with no browser errors.
+The final production build and Rust-served desktop were exercised in Chromium at 1440×900, 1920×1080, 1280×800, 1024×768, and 390×844. Window, Dock, and desktop files stayed inside every viewport without window/Dock overlap or document overflow. All images/fonts loaded locally; there were no broken images, external-origin resources, or browser page errors.
 
-HTTP smoke checks covered the health response, unknown API routes, unsupported health methods, root HTML, missing assets, and the missing-frontend startup diagnostic. The combined development command and Vite API proxy were also exercised. There is no permanent automated test suite yet.
+Earlier backend smoke checks covered the health response, unknown API routes, unsupported health methods, root HTML, missing assets, and the missing-frontend startup diagnostic. The combined development command and Vite API proxy were also exercised. The latest health check returned `status: ok`. There is no application UI test suite; `bun test tools/compare-mojave.test.mjs` passes a real-ImageMagick regression for RGB errors, transparent padding, and visible difference maps.
+
+## Visual comparison
+
+The current desktop is at **http://localhost:3000**. The separately served evidence viewer is at **http://localhost:3001**, with a reference-opacity slider and a 4× difference map. It does not add operator/developer UI to the actor-facing screen.
+
+Against Apple's Mojave Messages guide, the final exact-size 928×710/DPR-1 browser capture measures **6.854% normalized RGB RMSE**. That is nonzero, not pixel identity. SF/open-font glyphs, native/browser rasterization, and some original desktop-icon illustrations remain different. Full evidence, asset/rights caveats, comparison commands, and capture instructions are in [Mojave fidelity research](docs/mojave-fidelity.md).
+
+Generated evidence lives under ignored `artifacts/mojave/`; reproduce it after a fresh checkout rather than treating reference screenshots as application UI.

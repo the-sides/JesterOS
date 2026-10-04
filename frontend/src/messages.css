@@ -376,7 +376,7 @@
 .photo-content img {
   display: block;
   width: 387px;
-  height: 155px;
+  height: 156px;
   margin-top: 1px;
   object-fit: fill;
 }
@@ -398,7 +398,8 @@
 }
 
 .message-bubble.incoming p {
-  padding-left: 15px;
+  padding-top: 6px;
+  padding-left: 14px;
 }
 
 .message-bubble.incoming {
@@ -435,17 +436,17 @@
 }
 
 .photo-thanks {
-  top: 242px;
-  left: 24px;
-  width: 312px;
-  height: 56px;
+  top: 243px;
+  left: 25px;
+  width: 310px;
+  height: 54px;
 }
 
 .camping-invitation {
-  top: 313px;
-  left: 24px;
-  width: 312px;
-  height: 78px;
+  top: 314px;
+  left: 25px;
+  width: 310px;
+  height: 76px;
 }
 
 .message-emoji {
@@ -476,10 +477,10 @@
 }
 
 .message-bubble.camping-response {
-  top: 500px;
-  right: 26px;
-  width: 107px;
-  height: 35px;
+  top: 501px;
+  right: 27px;
+  width: 106px;
+  height: 33px;
   background: linear-gradient(#1088f2, #0d84f1);
 }
 

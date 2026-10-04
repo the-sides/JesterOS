@@ -78,7 +78,7 @@ The discrete content assets in `frontend/public/messages/` are crops of the prim
 | Greg portrait | (28, 444, 67, 67) |
 | Euna portrait | (28, 532, 67, 67) |
 | Ryan portrait | (28, 621, 67, 67) |
-| Silhouette photograph | (400, 80, 387, 155) |
+| Silhouette photograph | (400, 80, 387, 156) |
 | Grinning face | (695, 492, 65, 68) |
 | Camping | (765, 496, 70, 65) |
 | National park | (838, 491, 67, 70) |
@@ -102,7 +102,9 @@ Source ICNS paths under the mirror's `docs/`:
 - Photos: `com.apple.Photos/AppIcon.icns`
 - System Preferences: `com.apple.systempreferences/PrefApp.icns`
 
-Folder, drive, PDF, and Trash SVGs are original illustrations, not authentic Mojave CoreTypes assets. Calendar retains the extracted paper artwork but reconstructs its date face with SVG text as **SEP 24**, matching the static September 24 menu-bar scene rather than incorrectly showing the source asset's July 17. The [period TechRepublic desktop gallery](https://www.techrepublic.com/pictures/apple-macos-mojave-a-look-at-the-new-features/) provides additional evidence of the date-aware, tilted-paper Dock icon.
+Drive, PDF, and Trash SVGs remain original illustrations, not authentic Mojave CoreTypes assets. The earlier generic folder SVG was replaced with the preserved `GenericFolderIcon.Yosemite.iconset/icon_128x128.png` from [folderify v2.4.2](https://github.com/lgarron/folderify/tree/v2.4.2/folderify/GenericFolderIcon.Yosemite.iconset). Its [version-selection implementation](https://github.com/lgarron/folderify/blob/v2.4.2/folderify/__main__.py) explicitly selects this family for macOS 10.10 through **10.15**, including Mojave 10.14. The Downloads variant adds an original embossed SVG arrow over that base. The mirror's software-license notice is retained; it is not independent commercial clearance for Apple artwork.
+
+Calendar retains the extracted paper artwork but reconstructs its date face with SVG text as **SEP 24**, matching the static September 24 menu-bar scene rather than incorrectly showing the source asset's July 17. The [period TechRepublic desktop gallery](https://www.techrepublic.com/pictures/apple-macos-mojave-a-look-at-the-new-features/) provides additional evidence of the date-aware, tilted-paper Dock icon. Source repository license notices are included under `frontend/public/icons/`.
 
 ## Verified reconstruction checkpoint
 
@@ -117,3 +119,80 @@ Overlay-guided changes aligned portrait rows to measured integer y positions, re
 The production render at the same 928×710/DPR-1 comparison pose measures **7.007% normalized RMSE** overall; regional values are 6.451% toolbar, 7.208% sidebar, 7.185% conversation, and 4.335% composer. About 8.734% of opaque reference pixels exceed an RGB-channel error of 8. The first-to-calibrated exact-size RMSE reduction is approximately 11.3%; neither result is zero.
 
 These figures include text and artwork edges. Remaining errors include SF-versus-open-font glyph shapes and spacing, native rasterization versus browser rasterization, rounded-edge/bubble-tail details, control glyphs, and minor source-image edge differences. Desktop icons from Catalina and original CoreTypes-style illustrations are separately disclosed; a whole-desktop pixel-identity result has not been established.
+
+## Final measured render and live comparison
+
+The last refinement preserved the photograph's full 156-pixel crop at intrinsic size and aligned incoming/last-outgoing bubble extents to measured source pixels. It also replaced the generic folder illustration with the preserved Yosemite/Mojave-family bitmap and added the Downloads emboss.
+
+Final comparison: 928×710, Chromium on Linux, DPR 1; no registration or image resizing:
+
+| Region | Normalized RGB RMSE |
+| --- | ---: |
+| Entire Messages window | **6.854%** |
+| Toolbar | 6.451% |
+| Sidebar | 7.208% |
+| Conversation | 6.871% |
+| Composer | 4.335% |
+
+Mean absolute channel error is 4.139/255. About 8.683% of opaque reference pixels have at least one RGB-channel error above 8. Text, photos, avatars, emoji, and control/bubble edges all remain in the score. This is a measured approximation, **not zero difference**. Native SF/AppKit rendering and cross-platform open-font/browser rendering are not interchangeable; native Mojave verification and a permitted exact font/assets distribution path are unavailable in this Linux project environment.
+
+Current local previews:
+
+- Actor-facing desktop: `http://localhost:3000/`
+- Separate comparison viewer: `http://localhost:3001/`
+
+The comparison viewer is a second Rust server serving ignored evidence files, not a developer panel in the actor-facing app. Its slider was exercised with keyboard input at 0% and 100%, then viewed at 50%; the difference-map disclosure was opened. All three evidence images loaded locally and there were no page errors.
+
+Evidence files:
+
+- `artifacts/mojave/reference.png`
+- `artifacts/mojave/reconstruction-final.png`
+- `artifacts/mojave/final-comparison/index.html`
+- `artifacts/mojave/final-comparison/overlay.png`
+- `artifacts/mojave/final-comparison/difference-4x.png`
+- `artifacts/mojave/final-comparison/metrics.json`
+- `artifacts/mojave/viewport-proof.json`
+- `artifacts/mojave/desktop-{width}x{height}.png`
+
+The final production surface was exercised at 1440×900, **1920×1080**, 1280×800, 1024×768, and 390×844. Window, Dock, and desktop files stayed inside each viewport, with no window/Dock overlap, document overflow, broken images, external-origin resource requests, or page errors. The health endpoint returned `status: ok`. The final Vite build completed without component warnings.
+
+## Reproducing the comparison
+
+Comparison tooling requires Bun and ImageMagick; these are not extra runtime requirements for the served puppet screen.
+
+1. Obtain the linked original Apple reference PNG, then crop its transparent padding:
+
+   ```sh
+   mkdir -p artifacts/mojave
+   curl -L --fail 'https://help.apple.com/assets/5CA2B98509462224109A65C3/5CA2B98909462224109A65CB/en_US/f1d950e0f2f08a902a1927bc5be67446.png' -o artifacts/mojave/messages-light.png
+   magick artifacts/mojave/messages-light.png -crop 928x710+0+0 +repage artifacts/mojave/reference.png
+   ```
+
+2. Build/start the app using the README commands. In Chromium, set the device viewport to 1440×900 and DPR to **1**. In DevTools Console, pose the window without changing its skin:
+
+   ```js
+   const slot = document.querySelector('.window-position');
+   slot.style.setProperty('--window-scale', '1');
+   slot.style.left = '20px';
+   slot.style.top = '20px';
+   await document.fonts.ready;
+   ```
+
+   Use Elements → `.messages-window` → Capture node screenshot. Save the resulting **928×710** PNG as `artifacts/mojave/reconstruction-final.png`. Reload afterward to restore ordinary desktop placement. Mac/native-font captures may produce different measurements from the verified Linux/open-font run.
+
+3. Generate and serve the evidence:
+
+   ```sh
+   bun tools/compare-mojave.mjs artifacts/mojave/reference.png artifacts/mojave/reconstruction-final.png artifacts/mojave/final-comparison
+   backend/target/release/jesteros-backend --bind 127.0.0.1:3001 --frontend-dir artifacts/mojave/final-comparison
+   ```
+
+   Open `http://localhost:3001/` or the generated `index.html` directly. The tool rejects unequal image dimensions instead of silently resampling.
+
+4. Exercise the comparison regression:
+
+   ```sh
+   bun test tools/compare-mojave.test.mjs
+   ```
+
+   This uses real ImageMagick and catches transparent-reference padding corrupting the score, transparent difference maps hiding real errors, and grayscale source images losing RGB differences. It failed before explicit true-color conversion and passed after the fix. The application surface was verified in the browser rather than through mocked UI tests.

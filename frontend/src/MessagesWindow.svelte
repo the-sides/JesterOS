@@ -79,7 +79,7 @@
     <ol class="message-history" aria-label="Conversation with Shelley Willems">
       <li class="message-photo">
         <div class="photo-content">
-          <img src="/messages/silhouette-photo.png" alt="A woman silhouetted against a sunset" width="387" height="155" />
+          <img src="/messages/silhouette-photo.png" alt="A woman silhouetted against a sunset" width="387" height="156" />
         </div>
         {@render bubbleTail('incoming', '#805b41')}
       </li>

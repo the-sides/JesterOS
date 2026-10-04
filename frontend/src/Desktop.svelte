@@ -50,7 +50,7 @@
     <div class="dock-separator" aria-hidden="true"></div>
     <div class="dock-item" aria-label="Photos, recent application"><AppIcon name="photos"/></div>
     <div class="dock-separator" aria-hidden="true"></div>
-    <div class="dock-item" aria-label="Downloads"><AppIcon name="folder"/></div>
+    <div class="dock-item" aria-label="Downloads"><AppIcon name="downloads"/></div>
     <div class="dock-item" aria-label="Trash"><AppIcon name="trash"/></div>
   </footer>
 </div>
