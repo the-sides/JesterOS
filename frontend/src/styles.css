@@ -1,0 +1,144 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  color: #292929;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 13px;
+  background: #263b55;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+input { font: inherit; }
+.desktop { position: relative; width: 100%; height: 100svh; min-height: 440px; overflow: hidden; background: #263b55 url('/wallpaper.svg') center center / cover no-repeat; }
+.menu-bar { height: 25px; display: flex; justify-content: space-between; align-items: center; padding: 0 16px 0 19px; background: rgb(232 235 240 / 83%); backdrop-filter: blur(24px); box-shadow: 0 1px 0 rgb(0 0 0 / 10%); color: #19212a; position: relative; z-index: 2; font-size: 13px; }
+.menu-headings, .status-items { display: flex; align-items: center; height: 100%; }
+.menu-headings { gap: 22px; white-space: nowrap; }
+.app-menu { font-weight: 700; }
+.apple-mark { width: 14px; height: 19px; margin-right: 1px; }
+.apple-mark svg { width: 100%; height: 100%; }
+.status-items { gap: 17px; white-space: nowrap; }
+.status-items svg { display: block; width: 18px; height: 18px; }
+.status-items .wifi svg { width: 20px; }
+.battery-status { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.battery-status svg { width: 27px; height: 14px; }
+main { position: absolute; inset: 25px 0 0; }
+.desktop-files { position: absolute; top: 23px; right: 20px; display: flex; flex-direction: column; gap: 26px; width: 98px; }
+.desktop-file { display: flex; flex-direction: column; align-items: center; gap: 5px; color: white; font-size: 12px; font-weight: 500; text-shadow: 0 1px 3px #000, 0 1px 8px rgb(0 0 0 / 45%); }
+.desktop-file svg { width: 61px; height: 61px; filter: drop-shadow(0 3px 3px rgb(0 0 0 / 22%)); }
+.messages-window { position: absolute; top: clamp(62px, 14vh, 134px); left: clamp(32px, 12.5vw, 220px); width: min(880px, calc(100vw - 240px)); height: min(570px, calc(100svh - 230px)); min-height: 410px; border: 1px solid rgb(0 0 0 / 35%); border-radius: 6px; background: #fafafa; box-shadow: 0 28px 60px rgb(0 0 0 / 32%), 0 7px 20px rgb(0 0 0 / 22%); overflow: hidden; }
+.window-toolbar { display: grid; grid-template-columns: 258px 1fr; height: 45px; background: linear-gradient(#f1f1f1, #dadada); border-bottom: 1px solid #b2b2b2; box-shadow: inset 0 1px rgb(255 255 255 / 85%); }
+.sidebar-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 16px 0 12px; }
+.traffic-lights { display: flex; gap: 8px; }
+.traffic-lights span { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgb(0 0 0 / 13%); }
+.close { background: #ff5f57; }.minimize { background: #febc2e; }.maximize { background: #28c840; }
+.compose-icon { width: 22px; height: 22px; color: #676767; }
+.compose-icon svg { width: 20px; height: 20px; }
+.conversation-toolbar { display: flex; align-items: center; justify-content: center; position: relative; padding: 0 18px; }
+h1 { font-size: 13px; font-weight: 500; margin: 0; text-shadow: 0 1px rgb(255 255 255 / 65%); }
+.details-label { position: absolute; right: 17px; font-size: 12px; color: #535353; }
+.window-content { display: grid; grid-template-columns: 258px 1fr; height: calc(100% - 45px); }
+.conversation-sidebar { background: #f0f0f0; border-right: 1px solid #d2d2d2; }
+.search-wrap { margin: 11px 12px 12px; position: relative; }
+.search-wrap svg { position: absolute; width: 14px; height: 14px; top: 6px; left: 8px; color: #868686; }
+.search-wrap input { width: 100%; height: 27px; padding: 0 9px 0 27px; background: #fff; border: 1px solid #d0d0d0; border-radius: 4px; box-shadow: inset 0 1px 2px rgb(0 0 0 / 3%); font-size: 12px; opacity: 1; }
+input::placeholder { color: #929292; opacity: 1; }
+.conversation-list { margin: 0; padding: 0; list-style: none; }
+.conversation-list li { display: flex; gap: 10px; min-height: 78px; padding: 14px 11px 12px 13px; border-bottom: 1px solid #dedede; }
+.conversation-list li.selected { background: #347cd9; color: #fff; border-bottom-color: #347cd9; }
+.avatar { width: 41px; height: 41px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; color: #fff; font-size: 14px; font-weight: 400; letter-spacing: .2px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 6%); }
+.conversation-preview { min-width: 0; flex: 1; padding-top: 1px; }
+.conversation-name { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+.conversation-name strong { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.conversation-name span { font-size: 9px; color: #777; white-space: nowrap; }
+.conversation-preview p { margin: 6px 0 0; color: #747474; font-size: 11px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.selected .conversation-name span, .selected .conversation-preview p { color: #fff; }
+.conversation { min-width: 0; display: flex; flex-direction: column; background: #fff; }
+.recipient { height: 42px; flex-shrink: 0; border-bottom: 1px solid #e6e6e6; padding: 13px 20px; font-size: 12px; }
+.recipient span { color: #8a8a8a; margin-right: 6px; }
+.message-history { padding: 19px 23px 12px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.conversation-date { text-align: center; color: #8b8b8b; font-size: 10px; margin-bottom: 24px; }
+.conversation-date strong { font-weight: 600; margin-right: 3px; }
+.message-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 15px; }
+.message-list li { display: flex; justify-content: flex-start; padding-right: 60px; }
+.message-list li.outgoing { justify-content: flex-end; padding-right: 0; padding-left: 60px; }
+.bubble { position: relative; margin: 0; padding: 9px 13px; max-width: 310px; width: fit-content; border-radius: 16px; background: #e9e9eb; color: #252525; font-size: 13px; line-height: 1.38; overflow-wrap: anywhere; }
+.bubble::before { content: ''; position: absolute; bottom: 0; left: -6px; width: 13px; height: 14px; border-bottom-right-radius: 10px; background: #e9e9eb; }
+.bubble::after { content: ''; position: absolute; bottom: -1px; left: -9px; width: 9px; height: 17px; border-bottom-right-radius: 8px; background: white; }
+.outgoing .bubble { background: #2488f7; color: #fff; }
+.outgoing .bubble::before { left: auto; right: -6px; border-bottom-right-radius: 0; border-bottom-left-radius: 10px; background: #2488f7; }
+.outgoing .bubble::after { left: auto; right: -9px; border-bottom-right-radius: 0; border-bottom-left-radius: 8px; }
+.delivered { text-align: right; color: #777; font-size: 10px; margin: 6px 1px 0; }
+.composer { display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-height: 53px; padding: 10px 17px 11px; background: #fafafa; border-top: 1px solid #e5e5e5; }
+.composer input { width: 100%; min-width: 0; border: 1px solid #c7c7c7; border-radius: 5px; height: 29px; padding: 0 10px; background: #fff; font-size: 12px; outline-offset: 2px; }
+.emoji-icon { display: block; width: 20px; height: 20px; color: #8c8c8c; flex-shrink: 0; }
+.emoji-icon svg { width: 20px; height: 20px; }
+.dock { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 7px; padding: 7px 10px 11px; border: 1px solid rgb(244 248 255 / 45%); border-bottom: 0; border-radius: 7px 7px 0 0; background: rgb(216 223 235 / 38%); backdrop-filter: blur(24px) saturate(1.25); box-shadow: 0 0 0 1px rgb(0 0 0 / 12%), 0 -2px 12px rgb(0 0 0 / 6%); }
+.dock-apps { display: flex; gap: 7px; list-style: none; padding: 0; margin: 0; }
+.dock-item { width: 55px; height: 57px; position: relative; flex-shrink: 0; }
+.dock-item svg { display: block; width: 55px; height: 55px; filter: drop-shadow(0 2px 1px rgb(0 0 0 / 28%)); }
+.active-dot { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #303440; bottom: -5px; left: calc(50% - 2px); }
+.dock-separator { width: 1px; height: 48px; margin: 0 3px 3px; background: rgb(57 68 80 / 27%); box-shadow: 1px 0 rgb(255 255 255 / 18%); }
+.dock-folder { padding-top: 4px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (max-width: 1150px) {
+  .messages-window { left: 7vw; width: calc(100vw - 210px); top: 95px; }
+  .window-toolbar, .window-content { grid-template-columns: 232px 1fr; }
+  .conversation-name { flex-wrap: wrap; gap: 2px; }
+  .conversation-name span { font-size: 9px; }
+  .conversation-preview p { margin-top: 4px; }
+  .message-history { padding-left: 20px; padding-right: 20px; }
+}
+@media (max-height: 780px) {
+  .messages-window { top: 66px; height: calc(100svh - 200px); }
+  .message-list { gap: 11px; }
+  .conversation-date { margin-bottom: 17px; }
+  .message-history { padding-top: 16px; }
+}
+@media (max-width: 850px) {
+  .menu-headings { gap: 15px; }
+  .optional-menu { display: none; }
+  .status-items { gap: 12px; }
+  .messages-window { left: 24px; width: calc(100vw - 144px); }
+  .window-toolbar, .window-content { grid-template-columns: 195px 1fr; }
+  .conversation-list li { padding-left: 9px; gap: 8px; }
+  .avatar { width: 34px; height: 34px; font-size: 12px; }
+  .conversation-name { display: block; }
+  .conversation-name span { display: block; margin-top: 3px; }
+  .dock { gap: 4px; padding-left: 6px; padding-right: 6px; }
+  .dock-apps { gap: 4px; }
+  .dock-item { width: 45px; height: 47px; }
+  .dock-item svg { width: 45px; height: 45px; }
+  .desktop-files { right: 10px; }
+  .message-list li { padding-right: 20px; }
+  .message-list li.outgoing { padding-left: 20px; }
+}
+@media (max-width: 620px) {
+  .menu-bar { padding: 0 10px; font-size: 11px; }
+  .menu-headings { gap: 12px; }
+  .menu-headings > span:nth-child(n + 4) { display: none; }
+  .status-items { gap: 9px; font-size: 11px; }
+  .battery-status > span, .notification-center { display: none; }
+  .desktop-files { top: 19px; flex-direction: row; width: auto; gap: 12px; right: 12px; }
+  .desktop-file { width: 72px; font-size: 10px; }
+  .desktop-file svg { width: 44px; height: 44px; }
+  .messages-window { left: 12px; width: calc(100vw - 24px); top: 116px; height: calc(100svh - 225px); min-height: 265px; }
+  .window-toolbar, .window-content { grid-template-columns: 64px 1fr; }
+  .sidebar-toolbar { padding: 0 7px; }
+  .traffic-lights { gap: 4px; }
+  .traffic-lights span { width: 10px; height: 10px; }
+  .compose-icon, .search-wrap, .conversation-preview { display: none; }
+  .conversation-list li { padding: 12px 0; min-height: 62px; justify-content: center; }
+  .avatar { width: 38px; height: 38px; }
+  .conversation-list { margin-top: 0; }
+  .recipient { padding-left: 14px; }
+  .message-history { padding-left: 13px; padding-right: 13px; }
+  .bubble { font-size: 12px; padding: 8px 11px; }
+  .message-list li { padding-right: 12px; }
+  .message-list li.outgoing { padding-left: 12px; }
+  .dock { max-width: calc(100vw - 12px); gap: 2px; padding: 5px 5px 10px; }
+  .dock-apps { gap: 2px; }
+  .dock-item { width: clamp(20px, 6.7vw, 38px); height: clamp(22px, 6.7vw, 40px); }
+  .dock-item svg { width: 100%; height: auto; }
+  .dock-separator { height: 29px; margin: 0 2px; }
+}
