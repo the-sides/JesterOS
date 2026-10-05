@@ -35,7 +35,8 @@
     let previousHeight;
     function reportLayout() {
       const width = workspace.clientWidth;
-      const height = Math.max(0, workspace.clientHeight - dock.offsetHeight);
+      // Reserve fractional Dock pixels too; offsetHeight can round them down.
+      const height = Math.max(0, workspace.clientHeight - Math.ceil(dock.getBoundingClientRect().height));
       if (width !== previousWidth || height !== previousHeight) {
         previousWidth = width;
         previousHeight = height;

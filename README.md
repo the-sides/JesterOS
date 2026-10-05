@@ -6,7 +6,8 @@ A simulated desktop and applications for actors to use as screen props during fi
 
 - Rust/Axum backend serves the built frontend and `GET /api/health`.
 - Svelte 5 + Vite frontend renders an interactive desktop with a menu bar, desktop files, Dock, and managed application windows.
-- Messages retains its sample conversation. Other applications open empty window interiors; their application UIs are not implemented. Clock, battery level, conversation selection, and message history remain fixed scene content. Search and message editing are disabled.
+- Notes supports creating/editing plain-text notes, search, pinning, trash, and recovery in a researched Mojave-style UI. Other applications except Messages still have empty interiors.
+- Messages retains its sample conversation. Clock, battery level, conversation selection, and message history remain fixed scene content. Messages search and editing are disabled.
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
 
 ## Desktop interactions
@@ -18,6 +19,19 @@ A simulated desktop and applications for actors to use as screen props during fi
 - The Window menu closes, minimizes, zooms, or switches to any open/minimized window, including Preview. Arrow keys, Home/End, Enter, and Escape work in the menu. Escape also clears desktop selection; clicking the background focuses the desktop.
 - Dock running dots include minimized applications. Finder's dot remains because the desktop is always running. Window state is client-side and resets on reload to the initial Messages scene; it is not persisted or synchronized through Rust.
 - Other menus and status items remain static scene dressing.
+
+## Notes
+
+Open Notes from the Dock. The three-pane light UI follows Apple's **macOS Mojave 10.14** Notes guide, not the modern app.
+
+- Use New Note, or **Command-N / Ctrl-N**, then edit the title and multiline body. Changes immediately update the note list; an empty title appears as “New Note.”
+- Search filters title/body text in the selected folder, ignoring case and extra whitespace. **Command-F / Ctrl-F** focuses search. Editing a result clears the filter so the same note keeps focus.
+- Right-click a note, or focus it and press **Shift-F10**, to pin/unpin or delete it. Arrow keys and Home/End navigate the list and context menu; Escape dismisses the menu.
+- Delete moves notes into **Recently Deleted**, where they are read-only. Restore returns them to Notes with their text and pin state retained. Empty collections disable actions that require a selection.
+- The toolbar toggles the folder sidebar. Text, selection, search, pin state, and sidebar preference survive minimizing or closing/reopening Notes. **Reload resets the fictional scene**, including edits and deleted notes.
+- This is session-local plain text, not iCloud or the host's Notes database. Rich-text formatting, tables, checklists, attachments, sharing, locking, custom folders, and permanent deletion are not implemented; their controls are omitted rather than presented as working.
+
+Primary-source screenshots, UI observations, implementation decisions, defects/fixes, and verification notes are in [Mojave Notes research and working notes](docs/notes-mojave.md).
 
 ## Requirements
 
@@ -90,7 +104,7 @@ backend/
   Cargo.toml         Rust dependencies
   src/main.rs        HTTP server, CLI, health endpoint, static files
 frontend/
-  src/App.svelte            Window lifecycle, active application, stacking, layout
+  src/App.svelte            Window lifecycle, layout, session application data
   src/Desktop.svelte        Menu bar, desktop selection, Dock, Window menu
   src/applications.js       Application and desktop-file registry
   src/Window.svelte         Window frame, focus, pointer dragging, content hosting
@@ -98,6 +112,9 @@ frontend/
   src/window-state.js       Work-area bounds, responsive fitting, zoom geometry
   src/windows.css          Shared window chrome and active/inactive appearance
   src/MessagesWindow.svelte Measured Mojave Messages chrome and conversation
+  src/NotesWindow.svelte    Notes toolbar, folders, list, editor, context menu
+  src/notes-state.js        Session note data, filtering, ordering, trash/recovery
+  src/notes.css             Researched Mojave Notes light appearance
   src/messages-scene.js     Fixed Apple reference scene for visual comparison
   src/AppIcon.svelte        Offline application and desktop icon loader
   src/styles.css           Global styles and responsive desktop placement
@@ -124,12 +141,14 @@ The desktop uses Apple's Mojave Day photograph and detailed pre-Big-Sur applicat
 
 The interactive production build was exercised through Rust at localhost:3000 in Chromium at 1440×900, 390×844, and 800×350. Every Dock application launched, deduplicated, and closed. Live checks covered desktop selection/double-click/Enter, Dock Enter/Space, window stacking and drag boundaries, minimize/restore, zoom/restore, minimized-window resizing, Window menu commands/navigation/dismissal, and reload reset. Managed windows stayed above the Dock, including in the short viewport. No broken images, external-origin resources, document overflow, or browser page errors were observed. The Vite build completed without component warnings.
 
+Notes was exercised in the live Rust-served build at the same three viewport sizes: create/edit, case/whitespace search, zero matches, blank-title fallback, Command/Ctrl shortcuts, list/context-menu keyboard navigation, mouse pin/unpin, trash/recovery of entire collections, sidebar toggling, close/minimize retention, drag, zoom, resized restoration, and reload reset. Verification caught and fixed a Svelte rune/prop collision, keyboard focus loss after unpinning, and fractional Dock-height overlap. The final production build has no component warnings or page errors. Evidence screenshots are under ignored `artifacts/notes-mojave/`.
+
 Earlier backend smoke checks covered the health response, unknown API routes, unsupported health methods, root HTML, missing assets, and the missing-frontend startup diagnostic. The combined development command and Vite API proxy were also exercised. The latest health check returned `status: ok`. There is no application UI test suite; `bun test tools/compare-mojave.test.mjs` passes a real-ImageMagick regression for RGB errors, transparent padding, and visible difference maps.
 
 ## Visual comparison
 
 The current desktop is at **http://localhost:3000**. The separately served evidence viewer is at **http://localhost:3001**, with a reference-opacity slider and a 4× difference map. It does not add operator/developer UI to the actor-facing screen.
 
-Against Apple's Mojave Messages guide, the exact-size 928×710/DPR-1 browser capture measures **6.854% normalized RGB RMSE**, remeasured after adding window management and matching the prior static checkpoint's score. That is nonzero, not pixel identity. SF/open-font glyphs, native/browser rasterization, and some original desktop-icon illustrations remain different. Full evidence, asset/rights caveats, comparison commands, and capture instructions are in [Mojave fidelity research](docs/mojave-fidelity.md).
+Against Apple's Mojave Messages guide, the exact-size 928×710/DPR-1 browser capture measures **6.854% normalized RGB RMSE**, remeasured after adding window management and Notes and matching the prior static checkpoint's score. That is nonzero, not pixel identity. SF/open-font glyphs, native/browser rasterization, and some original desktop-icon illustrations remain different. Full evidence, asset/rights caveats, comparison commands, and capture instructions are in [Mojave fidelity research](docs/mojave-fidelity.md).
 
 Generated evidence lives under ignored `artifacts/mojave/`; reproduce it after a fresh checkout rather than treating reference screenshots as application UI.

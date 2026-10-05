@@ -1,6 +1,8 @@
 <script>
   import Desktop from './Desktop.svelte';
   import MessagesWindow from './MessagesWindow.svelte';
+  import NotesWindow from './NotesWindow.svelte';
+  import { createNotesState } from './notes-state.js';
   import Window from './Window.svelte';
   import { applications } from './applications.js';
   import { clampPosition, fitNormalBounds, initialBounds, zoomBounds } from './window-state.js';
@@ -8,6 +10,8 @@
   let windows = $state([]);
   let activeWindowId = $state(null);
   let area = $state({ width: 0, height: 0 });
+  // Application data outlives its window; close/minimize must not erase edits.
+  let notesState = $state(createNotesState());
   let initialized = false;
   const activeApp = $derived(applications[windows.find((window) => window.id === activeWindowId)?.appId] ?? applications.finder);
 
@@ -128,6 +132,15 @@
       >
         {#if window.appId === 'messages'}
           <MessagesWindow
+            active={activeWindowId === window.id}
+            zoomed={window.zoomed}
+            onclose={() => closeWindow(window.id)}
+            onminimize={() => minimizeWindow(window.id)}
+            onzoom={() => zoomWindow(window.id)}
+          />
+        {:else if window.appId === 'notes'}
+          <NotesWindow
+            bind:state={notesState}
             active={activeWindowId === window.id}
             zoomed={window.zoomed}
             onclose={() => closeWindow(window.id)}

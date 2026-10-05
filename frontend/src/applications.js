@@ -5,7 +5,7 @@ export const applications = {
   mail: { id: 'mail', name: 'Mail', icon: 'mail', width: 720, height: 480, dock: 'main' },
   contacts: { id: 'contacts', name: 'Contacts', icon: 'contacts', width: 720, height: 480, dock: 'main' },
   calendar: { id: 'calendar', name: 'Calendar', icon: 'calendar', width: 720, height: 480, dock: 'main' },
-  notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 720, height: 480, dock: 'main' },
+  notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1024, height: 660, dock: 'main' },
   messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 928, height: 710, dock: 'main' },
   settings: { id: 'settings', name: 'System Preferences', icon: 'settings', width: 720, height: 480, dock: 'main' },
   photos: { id: 'photos', name: 'Photos', icon: 'photos', width: 720, height: 480, dock: 'recent' },

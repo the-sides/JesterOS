@@ -158,11 +158,13 @@ The final production surface was exercised at 1440×900, **1920×1080**, 1280×8
 
 ## Interactive window-management checkpoint
 
-The desktop now launches one window per application, with focus/stacking, title-bar dragging, close, minimize/restore, workspace zoom, and a keyboard-accessible Window menu. Desktop files select and open Finder/Preview windows. Only Messages has application content; other interiors are deliberately empty. See the README interaction contract.
+At this checkpoint the desktop gained one window per application, with focus/stacking, title-bar dragging, close, minimize/restore, workspace zoom, and a keyboard-accessible Window menu. Desktop files select and open Finder/Preview windows. Only Messages had application content at this stage; the later Notes implementation is documented below. See the README interaction contract.
 
 The rebuilt Rust-served surface was exercised in Chromium at 1440×900, 390×844, and 800×350, including restoring a zoomed/minimized Messages window after resizing. All ten Dock applications launched, deduplicated, and closed. Desktop file launch, Dock keyboard activation, drag boundaries, preserved restore geometry, Window menu commands, disabled commands without an active window, menu dismissal, and reload reset were exercised. No page errors, broken images, external-origin resources, or document overflow were observed.
 
 A fresh active-Messages capture using the recipe below is 928×710 at DPR 1. Its normalized RGB RMSE is **6.853846%**, matching the earlier checkpoint's opaque-reference regional measurements; this is not a claim of pixel identity. The existing localhost:3001 viewer still serves the earlier static checkpoint. New comparison output is under ignored `artifacts/mojave/interactive-comparison/`; live interaction proof is `artifacts/interaction-windows.png`, and the new capture is `artifacts/interaction-capture-recipe.png`.
+
+The subsequent [Notes research and implementation](notes-mojave.md) adds a working plain-text Notes app using Apple's Mojave three-pane reference. Its verification also corrected fractional Dock-height reservation. A new default Messages capture after these changes retains **6.853846% normalized RGB RMSE**; evidence is under `artifacts/notes-mojave/messages-comparison/`. Notes has a researched DOM/CSS recreation, not an exact-pixel comparison against the differently populated Apple reference.
 
 
 ## Reproducing the comparison

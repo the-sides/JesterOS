@@ -69,7 +69,7 @@
     style:height="{window.bounds.height / window.bounds.scale}px"
     style:transform="scale({window.bounds.scale})"
   >
-    {#if window.appId === 'messages'}
+    {#if window.appId === 'messages' || window.appId === 'notes'}
       {@render children()}
     {:else}
       <div class="application-window">
