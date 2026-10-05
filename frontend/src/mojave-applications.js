@@ -1,7 +1,7 @@
 // Simulation layout policy, not measured factory macOS minima. Launch-only
 // shells and the fixed-position Messages sample retain their represented size.
 export const applications = {
-  finder: { id: 'finder', name: 'Finder', icon: 'finder', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: true, quitAllowed: false, dock: 'main', coverage: 'launch-only' },
+  finder: { id: 'finder', name: 'Finder', icon: 'finder', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: true, quitAllowed: false, dock: 'main', coverage: 'desktop-locations' },
   launchpad: { id: 'launchpad', name: 'Launchpad', icon: 'launchpad', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'launch-only' },
   safari: { id: 'safari', name: 'Safari', icon: 'safari', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: true, quitAllowed: true, dock: 'main', coverage: 'launch-only' },
   mail: { id: 'mail', name: 'Mail', icon: 'mail', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'launch-only' },

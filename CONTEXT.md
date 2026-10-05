@@ -39,3 +39,9 @@ The scene action that closes an application's windows and ends its running state
 
 **Active application**:
 The simulated application supplying the foreground menus and application shortcuts. In a macOS scene it can remain active and running after its last window closes.
+
+**Simulated desktop item**:
+A scene-visible entry backed by a fictional file/folder record or a declared native system shortcut. Its selection, rename, layout and folder drop never operate on the host desktop or filesystem.
+
+**Desktop selection**:
+An ordered collection of live desktop item IDs with an independent range anchor. It is not keyboard focus, the active application, or the active managed window.

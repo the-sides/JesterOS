@@ -60,7 +60,7 @@
 .sonoma-window-position .traffic-light:focus-visible { outline: 3px solid #397ac9; outline-offset: 3px; }
 .sonoma-launch-window { width: 100%; height: 100%; display: flex; flex-direction: column; background: #fff; }
 .sonoma-launch-toolbar { height: 52px; display: flex; align-items: center; gap: 28px; padding: 0 18px; border-bottom: 1px solid #d7d7d7; background: #f4f4f4; font-size: 15px; font-weight: 650; }
-.sonoma-launch-content { flex: 1; }
+.sonoma-launch-content { flex: 1; min-height: 0; }
 .sonoma-tool { display: flex; align-items: center; justify-content: center; width: 30px; height: 28px; padding: 4px; border: 0; border-radius: 5px; background: none; color: #777; cursor: default; flex-shrink: 0; }
 .sonoma-tool svg { width: 21px; height: 21px; }
 .sonoma-tool:hover:not(:disabled) { background: rgb(0 0 0 / 6%); }

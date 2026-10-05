@@ -46,7 +46,7 @@
 <div bind:this={element} class="sonoma-window-position managed-window" class:inactive={!active} class:zoomed={window.zoomed} data-window-id={window.id} role="dialog" aria-label={window.title} tabindex="-1" style:left="{window.bounds.x}px" style:top="{window.bounds.y}px" style:width="{window.bounds.width}px" style:height="{window.bounds.height}px" style:z-index={zIndex} onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={endDrag} onpointercancel={endDrag} onlostpointercapture={endDrag} onfocusin={onfocus}>
   <div class="sonoma-window-surface" style:width="{window.bounds.width / window.bounds.scale}px" style:height="{window.bounds.height / window.bounds.scale}px" style:transform="scale({window.bounds.scale})">
     {#if window.appId === 'messages' || window.appId === 'notes'}{@render children()}
-    {:else}<div class="sonoma-launch-window"><header class="sonoma-launch-toolbar" data-window-drag><WindowControls {active} zoomed={window.zoomed} {onclose} {onminimize} {onzoom}/><span>{window.title}</span></header><div class="sonoma-launch-content" aria-label="Launch-only application window"></div></div>{/if}
+    {:else}<div class="sonoma-launch-window"><header class="sonoma-launch-toolbar" data-window-drag><WindowControls {active} zoomed={window.zoomed} {onclose} {onminimize} {onzoom}/><span>{window.title}</span></header><div class="sonoma-launch-content" aria-label={window.appId === 'finder' ? 'Finder location contents' : 'Launch-only application window'}>{@render children()}</div></div>{/if}
   </div>
   <WindowResizeHandles windowId={window.id} bounds={window.bounds} {resizable} {onfocus} {onresize} />
 </div>

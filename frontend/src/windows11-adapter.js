@@ -40,7 +40,6 @@ function createCommands(native, context) {
 function readTargets(native, context) {
   const shell = readWindows11ShellTargets(native.shell, context);
   return {
-    desktopFiles: shell.desktop.files.map(({ id, name, appId }) => ({ fileId: id, name, appId })),
     native: { shell, apps: readWindows11AppTargets(native.apps, context) },
   };
 }

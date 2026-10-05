@@ -2,10 +2,12 @@
   import { onMount, tick } from 'svelte';
   import SonomaIcon from './SonomaIcon.svelte';
   import './sonoma.css';
+  import { createDesktopItemInteractions } from './desktop-item-interactions.js';
 
   let {
     profile,
     children,
+    desktopItems,
     windows = [],
     runningAppIds = [],
     activeWindowId = null,
@@ -17,7 +19,7 @@
   } = $props();
 
   const applications = $derived(profile.applications);
-  const desktopFiles = $derived(profile.desktopFiles);
+  const desktopFiles = $derived(desktopItems);
   const dockApps = $derived(Object.values(applications).filter((app) => app.dock === 'main'));
   const recentApps = $derived(Object.values(applications).filter((app) => app.dock === 'recent'));
   let workspace;
@@ -28,6 +30,95 @@
   let windowMenuLeft = $state(0);
   const runningApps = $derived(new Set(runningAppIds));
   const activeWindow = $derived(windows.find((window) => window.id === activeWindowId));
+  let renameBounds = $state(null);
+  const interactions = createDesktopItemInteractions({
+    getWorkspace: () => workspace,
+    getArea: measureWorkspace,
+    getItems: () => desktopFiles,
+    getState: () => viewState,
+    execute: (command) => execute(command),
+    family: 'macos',
+    openCommand: 'desktop.open',
+    available: () => itemsAvailable(),
+  });
+
+  function desktopButtons() {
+    return [...(workspace?.querySelectorAll(':scope > .sonoma-files > button[data-file-id]') ?? [])]
+      .filter((element) => !element.disabled && !element.closest('[inert]')
+        && element.getClientRects().length);
+  }
+
+  function itemsAvailable() {
+    return Boolean(workspace?.isConnected && !workspace.closest('[inert]')
+      && !workspace.parentElement.querySelector('[aria-modal="true"]')
+      && workspace.querySelector(':scope > .sonoma-files')?.getClientRects().length);
+  }
+
+  function itemRects() {
+    if (!itemsAvailable()) return [];
+    const origin = workspace.getBoundingClientRect();
+    return desktopButtons().map((element) => {
+      const rectangle = element.getBoundingClientRect();
+      return { fileId: element.dataset.fileId, x: rectangle.left - origin.left,
+        y: rectangle.top - origin.top, width: rectangle.width, height: rectangle.height };
+    });
+  }
+
+  async function focusItem(fileId) {
+    await tick();
+    desktopButtons().find((element) => element.dataset.fileId === fileId)?.focus();
+  }
+
+  function measureRename() {
+    const element = desktopButtons().find((button) => button.dataset.fileId === viewState.rename?.fileId);
+    if (!element) { renameBounds = null; return; }
+    const origin = workspace.getBoundingClientRect();
+    const rectangle = element.getBoundingClientRect();
+    const label = element.querySelector('.sonoma-file-label').getBoundingClientRect();
+    renameBounds = { x: rectangle.left - origin.left, y: label.top - origin.top,
+      width: rectangle.width, height: Math.max(20, label.height) };
+  }
+
+  async function focusRename() {
+    await tick();
+    measureRename();
+    await tick();
+    const input = workspace.querySelector('[data-desktop-rename]');
+    input?.focus();
+    if (input) {
+      const extension = input.value.lastIndexOf('.');
+      input.setSelectionRange(0, extension > 0 ? extension : input.value.length);
+    }
+  }
+
+  function reportRenameError(message) {
+    const input = workspace?.querySelector('[data-desktop-rename]');
+    input?.setCustomValidity(message);
+    input?.reportValidity();
+  }
+
+  $effect(() => {
+    const fileId = viewState.rename?.fileId;
+    const position = fileId ? viewState.positions[fileId] : null;
+    if (fileId) tick().then(() => {
+      if (viewState.rename?.fileId === fileId && viewState.positions[fileId] === position) measureRename();
+    });
+    else renameBounds = null;
+  });
+
+  function renameKeydown(event) {
+    event.stopPropagation();
+    if (event.isComposing) return;
+    if (event.key === 'Enter' || event.key === 'Escape') {
+      event.preventDefault();
+      request(event.key === 'Enter' ? 'desktop.rename.commit' : 'desktop.rename.cancel');
+    }
+  }
+
+  function renameInput(event) {
+    event.currentTarget.setCustomValidity('');
+    request('desktop.rename.change', {}, { name: event.currentTarget.value });
+  }
 
   function request(command, target = {}, payload = {}) {
     return execute({ command, target, payload });
@@ -64,7 +155,7 @@
     let element;
     if (target.control === 'window-menu') element = windowMenuButton;
     else if (target.control === 'file') {
-      element = [...workspace.querySelectorAll('[data-file-id]')]
+      element = desktopButtons()
         .find((file) => file.dataset.fileId === target.fileId);
     } else if (target.control === 'dock') {
       element = [...dock.querySelectorAll('[data-app-id], [data-dock-item-id]')]
@@ -101,11 +192,17 @@
       windowMenuScrollTop,
       scrollWindowMenu,
       measureWorkspace,
+      itemRects,
+      focusItem,
+      focusRename,
+      reportRenameError,
+      itemsAvailable,
     });
     let previousWidth;
     let previousHeight;
     function reportLayout() {
       const { width, height } = measureWorkspace();
+      if (viewState.rename) measureRename();
       if (width !== previousWidth || height !== previousHeight) {
         previousWidth = width;
         previousHeight = height;
@@ -122,7 +219,8 @@
       const target = event.target;
       if (!windowMenuContainer.contains(target)
         && !dock.contains(target)
-        && !(target instanceof Element && target.closest('[data-file-id]')?.closest('.sonoma-files'))) {
+        && !(target instanceof Element && (target.matches('[data-desktop-rename]')
+          || target.closest('[data-file-id]')?.closest('.sonoma-files')))) {
         request('desktop.focusControl', { control: null });
       }
     }
@@ -133,6 +231,7 @@
     document.addEventListener('pointerdown', dismissOutside);
     document.addEventListener('focusin', observeFocus);
     return () => {
+      interactions.dispose();
       unregisterView();
       observer.disconnect();
       document.removeEventListener('pointerdown', dismissOutside);
@@ -144,13 +243,7 @@
     if (event.button !== 0) return;
     if (event.target !== workspace && !event.target.classList.contains('sonoma-files')) return;
     request('desktop.focus');
-  }
-
-  function fileKeydown(event, file) {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      request('desktop.open', { fileId: file.id });
-    }
+    interactions.pointerdown(event);
   }
 
   function lifecycleKeydown(event) {
@@ -180,13 +273,15 @@
   }
 
   function escapeKey(event) {
+    if (event.defaultPrevented || event.target?.closest?.('[data-desktop-rename]')) return;
     lifecycleKeydown(event);
-    if (event.key !== 'Escape') return;
-    request('desktop.select', { fileId: null });
-    if (viewState.windowMenuOpen) {
+    if (event.key === 'Escape' && viewState.windowMenuOpen) {
       event.preventDefault();
       request('menu.close', { menuId: 'window' });
+      return;
     }
+    if (event.target === workspace || event.target === document.body
+      || event.target === document.documentElement) interactions.keydown(event);
   }
 
   function menuButtonKeydown(event) {
@@ -261,12 +356,26 @@
       <time datetime="2023-09-26T17:42:00">{profile.defaults.clockLabel}</time>
     </div>
   </header>
-  <main class="sonoma-workspace" bind:this={workspace} aria-label="macOS Sonoma desktop" onpointerdown={focusDesktop}>
+  <main class="sonoma-workspace" bind:this={workspace} tabindex="-1" aria-label="macOS Sonoma desktop" onpointerdown={focusDesktop}>
     <section class="sonoma-files" aria-label="Desktop files">
       {#each desktopFiles as file (file.id)}
-        <button type="button" class="sonoma-file" class:selected={viewState.selectedFileId === file.id} aria-label={file.name} aria-pressed={viewState.selectedFileId === file.id} data-file-id={file.id} onfocus={() => request('desktop.focusControl', { control: 'file', fileId: file.id })} onclick={() => request('desktop.select', { fileId: file.id })} ondblclick={() => request('desktop.open', { fileId: file.id })} onkeydown={(event) => fileKeydown(event, file)}><SonomaIcon name={file.icon} assets={profile.assets}/><span>{file.name}</span></button>
+        <button type="button" class="sonoma-file" class:selected={viewState.selectedFileIds.includes(file.id)} aria-label={file.name} aria-pressed={viewState.selectedFileIds.includes(file.id)} data-file-id={file.id}
+          style:translate={viewState.positions[file.id] ? `${viewState.positions[file.id].x}px ${viewState.positions[file.id].y}px` : undefined}
+          onfocus={() => request('desktop.focusControl', { control: 'file', fileId: file.id })}
+          onclick={(event) => interactions.click(event, file.id)} onpointerdown={(event) => interactions.pointerdown(event, file.id)}
+          ondblclick={() => request('desktop.open', { fileId: file.id })} onkeydown={(event) => interactions.keydown(event, file.id)}
+        ><SonomaIcon name={file.icon} assets={profile.assets}/><span class="sonoma-file-label" style:visibility={viewState.rename?.fileId === file.id ? 'hidden' : undefined}>{file.name}</span></button>
       {/each}
     </section>
+    {#if viewState.rename && renameBounds}
+      <input class="mac-desktop-rename" data-desktop-rename aria-label="Rename desktop item" value={viewState.rename.name}
+        style:left={`${renameBounds.x}px`} style:top={`${renameBounds.y}px`} style:width={`${renameBounds.width}px`} style:min-height={`${renameBounds.height}px`}
+        oninput={renameInput} onkeydown={renameKeydown} onpointerdown={(event) => event.stopPropagation()} />
+    {/if}
+    {#if viewState.marquee}
+      <div class="mac-desktop-marquee" aria-hidden="true" style:left={`${viewState.marquee.x}px`} style:top={`${viewState.marquee.y}px`}
+        style:width={`${viewState.marquee.width}px`} style:height={`${viewState.marquee.height}px`}></div>
+    {/if}
     {@render children()}
   </main>
   <footer class="sonoma-dock" bind:this={dock} aria-label="Application dock">
@@ -279,7 +388,16 @@
       {#each recentApps as app (app.id)}<li class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label={app.name} title={app.name} data-app-id={app.id} onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })} onclick={() => request('app.open', { appId: app.id })}><SonomaIcon name={app.icon} assets={profile.assets}/>{#if runningApps.has(app.id)}<span class="sonoma-running-dot" aria-hidden="true"></span>{/if}</button></li>{/each}
     </ul>{/if}
     <div class="sonoma-dock-separator" aria-hidden="true"></div>
-    <div class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label="Downloads" title="Downloads" data-dock-item-id="downloads" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'downloads' })} onclick={() => request('app.open', { appId: 'finder' }, { title: 'Downloads' })}><SonomaIcon name="downloads" assets={profile.assets}/></button></div>
-    <div class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label="Trash" title="Trash" data-dock-item-id="trash" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'trash' })} onclick={() => request('app.open', { appId: 'finder' }, { title: 'Trash' })}><SonomaIcon name="trash" assets={profile.assets}/></button></div>
+    <div class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label="Downloads" title="Downloads" data-dock-item-id="downloads" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'downloads' })} onclick={() => request('desktop.open', { fileId: 'downloads' })}><SonomaIcon name="downloads" assets={profile.assets}/></button></div>
+    <div class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label="Trash" title="Trash" data-dock-item-id="trash" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'trash' })} onclick={() => request('desktop.open', { fileId: 'trash' })}><SonomaIcon name="trash" assets={profile.assets}/></button></div>
   </footer>
 </div>
+
+<style>
+  .sonoma-workspace { outline: none; }
+  .sonoma-file { touch-action: none; user-select: none; }
+  .mac-desktop-rename { position: absolute; z-index: 1; box-sizing: border-box; padding: 0 3px; border: 1px solid #7f9fca; border-radius: 3px; background: white; color: #111; font: inherit; font-size: 12px; line-height: 16px; text-align: center; outline: none; }
+  .mac-desktop-rename:focus { box-shadow: 0 0 0 2px rgb(119 173 240 / 60%); }
+  .mac-desktop-marquee { position: absolute; pointer-events: none; box-sizing: border-box; border: 1px solid rgb(255 255 255 / 70%); background: rgb(137 169 218 / 25%); }
+  @media (max-width: 760px) { .mac-desktop-rename { font-size: 11px; } }
+</style>

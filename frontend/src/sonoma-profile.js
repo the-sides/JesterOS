@@ -19,7 +19,7 @@ export const sonomaProfile = {
     'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {
-    finder: launchOnly('finder', 'Finder', 'main'),
+    finder: { ...launchOnly('finder', 'Finder', 'main'), coverage: 'desktop-locations' },
     launchpad: launchOnly('launchpad', 'Launchpad', 'main'),
     safari: launchOnly('safari', 'Safari', 'main'),
     messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 1024, height: 740, minimumSize: { width: 800, height: 600 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'sample' },

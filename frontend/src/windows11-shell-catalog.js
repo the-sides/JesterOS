@@ -1,5 +1,6 @@
 import { defineCommand, text, identity, flag, offset, choice, object, empty } from './command-schema.js';
 import { shellPanels, quickControls, desktopActions, shellScrollAreas } from './windows11-shell-state.js';
+import { desktopItemContracts } from './desktop-item-catalog.js';
 const profiles = ['windows11-23h2-22631.2428'];
 const command = (name, target, payload, effects, requires = [], data = []) => defineCommand(profiles, name, 'windows.shell', target, payload, requires, effects, data);
 const nullableId = { anyOf: [identity, { type: 'null' }] };
@@ -15,7 +16,7 @@ export const windows11ShellCatalog = Object.fromEntries([
   defineCommand(profiles, 'win11.quick.set', 'windows.shell', quickTarget, quickPayload, [], ['shared fictional Quick Settings preference'], ['native.shell.quick'], [
     { if: { properties: { target: { type: 'object', properties: { control: choice('wifi', 'bluetooth', 'airplane') } } } }, then: { properties: { payload: { type: 'object', properties: { value: flag } } } }, else: { properties: { payload: { type: 'object', properties: { value: { type: 'number', minimum: 0, maximum: 100 } } } } } },
   ]),
-  command('win11.desktop.select', object({ fileId: nullableId }), empty, ['desktop selection', 'desktop focus']),
+  ...desktopItemContracts(profiles, 'win11.desktop', 'native.shell', 'native.apps.files', 'windows.shell'),
   command('win11.desktop.open', object({ fileId: identity }), empty, ['native virtual file handler']),
   command('win11.desktop.context', object({ fileId: nullableId }), object({ x: offset, y: offset }), ['bounded desktop context menu', 'native focus']),
   command('win11.desktop.action', object({ action: choice(...desktopActions) }), empty, ['supported current desktop context action'], ['current desktop-context menu; action enabled for current file/background target']),

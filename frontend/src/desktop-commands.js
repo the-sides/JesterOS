@@ -25,6 +25,9 @@ function applied(target) {
 export function createDesktopCommands(viewState, {
   getView,
   getProfile,
+  getFiles,
+  getItems,
+  openedFile,
   getWindows,
   getActiveWindowId,
   focusDesktop,
@@ -70,32 +73,20 @@ export function createDesktopCommands(viewState, {
     }
   }
 
-  function fileTarget(target, nullable = false) {
-    return fields(target, ['fileId'])
-      && (typeof target.fileId === 'string' || (nullable && target.fileId === null));
+  function fileTarget(target) {
+    return fields(target, ['fileId']) && typeof target.fileId === 'string';
   }
 
   return {
-    'desktop.select': (target, payload) => {
-      if (!fileTarget(target, true) || !fields(payload, [])) {
-        return rejected('invalid_arguments', 'desktop.select requires target.fileId (a file ID or null) and an empty payload.');
-      }
-      if (target.fileId !== null && !getProfile().desktopFiles.some((file) => file.id === target.fileId)) {
-        return rejected('not_found', 'Desktop file does not exist.');
-      }
-      if (!getView()) return rejected('unavailable', 'The desktop is not mounted.');
-      if (target.fileId !== null) focusDesktop();
-      viewState.selectedFileId = target.fileId;
-      return applied({ fileId: target.fileId });
-    },
     'desktop.open': async (target, payload) => {
       if (!fileTarget(target) || !fields(payload, [])) {
         return rejected('invalid_arguments', 'desktop.open requires target.fileId and an empty payload.');
       }
-      const file = getProfile().desktopFiles.find((entry) => entry.id === target.fileId);
+      const file = getFiles().find((entry) => entry.id === target.fileId);
       if (!file) return rejected('not_found', 'Desktop file does not exist.');
       if (!getView()) return rejected('unavailable', 'The desktop is not mounted.');
       const result = await openApp({ appId: file.appId }, { title: file.name });
+      if (result.status === 'applied') openedFile(result.target.windowId, file);
       return result.status === 'applied' ? applied({ ...result.target, fileId: file.id }) : result;
     },
     'desktop.focus': async (target, payload) => {
@@ -105,7 +96,8 @@ export function createDesktopCommands(viewState, {
       const view = getView();
       if (!view) return rejected('unavailable', 'The desktop is not mounted.');
       focusDesktop();
-      viewState.selectedFileId = null;
+      viewState.selectedFileIds = [];
+      viewState.selectionAnchorId = null;
       await closeMenu(view, false);
       return applied({});
     },
@@ -204,7 +196,7 @@ export function createDesktopCommands(viewState, {
         valid = fields(target, ['control']);
       } else if (target?.control === 'file') {
         valid = fields(target, ['control', 'fileId']) && typeof target.fileId === 'string';
-        exists = getProfile().desktopFiles.some((file) => file.id === target.fileId);
+        exists = getItems().some((file) => file.id === target.fileId);
       } else if (target?.control === 'dock') {
         if (Object.hasOwn(target, 'appId')) {
           valid = fields(target, ['control', 'appId']) && typeof target.appId === 'string';

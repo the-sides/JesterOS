@@ -1,0 +1,69 @@
+<script>
+  import AppIcon from './AppIcon.svelte';
+  import HighSierraAppIcon from './HighSierraAppIcon.svelte';
+  import SonomaIcon from './SonomaIcon.svelte';
+
+  let { profile, windowId, folderId, files, execute } = $props();
+  const Icon = $derived(profile.renderer === 'sonoma' ? SonomaIcon
+    : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const folder = $derived(files.find((file) => file.id === folderId && !file.deleted));
+  const parent = $derived(files.find((file) => file.id === folder?.parentId && !file.deleted));
+  const contents = $derived(files.filter((file) => !file.deleted && file.parentId === folderId));
+  const desktop = $derived(files.find((file) => file.id === 'desktop' && !file.deleted));
+
+  function navigate(destination) {
+    return execute({ command: 'desktop.folder.navigate',
+      target: { windowId, folderId: destination }, payload: {} });
+  }
+</script>
+
+<section class="mac-folder" class:sonoma={profile.renderer === 'sonoma'} aria-label={`${folder?.name ?? 'Folder'} contents`} data-folder-id={folderId}>
+  <nav class="folder-navigation" aria-label="Folder navigation">
+    <button type="button" aria-label="Enclosing folder" title="Enclosing folder" disabled={!parent || parent.kind !== 'folder'} onclick={() => navigate(parent.id)}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 3-5 5 5 5" /></svg>
+    </button>
+    <button type="button" disabled={!desktop || folderId === desktop.id} onclick={() => navigate(desktop.id)}>Desktop</button>
+    <span class="folder-location">{folder?.name ?? 'Folder'}</span>
+  </nav>
+  <div class="folder-contents" role="list" aria-label="Items in folder">
+    {#each contents as file (file.id)}
+      <div class="folder-item" role="listitem" data-folder-item-id={file.id}>
+        {#if file.kind === 'folder'}
+          <button class="folder-directory" type="button" aria-label={`Open ${file.name}`} onclick={() => navigate(file.id)}>
+            <Icon name={file.icon} assets={profile.assets}/><span class="folder-label">{file.name}</span>
+          </button>
+        {:else}
+          <div class="folder-file"><Icon name={file.icon} assets={profile.assets}/><span class="folder-label">{file.name}</span></div>
+        {/if}
+      </div>
+    {:else}
+      <p class="folder-empty">This folder is empty.</p>
+    {/each}
+  </div>
+  <footer class="folder-status">{contents.length} {contents.length === 1 ? 'item' : 'items'}</footer>
+</section>
+
+<style>
+  .mac-folder { display: flex; flex-direction: column; height: 100%; min-height: 0; background: white; color: #242424; font-family: var(--ui-font); font-size: 12px; }
+  .folder-navigation { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 6px 12px; border-bottom: 1px solid #bcbcbc; background: linear-gradient(#ededed, #dcdcdc); }
+  .folder-navigation button { display: inline-flex; align-items: center; justify-content: center; height: 24px; min-width: 28px; padding: 0 8px; border: 1px solid #b1b1b1; border-radius: 4px; background: linear-gradient(white, #ececec); box-shadow: 0 1px 1px rgb(0 0 0 / 8%); color: inherit; font: inherit; }
+  .folder-navigation button:disabled { opacity: .45; }
+  .folder-navigation button:not(:disabled):active { background: #cfcfcf; }
+  .folder-navigation svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+  .folder-location { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #585858; }
+  .folder-contents { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); grid-auto-rows: max-content; align-content: start; gap: 20px 12px; padding: 20px 18px; }
+  .folder-item { min-width: 0; }
+  .folder-directory, .folder-file { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; line-height: 16px; text-align: center; }
+  .folder-item :global(.app-icon), .folder-item :global(.sonoma-icon) { display: block; width: 64px; height: 64px; }
+  .folder-label { max-width: 100%; padding: 0 2px; overflow-wrap: anywhere; }
+  .folder-directory:focus-visible { outline: 2px solid #73a6e6; outline-offset: 4px; border-radius: 3px; }
+  .folder-navigation button:focus-visible { outline: 2px solid #73a6e6; outline-offset: 1px; }
+  .folder-empty { grid-column: 1 / -1; margin: 50px 0; color: #777; text-align: center; }
+  .folder-status { flex-shrink: 0; min-height: 23px; padding: 4px 12px; border-top: 1px solid #d3d3d3; background: #f3f3f3; color: #666; text-align: center; font-size: 11px; }
+  .sonoma { font-family: var(--sonoma-font); }
+  .sonoma .folder-navigation { background: #f3f1ed; border-color: #dedbd6; min-height: 44px; }
+  .sonoma .folder-navigation button { border-color: #d0cdc7; background: #faf9f6; border-radius: 5px; }
+  .sonoma .folder-directory, .sonoma .folder-file { gap: 6px; }
+  .sonoma .folder-label { padding: 0 3px; }
+  .sonoma .folder-status { background: #f8f7f4; border-color: #e1ded8; }
+</style>

@@ -1,0 +1,84 @@
+/* Versioned Apple High Sierra Help references and approximations are recorded
+   in docs/high-sierra-profile.md. Every override is renderer-scoped: importing
+   this adapter must not change a single Mojave declaration. */
+@font-face {
+  font-family: 'High Sierra UI';
+  src: url('/fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'High Sierra Message';
+  src: url('/fonts/LiberationSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+:root[data-os-renderer='high-sierra'] {
+  --system-font: 'High Sierra UI', sans-serif;
+  --message-font: 'High Sierra Message', sans-serif;
+  --ui-font: var(--system-font);
+  --menu-ink: #171717;
+  --menu-glass: rgb(247 247 247 / 73%);
+  --dock-glass: rgb(229 228 228 / 49%);
+  color: #292929;
+  font-family: var(--ui-font);
+  font-size: 13px;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #9d9a92;
+}
+:root[data-os-renderer='high-sierra'].native-apple-font {
+  --system-font: -apple-system, BlinkMacSystemFont, 'High Sierra UI', sans-serif;
+}
+:root[data-os-renderer='high-sierra'] .window-surface,
+:root[data-os-renderer='high-sierra'] .messages-window { border-radius: 7px; }
+
+/* Notes 4.5 retains the classic three-pane light interface, but the 2017
+   reference has a white untextured editor and regular-sized first line. */
+:root[data-os-renderer='high-sierra'] .notes-columns { grid-template-columns: 306px 406px minmax(0, 1fr); }
+:root[data-os-renderer='high-sierra'] .notes-columns.folders-hidden { grid-template-columns: 406px minmax(0, 1fr); }
+:root[data-os-renderer='high-sierra'] .notes-folders { background: #fbfbfb; padding-top: 2px; }
+:root[data-os-renderer='high-sierra'] .notes-folders h2 { padding: 4px 12px 2px; font-weight: 400; }
+:root[data-os-renderer='high-sierra'] .notes-folders button { min-height: 29px; padding-left: 22px; }
+:root[data-os-renderer='high-sierra'] .notes-editor { background: #fafafa; padding: 10px 26px 22px; }
+:root[data-os-renderer='high-sierra'] .notes-modified { margin-bottom: 6px; }
+:root[data-os-renderer='high-sierra'] .notes-window .notes-note-title { flex-basis: 28px; margin-bottom: 12px; font-size: 17px; line-height: 26px; font-weight: 400; }
+:root[data-os-renderer='high-sierra'] .notes-window .notes-note-body { font-size: 17px; line-height: 25px; }
+:root[data-os-renderer='high-sierra'] .notes-row.selected { background: #f7e398; }
+:root[data-os-renderer='high-sierra'] .notes-window.inactive .notes-row.selected { background: #deddd9; }
+
+/* Messages 11.0: independent Euna Kwon fixture, traditional full-width
+   selection, vibrancy in the classic sidebar, and the 2017 photograph pair. */
+:root[data-os-renderer='high-sierra'] .messages-window { --messages-background: #fff; --messages-incoming: #e5e5e9; background: transparent; }
+:root[data-os-renderer='high-sierra'] .messages-window::after { border-width: 1px; }
+:root[data-os-renderer='high-sierra'] .messages-toolbar-sidebar,
+:root[data-os-renderer='high-sierra'] .messages-sidebar { background: rgb(242 242 242 / 83%); backdrop-filter: blur(25px) saturate(.8); }
+:root[data-os-renderer='high-sierra'] .messages-recipient-toolbar { background: rgb(227 227 227 / 92%); backdrop-filter: blur(25px); }
+:root[data-os-renderer='high-sierra'] .messages-window.inactive .messages-toolbar-sidebar,
+:root[data-os-renderer='high-sierra'] .messages-window.inactive .messages-recipient-toolbar { background: #e2e2e2; }
+:root[data-os-renderer='high-sierra'] .messages-search { background: rgb(176 183 191 / 30%); }
+:root[data-os-renderer='high-sierra'] .messages-conversations li { height: 89px; }
+:root[data-os-renderer='high-sierra'] .messages-conversations li.selected { background: #1a95f6; }
+:root[data-os-renderer='high-sierra'] .conversation-name { color: #171717; }
+:root[data-os-renderer='high-sierra'] .selected .conversation-name,
+:root[data-os-renderer='high-sierra'] .selected .conversation-time,
+:root[data-os-renderer='high-sierra'] .selected .conversation-preview { color: #fff; }
+:root[data-os-renderer='high-sierra'] .messages-input-capsule input::placeholder { color: #888; }
+:root[data-os-renderer='high-sierra'] .message-bubble { font-size: 18px; }
+:root[data-os-renderer='high-sierra'] .hs-miami-photo { top: 0; right: 23px; width: 388px; height: 199px; overflow: hidden; border-radius: 0 0 17px 17px; }
+:root[data-os-renderer='high-sierra'] .hs-miami-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+:root[data-os-renderer='high-sierra'] .hs-miami-message { top: 214px; left: 24px; }
+:root[data-os-renderer='high-sierra'] .hs-euna-photo { top: 271px; left: 24px; width: 388px; height: 216px; }
+:root[data-os-renderer='high-sierra'] .hs-euna-photo > img { position: relative; z-index: 1; display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 17px; }
+:root[data-os-renderer='high-sierra'] .hs-tapback { position: absolute; z-index: 2; right: -18px; top: -20px; display: grid; place-items: center; width: 38px; height: 38px; border: 2px solid white; border-radius: 50%; color: #fff; background: #2b9fed; }
+:root[data-os-renderer='high-sierra'] .hs-tapback::after { content: ''; position: absolute; right: -3px; bottom: -3px; width: 6px; height: 6px; border-radius: 50%; background: #2b9fed; }
+:root[data-os-renderer='high-sierra'] .hs-tapback svg { width: 26px; height: 26px; }
+:root[data-os-renderer='high-sierra'] .hs-want-to-go { top: 511px; right: 23px; background: #2697ef; }
+:root[data-os-renderer='high-sierra'] .messages-search svg { position: absolute; left: 78px; margin-left: 0; }
+:root[data-os-renderer='high-sierra'] .messages-search input { width: 100%; text-align: center; }
+@media (max-width: 520px) {
+  :root[data-os-renderer='high-sierra'] .high-sierra-siri { display: none; }
+}

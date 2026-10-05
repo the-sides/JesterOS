@@ -78,7 +78,7 @@
           <WindowControls {active} zoomed={window.zoomed} {onclose} {onminimize} {onzoom} />
           <span class="application-title">{window.title}</span>
         </header>
-        <div class="application-content"></div>
+        <div class="application-content">{@render children()}</div>
       </div>
     {/if}
   </div>

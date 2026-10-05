@@ -1,13 +1,12 @@
 <script>
   import { onMount, tick } from 'svelte';
   import Windows11Icon from './Windows11Icon.svelte';
-  import { windows11DesktopFiles } from './windows11-shell-state.js';
+  import { createDesktopItemInteractions } from './desktop-item-interactions.js';
   import './windows11.css';
-  let { profile, children, windows = [], runningAppIds = [], activeWindowId = null, activeApp, viewState, native, execute, registerView, onlayout } = $props();
+  let { profile, desktopItems = [], children, windows = [], runningAppIds = [], activeWindowId = null, activeApp, viewState, native, execute, registerView, onlayout } = $props();
   const shell = $derived(native.shell);
   const apps = $derived(Object.values(profile.applications));
-  const desktopFiles = $derived(windows11DesktopFiles(profile, native.apps));
-  const files = $derived(shell.sortByName ? [...desktopFiles].sort((a, b) => a.name.localeCompare(b.name)) : desktopFiles);
+  const files = $derived(desktopItems);
   const taskbarApps = $derived(apps.filter((app) => app.taskbar === 'pinned' || runningAppIds.includes(app.id)));
   const results = $derived(apps.filter((app) => app.name.toLowerCase().includes(shell.query.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name)));
   const fileResults = $derived(shell.query ? files.filter((file) => file.name.toLowerCase().includes(shell.query.toLowerCase())) : []);
@@ -18,13 +17,64 @@
     return [...Array(first).fill(null), ...Array.from({ length: count }, (_, i) => i + 1)];
   });
   let workspace, root, taskbar;
+  let desktopSurface = $state();
   let panel = $state(), contextMenu = $state(), properties = $state();
   function request(command, target = {}, payload = {}) { return execute({ command, target, payload }); }
   function recentWindow(appId) { return windows.findLast(window => window.appId === appId); }
   function togglePanel(panelId) { return shell.panel === panelId ? request('win11.panel.close') : request('win11.panel.open', { panelId }); }
-  $effect(() => {
-    if (shell.selectedFileId !== null && !files.some((file) => file.id === shell.selectedFileId)) request('win11.desktop.select', { fileId: null });
+  const interactions = createDesktopItemInteractions({
+    getWorkspace: () => workspace, getItems: () => files, getState: () => shell,
+    getArea: measureWorkspace,
+    execute: (command) => execute(command), family: 'windows',
+    openCommand: 'win11.desktop.open', available: () => itemsAvailable(),
   });
+  function itemsAvailable() { return Boolean(desktopSurface?.isConnected && shell.showDesktopIcons && !shell.dialog && !desktopSurface.closest('[inert]')); }
+  function itemElements() { return itemsAvailable() ? [...desktopSurface.querySelectorAll('button.win11-desktop-file[data-file-id]')] : []; }
+  function itemRects() {
+    const area = workspace.getBoundingClientRect();
+    return itemElements().map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { fileId: element.dataset.fileId, x: rect.left - area.left, y: rect.top - area.top, width: rect.width, height: rect.height };
+    });
+  }
+  async function focusItem(fileId) {
+    await tick();
+    itemElements().find((element) => element.dataset.fileId === fileId)?.focus({ preventScroll: true });
+  }
+  async function focusRename() {
+    await tick();
+    if (!itemsAvailable()) return;
+    const input = desktopSurface.querySelector('[data-desktop-rename]');
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const entry = files.find((file) => file.id === shell.rename?.fileId);
+    const dot = entry?.folderId ? -1 : input.value.lastIndexOf('.');
+    input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
+  }
+  function reportRenameError(message) {
+    const input = desktopSurface?.querySelector('[data-desktop-rename]');
+    if (itemsAvailable() && input) { input.setCustomValidity(message); input.reportValidity(); }
+  }
+  function renameKey(event) {
+    event.stopPropagation();
+    if (event.key === 'Enter' || event.key === 'Escape') {
+      event.preventDefault();
+      request(event.key === 'Enter' ? 'win11.desktop.rename.commit' : 'win11.desktop.rename.cancel');
+    }
+  }
+  function workspacePointer(event) {
+    if (event.target === workspace || event.target === desktopSurface) interactions.pointerdown(event);
+  }
+  function desktopKey(event, fileId) {
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      event.preventDefault(); event.stopPropagation();
+      desktopContext({ preventDefault() {}, stopPropagation() {}, clientX: bounds.right, clientY: bounds.top }, fileId);
+      return;
+    }
+    if (event.ctrlKey && event.key === 'Escape') return;
+    interactions.keydown(event, fileId);
+  }
   function measureWorkspace() { return { width: workspace?.clientWidth ?? 0, height: workspace?.clientHeight ?? 0 }; }
   function controls() { return [...(root?.querySelectorAll('[data-shell-control]') ?? [])].filter((element) => !element.disabled && !element.closest('[inert]') && (!shell.dialog || element.dataset.shellControl === 'properties-close')); }
   async function focusControl(controlId) {
@@ -50,6 +100,7 @@
   }
   function controlKey(event) {
     if (!(event.target instanceof Element)) return;
+    if (event.target.closest('.win11-desktop-files')) return;
     const container = event.target.closest('[data-keyboard-group]');
     if (!container || !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || event.target.matches('input,textarea,select')) return;
     const items = [...container.querySelectorAll('[data-shell-control]')].filter((element) => !element.disabled);
@@ -61,12 +112,13 @@
   }
   function desktopContext(event, fileId = null) {
     event.preventDefault(); event.stopPropagation();
+    if (shell.dialog) return;
     const bounds = workspace.getBoundingClientRect();
     request('win11.desktop.context', { fileId }, { x: Math.max(0, event.clientX - bounds.left), y: Math.max(0, event.clientY - bounds.top) });
   }
   function dateId(day) { return `${shell.calendar.year}-${String(shell.calendar.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`; }
   onMount(() => {
-    const cleanup = registerView({ measureWorkspace, focusControl, controlIds: () => controls().map((element) => element.dataset.shellControl), scrollPanel, scrollAreas, scrollSnapshot });
+    const cleanup = registerView({ measureWorkspace, focusControl, itemRects, focusItem, focusRename, reportRenameError, itemsAvailable, controlIds: () => controls().map((element) => element.dataset.shellControl), scrollPanel, scrollAreas, scrollSnapshot });
     let previous = '';
     function reportLayout() {
       const area = measureWorkspace(), key = `${area.width}:${area.height}`;
@@ -76,7 +128,6 @@
     function outside(event) {
       if (!(event.target instanceof Element)) return;
       if (shell.dialog && !properties?.contains(event.target)) return;
-      if (event.button === 0 && event.target === workspace) request('win11.desktop.select', { fileId: null });
       if ((shell.context && !contextMenu?.contains(event.target)) || (shell.panel && !panel?.contains(event.target) && !event.target.closest('[data-shell-trigger]'))) request('win11.shell.dismiss');
     }
     function focus(event) {
@@ -88,6 +139,9 @@
     }
     function keyboard(event) {
       if (!root.contains(document.activeElement)) return;
+      if (event.defaultPrevented || event.target.closest?.('[data-desktop-rename]')) return;
+      if ((event.target === workspace || event.target === desktopSurface) && !(event.ctrlKey && event.key === 'Escape')) interactions.keydown(event);
+      if (event.defaultPrevented) return;
       controlKey(event);
       if (event.target === workspace && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
         event.preventDefault(); request('win11.desktop.context', { fileId: null }, { x: 24, y: 24 });
@@ -97,10 +151,10 @@
         if (shell.dialog) request('win11.dialog.close', { dialogId: 'properties' });
         else if (shell.panel) request('win11.panel.close');
         else request('win11.shell.dismiss', {}, { restoreFocus: true });
-      } else if (event.key === 'Escape' && shell.selectedFileId) request('win11.desktop.select', { fileId: null });
+      }
       else if ((event.ctrlKey && event.key === 'Escape') || (event.metaKey && event.key.toLowerCase() === 's')) {
         event.preventDefault(); togglePanel(event.ctrlKey ? 'start' : 'search');
-      } else if (event.metaKey && event.key.toLowerCase() === 'a') { event.preventDefault(); togglePanel('quick'); }
+      } else if (event.metaKey && event.key.toLowerCase() === 'a' && !event.target.closest?.('.win11-desktop-files') && event.target !== workspace) { event.preventDefault(); togglePanel('quick'); }
       else if (event.key === 'Tab' && (shell.panel || shell.context || shell.dialog)) {
         const surface = shell.dialog ? properties : shell.context ? contextMenu : panel;
         const items = [...surface.querySelectorAll('button,input,[tabindex="0"]')].filter((element) => !element.disabled);
@@ -111,19 +165,27 @@
       }
     }
     document.addEventListener('pointerdown', outside); document.addEventListener('contextmenu', context); document.addEventListener('focusin', focus); document.addEventListener('keydown', keyboard);
-    return () => { cleanup?.(); observer.disconnect(); document.removeEventListener('pointerdown', outside); document.removeEventListener('contextmenu', context); document.removeEventListener('focusin', focus); document.removeEventListener('keydown', keyboard); };
+    return () => { interactions.dispose(); cleanup?.(); observer.disconnect(); document.removeEventListener('pointerdown', outside); document.removeEventListener('contextmenu', context); document.removeEventListener('focusin', focus); document.removeEventListener('keydown', keyboard); };
   });
 </script>
 <div bind:this={root} class="win11-desktop" class:win11-dark={native.apps.settings.theme === 'dark'} class:win11-glow={native.apps.settings.wallpaper === 'glow'} class:win11-flow={native.apps.settings.wallpaper === 'flow'} style:--win11-accent={native.apps.settings.accent}>
-  <div bind:this={workspace} class="win11-workspace" data-shell-control="desktop" tabindex="-1" role="group" aria-label="Windows desktop">
+  <div bind:this={workspace} class="win11-workspace" data-shell-control="desktop" tabindex="-1" role="group" aria-label="Windows desktop" onpointerdown={workspacePointer}>
     {#if shell.showDesktopIcons}
-      <div class="win11-desktop-files" data-keyboard-group data-shell-scroll="desktop" onscroll={(event) => observeScroll(event, 'desktop')} inert={Boolean(shell.dialog)}>
+      <div bind:this={desktopSurface} class="win11-desktop-files" data-shell-scroll="desktop" onscroll={(event) => observeScroll(event, 'desktop')} inert={Boolean(shell.dialog)} style:overflow={Object.keys(shell.positions).length ? 'visible' : undefined}>
         {#each files as file (file.id)}
-          <button class="win11-desktop-file" class:selected={shell.selectedFileId === file.id} data-file-id={file.id} data-shell-control="file:{file.id}" onclick={() => request('win11.desktop.select', { fileId: file.id })} ondblclick={() => request('win11.desktop.open', { fileId: file.id })} oncontextmenu={(event) => desktopContext(event, file.id)} onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); request('win11.desktop.open', { fileId: file.id }); } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { const bounds = event.currentTarget.getBoundingClientRect(); desktopContext({ preventDefault() {}, stopPropagation() {}, clientX: bounds.right, clientY: bounds.top }, file.id); } }}>
-            <Windows11Icon name={file.icon} size={44}/><span>{file.name}</span>
-          </button>
+          <div class="win11-desktop-entry" style:transform={shell.positions[file.id] ? `translate(${shell.positions[file.id].x}px, ${shell.positions[file.id].y}px)` : undefined}>
+            <button class="win11-desktop-file" class:selected={shell.selectedFileIds.includes(file.id)} aria-pressed={shell.selectedFileIds.includes(file.id)} data-file-id={file.id} data-folder-id={file.folderId} data-shell-control="file:{file.id}" onclick={(event) => interactions.click(event, file.id)} onpointerdown={(event) => interactions.pointerdown(event, file.id)} ondblclick={() => request('win11.desktop.open', { fileId: file.id })} oncontextmenu={(event) => desktopContext(event, file.id)} onkeydown={(event) => desktopKey(event, file.id)}>
+              <Windows11Icon name={file.icon} size={44}/><span style:visibility={shell.rename?.fileId === file.id ? 'hidden' : undefined}>{file.name}</span>
+            </button>
+            {#if shell.rename?.fileId === file.id}
+              <input class="win11-desktop-rename" data-desktop-rename aria-label="Rename {file.name}" value={shell.rename.name} onpointerdown={(event) => event.stopPropagation()} onclick={(event) => event.stopPropagation()} oncontextmenu={(event) => event.stopPropagation()} onkeydown={renameKey} oninput={(event) => { event.currentTarget.setCustomValidity(''); request('win11.desktop.rename.change', {}, { name: event.currentTarget.value }); }} onblur={() => { if (shell.rename?.fileId === file.id && itemsAvailable()) request('win11.desktop.rename.commit'); }}/>
+            {/if}
+          </div>
         {/each}
       </div>
+    {/if}
+    {#if shell.marquee && shell.showDesktopIcons && !shell.dialog}
+      <div class="win11-desktop-marquee" aria-hidden="true" style:left="{shell.marquee.x}px" style:top="{shell.marquee.y}px" style:width="{shell.marquee.width}px" style:height="{shell.marquee.height}px"></div>
     {/if}
     <div class="win11-window-layer" inert={Boolean(shell.dialog)}>{@render children()}</div>
     {#if shell.context}
@@ -188,3 +250,10 @@
     <div class="win11-system-tray"><button data-shell-trigger data-shell-control="quick-trigger" aria-label="Quick Settings" aria-expanded={shell.panel === 'quick'} onclick={() => togglePanel('quick')}><span aria-hidden="true">{shell.quick.airplane ? '✈' : shell.quick.wifi ? '⌁' : '⊗'} {shell.quick.volume ? '◖♪' : '◖×'}</span></button><button class="win11-clock-trigger" data-shell-trigger data-shell-control="notifications-trigger" aria-label="Notifications and calendar" aria-expanded={shell.panel === 'notifications'} onclick={() => togglePanel('notifications')}><span>{profile.defaults.clockLabel}</span><span>{profile.defaults.dateLabel}</span></button><button class="win11-show-desktop" data-shell-control="show-desktop" aria-label="Show desktop" title="Show desktop" onclick={() => request('win11.desktop.show')}></button></div>
   </footer>
 </div>
+
+<style>
+  .win11-workspace { touch-action: none; }
+  .win11-desktop-entry { position: relative; width: 86px; flex-shrink: 0; touch-action: none; user-select: none; }
+  .win11-desktop-rename { position: absolute; top: 55px; left: 2px; width: 82px; padding: 1px 2px; border: 1px solid #1565c0; background: white; color: #111 !important; text-align: center; font-size: 12px !important; z-index: 2; }
+  .win11-desktop-marquee { position: absolute; border: 1px solid #78b6ee; background: #4b9fe536; pointer-events: none; z-index: 1; }
+</style>

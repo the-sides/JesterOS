@@ -4,7 +4,8 @@ export const desktopActions = ['open', 'properties', 'refresh', 'sort-name', 'to
 export const shellScrollAreas = ['start', 'search', 'notifications', 'panel', 'desktop', 'properties', 'taskbar'];
 export function createWindows11ShellState() {
   return {
-    panel: null, startPage: 'pinned', query: '', selectedFileId: null,
+    panel: null, startPage: 'pinned', query: '', selectedFileIds: [],
+    selectionAnchorId: null, rename: null, marquee: null, positions: {},
     context: null, dialog: null, showDesktopIcons: true, sortByName: false,
     focusedControl: null, scroll: Object.fromEntries(shellScrollAreas.map((area) => [area, 0])),
     scrollLeft: Object.fromEntries(shellScrollAreas.map((area) => [area, 0])),
@@ -28,13 +29,14 @@ export function windows11DesktopFiles(profile, apps) {
     }
     return true;
   }
-  const entries = profile.desktopFiles.filter((entry) => !entry.fileId);
+  const entries = profile.desktopFiles.filter((entry) => !entry.fileId).map((entry) => ({ ...entry, renameable: false, movable: false }));
   for (const file of virtualFiles) {
     if (file.parentId !== 'desktop' || !visible(file)) continue;
     const kind = file.kind;
     entries.push({
       id: file.id, name: file.name, icon: kind === 'folder' ? 'folder' : kind === 'image' ? 'image-file' : 'text-file',
       appId: kind === 'folder' ? 'explorer' : kind === 'image' ? 'photos' : 'notepad',
+      renameable: true, movable: true,
       ...(kind === 'folder' ? { folderId: file.id } : { fileId: file.id }),
     });
   }
@@ -51,7 +53,14 @@ export function readWindows11ShellTargets(shell, context) {
     panels: shellPanels.map((panelId) => ({ panelId, open: shell.panel === panelId })),
     startPages: ['pinned', 'all-apps'],
     quick: quickControls.map((control) => ({ control, value: shell.quick[control], fictional: true })),
-    desktop: { selectedFileId: shell.selectedFileId, showIcons: shell.showDesktopIcons, sortByName: shell.sortByName, files: context ? windows11DesktopFiles(context.getProfile(), context.native?.apps).map((entry) => ({ ...entry })) : [] },
+    desktop: {
+      selectedFileIds: [...shell.selectedFileIds], selectionAnchorId: shell.selectionAnchorId,
+      rename: shell.rename ? { ...shell.rename } : null, marquee: shell.marquee ? { ...shell.marquee } : null,
+      positions: Object.fromEntries(Object.entries(shell.positions).map(([id, position]) => [id, { ...position }])),
+      showIcons: shell.showDesktopIcons, sortByName: shell.sortByName,
+      files: (context?.getDesktopItems() ?? []).map((entry) => ({ ...entry })),
+      itemBounds: context?.getDesktopView()?.itemRects() ?? [],
+    },
     menus: shell.context ? [{ menuId: 'desktop-context', fileId: shell.context.fileId, itemIds: shell.context.fileId ? ['open', 'properties'] : ['refresh', 'sort-name', 'toggle-icons', 'personalize'] }] : [],
     dialogs: shell.dialog ? [{ dialogId: 'properties', fileId: shell.dialog.fileId, actions: ['close'] }] : [],
     notifications: shell.notifications.map(({ id, appId }) => ({ notificationId: id, appId })),

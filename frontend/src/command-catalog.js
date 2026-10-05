@@ -2,6 +2,7 @@ import { DEFAULT_PROFILE_ID } from './os-profiles.js';
 import { defineCommand, NONE, text, identity, flag, number, offset, choice, object, match, empty } from './command-schema.js';
 import { windows11ShellCatalog } from './windows11-shell-catalog.js';
 import { windows11AppCatalog } from './windows11-app-commands.js';
+import { desktopItemContracts } from './desktop-item-catalog.js';
 
 const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -72,13 +73,15 @@ export const commandCatalog = {
     object({ appId: identity, windowId: identity })),
   defineShared('desktop.refreshLayout', 'shell.desktop', empty, empty,
     ['Mounted desktop view; actual native workspace dimensions are positive.'],
-    ['Measure real browser workspace above native Dock/taskbar; refit normal/expanded windows, including minimized restore geometry.']),
-  define('desktop.select', 'shell.desktop', object({ fileId: { type: ['string', 'null'] } }), empty,
-    ['Non-null fileId is in targets.desktopFiles.'],
-    ['Select file and activate desktop; null deselects without changing active app.']),
+    ['Measure real browser workspace above native Dock/taskbar; refit normal/expanded windows, including minimized restore geometry; clamp manually positioned desktop items to the actual workspace.']),
+  ...desktopItemContracts(MAC_PROFILES, 'desktop', 'desktop', 'files', 'shell.desktop'),
+  define('desktop.folder.navigate', 'shell.desktop', object({ windowId: identity, folderId: identity }), empty,
+    ['Live Finder window and simulated folder; no native global modal.'],
+    ['Show actual location contents in the exact Finder window; update contextual title and activate the root.'], NONE, NONE,
+    object({ windowId: identity, folderId: identity })),
   define('desktop.open', 'shell.apps', object({ fileId: identity }), empty,
-    ['fileId is in targets.desktopFiles; app.open requirements also apply.'],
-    ['Open the registered app with the file contextual title through app.open.'], NONE, NONE,
+    ['fileId is a live entry in targets.desktop.files (including simulated Dock locations); app.open requirements also apply.'],
+    ['Open the registered app with the real contextual title through app.open; Finder shows actual simulated location records.'], NONE, NONE,
     object({ appId: identity, windowId: identity, fileId: identity })),
   define('desktop.focus', 'shell.desktop', empty, empty, NONE,
     ['Clear selection and active window, dismiss menus, blur managed-window controls.']),
