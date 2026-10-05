@@ -13,6 +13,10 @@ JesterOS will eventually support **multiple OS profiles**: different macOS relea
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
 - Browser-local `jesteros.execute()` supports 31 shared app/window/desktop/Window-menu/Notes commands; `jesteros.inspect()` exposes detached state and `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics, and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Other app/menu features remain queued.
 
+## OS profile setup
+
+The installed profile is **macOS Mojave 10.14**, ID `macos-mojave-10.14`. Open the normal desktop URL, or select it explicitly with `?profile=macos-mojave-10.14`. Unsupported/empty/inherited profile IDs show a setup error instead of silently relabeling Mojave. Profile metadata, implemented capabilities, local assets/defaults and stock-app coverage are inspectable through the browser-local interface. A profile is not a theme; additional macOS/Windows/Linux profiles and live switching remain queued. See [profile boundaries](docs/pseudo-os-architecture.md#implemented-mojave-boundary).
+
 ## Desktop interactions
 
 - Click a Dock icon, or focus it and press Enter/Space, to open, raise, or restore its application's single window. Repeated activation does not create duplicates.
@@ -113,13 +117,21 @@ backend/
   Cargo.toml         Rust dependencies
   src/main.rs        HTTP server, CLI, health endpoint, static files
 frontend/
-  src/App.svelte            Window lifecycle, layout, session application data
-  src/Desktop.svelte        Menu bar, desktop selection, Dock, Window menu
-  src/applications.js       Application and desktop-file registry
-  src/Window.svelte         Window frame, focus, pointer dragging, content hosting
-  src/WindowControls.svelte Shared close/minimize/zoom buttons
-  src/window-state.js       Work-area bounds, responsive fitting, zoom geometry
-  src/windows.css          Shared window chrome and active/inactive appearance
+  src/App.svelte            Profile-bound scene, window lifecycle, command routing
+  src/os-profiles.js        Immutable profile identity, capabilities, inventory/assets
+  src/profile-adapters.js  Explicit native renderer selection
+  src/mojave-adapter.js     Mojave views, font preference, fixture/placement policy
+  src/Desktop.svelte       Mojave menu bar, desktop selection, Dock, Window menu
+  src/mojave-applications.js Mojave stock app and desktop-file registry
+  src/feature-commands.js   Profile/capability-gated execution and detached queries
+  src/command-catalog.js    Typed request/result contracts and effect/completion metadata
+  src/desktop-commands.js   Shared desktop/Dock/Window-menu handlers
+  src/window-commands.js    Shared window operation handlers
+  src/notes-commands.js     Shared Notes data/presentation handlers
+  src/Window.svelte         Mojave frame, focus, pointer dragging, content hosting
+  src/WindowControls.svelte Mojave close/minimize/zoom buttons
+  src/window-state.js       Shared physical clamp/fit/zoom primitives; explicit scale
+  src/windows.css          Mojave window chrome and active/inactive appearance
   src/MessagesWindow.svelte Measured Mojave Messages chrome and conversation
   src/NotesWindow.svelte    Notes toolbar, folders, list, editor, context menu
   src/notes-state.js        Session note data, filtering, ordering, trash/recovery

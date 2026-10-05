@@ -3,7 +3,7 @@
   import WindowControls from './WindowControls.svelte';
   import './messages.css';
 
-  let { onclose, onminimize, onzoom, active = true, zoomed = false } = $props();
+  let { assets, onclose, onminimize, onzoom, active = true, zoomed = false } = $props();
 </script>
 
 {#snippet bubbleTail(direction, color)}
@@ -49,7 +49,7 @@
     <ul class="messages-conversations">
       {#each conversations as conversation}
         <li class:selected={conversation.selected} aria-current={conversation.selected ? 'true' : undefined}>
-          <img class="conversation-portrait" src="/messages/{conversation.portrait}" alt="" width="67" height="67" />
+          <img class="conversation-portrait" src={`${assets.messages}/${conversation.portrait}`} alt="" width="67" height="67" />
           <div class="conversation-copy">
             <div class="conversation-heading">
               <span class="conversation-name">{conversation.name}</span>
@@ -59,11 +59,11 @@
               {#each conversation.preview as line, index}
                 <span class="preview-line">
                   {#if conversation.emoji?.line === index && conversation.emoji.before}
-                    <img class="preview-emoji before" src="/messages/{conversation.emoji.image}" alt={conversation.emoji.label} />
+                    <img class="preview-emoji before" src={`${assets.messages}/${conversation.emoji.image}`} alt={conversation.emoji.label} />
                   {/if}
                   {line}
                   {#if conversation.emoji?.line === index && !conversation.emoji.before}
-                    <img class="preview-emoji after" src="/messages/{conversation.emoji.image}" alt={conversation.emoji.label} />
+                    <img class="preview-emoji after" src={`${assets.messages}/${conversation.emoji.image}`} alt={conversation.emoji.label} />
                   {/if}
                 </span>
               {/each}
@@ -78,7 +78,7 @@
     <ol class="message-history" aria-label="Conversation with Shelley Willems">
       <li class="message-photo">
         <div class="photo-content">
-          <img src="/messages/silhouette-photo.png" alt="A woman silhouetted against a sunset" width="387" height="156" />
+          <img src={`${assets.messages}/silhouette-photo.png`} alt="A woman silhouetted against a sunset" width="387" height="156" />
         </div>
         {@render bubbleTail('incoming', '#805b41')}
       </li>
@@ -95,9 +95,9 @@
         {@render bubbleTail('incoming', '#dfdde3')}
       </li>
       <li class="message-emoji" aria-label="Grinning face, camping, national park">
-        <img class="grinning-emoji" src="/messages/grinning-face.png" alt="Grinning face" width="65" height="68" />
-        <img class="camping-emoji" src="/messages/camping.png" alt="Camping" width="70" height="65" />
-        <img class="park-emoji" src="/messages/national-park.png" alt="National park" width="67" height="70" />
+        <img class="grinning-emoji" src={`${assets.messages}/grinning-face.png`} alt="Grinning face" width="65" height="68" />
+        <img class="camping-emoji" src={`${assets.messages}/camping.png`} alt="Camping" width="70" height="65" />
+        <img class="park-emoji" src={`${assets.messages}/national-park.png`} alt="National park" width="67" height="70" />
       </li>
       <li class="message-bubble outgoing camping-response">
         <p>I’m there!</p>

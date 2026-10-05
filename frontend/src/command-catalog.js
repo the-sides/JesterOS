@@ -1,5 +1,7 @@
+import { DEFAULT_PROFILE_ID } from './os-profiles.js';
+
 export const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
-const MOJAVE = 'macos-mojave-10.14';
+const MOJAVE = DEFAULT_PROFILE_ID;
 const NONE = [];
 const EMPTY_PROPERTIES = {};
 const text = { type: 'string' };
@@ -65,7 +67,7 @@ export const commandCatalog = Object.fromEntries([
   define('window.setMinimized', 'shell.windows', windowTarget, object({ minimized: flag }),
     ['windowId is in targets.windows.'],
     ['Set minimized state; false restores/activates/focuses the root; retain app data and scroll.']),
-  define('window.setZoomed', 'shell.windows', windowTarget, object({ zoomed: flag }),
+  define('window.setZoomed', 'shell.macos-window-zoom', windowTarget, object({ zoomed: flag }),
     ['Existing non-minimized window.'],
     ['Set workspace zoom or restore normal bounds; activate and focus the root.']),
   define('window.move', 'shell.windows', windowTarget, object({ x: number, y: number }),

@@ -14,11 +14,11 @@
   font-display: block;
 }
 
-:root {
+:root[data-os-renderer='mojave'] {
   --system-font: 'Mojave UI', sans-serif;
   --message-font: 'Mojave Message', sans-serif;
 }
 
-:root.native-apple-font {
+:root[data-os-renderer='mojave'].native-apple-font {
   --system-font: -apple-system, BlinkMacSystemFont, 'Mojave UI', sans-serif;
 }

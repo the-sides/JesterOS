@@ -20,7 +20,7 @@ The durable work queue for building JesterOS's actor-facing pseudo-OS. **macOS M
 
 Desktop launches and manages one window per app. The Window menu works. Notes has a functional plain-text implementation. Messages has a researched but fixed sample conversation. Finder, Launchpad, Safari, Mail, Contacts, Calendar, System Preferences, Photos, and Preview are registered shells without application interiors. Other menu/status items remain static.
 
-Existing desktop/window/Window-menu/Notes actor behavior shares 31 browser-local commands and live typed catalog/target discovery (`CORE-01` through `CORE-03`). Implemented commands, supported profiles/capabilities, state/effect/completion contracts, and verification notes are in [the command inventory](feature-commands.md); remaining applications/menus are still queued.
+Existing desktop/window/Window-menu/Notes behavior shares 31 browser-local commands and live typed discovery, bound to explicit Mojave profile/capability/native-asset boundaries (`CORE-01` through `CORE-04`). Implemented contracts, active profile/app coverage, and verification notes are in [the command inventory](feature-commands.md); remaining applications/menus are still queued.
 
 Evidence: [README](../README.md), [Mojave fidelity notes](mojave-fidelity.md), [Notes research and working notes](notes-mojave.md).
 
@@ -37,14 +37,14 @@ Use this order unless a scene requirement changes priority. Section order is a g
 7. **Remaining bundled apps and utilities:** Launchpad, Mission Control, Dashboard, Maps, Calculator, creative/office add-ons, and diagnostic interfaces.
 8. **Completion pass:** finish every researched app menu and secondary dialog; verify cross-app workflows and visual/state consistency.
 
-**Next suggested slice: `CORE-04` — establish explicit Mojave profile identity and capability/asset/presentation boundaries.** Further macOS releases and Windows 11 follow as separately researched profiles; Linux investigation remains conditional. The Rust/WebSocket transport remains deferred.
+**Next suggested slice: `CORE-05` — research and add further macOS releases as distinct version-specific profiles, including app/menu/sub-interface inventories and native assets/behavior.** Windows 11 follows separately; Linux investigation remains conditional. The Rust/WebSocket transport remains deferred.
 
 ## Architecture foundations and future OS profiles
 
 - [x] `CORE-01` — Implement a minimal transport-neutral browser-local feature command entry point with stable names, serializable payloads, explicit targets, and inspectable results; prove a real existing workflow without introducing WebSocket/controller infrastructure.
 - [x] `CORE-02` — Route existing desktop, Dock, windows, Window menu, and Notes actions through feature handlers shared by UI and direct command callers; include selection/search/focus/menu presentation state and unavailable-action behavior.
 - [x] `CORE-03` — Publish and maintain a command inventory for every implemented slice; commands, target identities, supported profiles, required state, data/presentation effects, and asynchronous completion where relevant.
-- [ ] `CORE-04` — Establish explicit OS-profile identity and capability boundaries around the current Mojave scene, app registry, shell, assets, and behavior; share simulation operations where semantics genuinely match rather than imposing Mojave conventions on every OS.
+- [x] `CORE-04` — Establish explicit OS-profile identity and capability boundaries around the current Mojave scene, app registry, shell, assets, and behavior; share simulation operations where semantics genuinely match rather than imposing Mojave conventions on every OS.
 - [ ] `CORE-05` — Research and add further macOS releases across years as separate profiles, each with a version-specific app/menu/sub-interface inventory and researched assets/behavior.
 - [ ] `CORE-06` — Research a specific Windows 11 release/build and add its shell, applications, menus, settings, dialogs, and profile command adapters using the same feature-contract principles.
 - [ ] `CORE-07` — Investigate a future Linux profile: choose distribution, desktop environment, and version before making its UI inventory. Conditional future scope, not a required next platform.
@@ -516,3 +516,4 @@ Rust controller UI, paired screens, WebSocket transport/wire protocol, shared se
 | 2026-10-04 | Completed `CORE-01`: browser-local execute/inspect, shared Dock/file app opening, explicit rejections and detached snapshots. Production-browser smoke confirmed invalid requests do not mutate state, close/reopen retains Notes edits, repeated launch deduplicates, and contextual Finder titles work. Default desktop visually inspected; no page errors. | `CORE-02` |
 | 2026-10-05 | Completed `CORE-02`: 31 shared commands cover existing shell/window/Notes behavior and semantic view state. Browser UI/direct-command proof covered invalid/no-mutation boundaries, keyboard/context actions, background versus visible-view requirements, retained scrolling, popup bounds, actor drag, and zoom/minimize resize restoration. Fixed offscreen row anchoring and late-scroll snapshot bookkeeping. No component warnings or final page errors. | `CORE-03` |
 | 2026-10-05 | Completed `CORE-03`: describe() publishes 31 JSON Schema contracts, capabilities, runtime requirements, effects/completion semantics, and live app/file/window/menu/note identities. Strict schema checks and a real browser consumer proved nested returned IDs, creation/editing/movement/focus, detached pure queries, and current search/trash/folder/restore eligibility. Default surface visually unchanged; no final page errors. | `CORE-04` |
+| 2026-10-05 | Completed `CORE-04`: immutable Mojave identity/stock coverage/assets/defaults, named native adapter and policy, guarded direct/composed handlers, detached metadata, and explicit no-fallback setup rejection. Default extraction measured zero changed pixels. Browser actor/resize/retention/file/menu workflows passed; real-domain regression and comparison suite 2 pass; no final component/page errors. | `CORE-05` |

@@ -1,4 +1,3 @@
-import { applications, desktopFiles } from './applications.js';
 import { isRecord, rejected } from './feature-commands.js';
 
 const windowOperations = ['close', 'minimize', 'zoom'];
@@ -25,6 +24,7 @@ function applied(target) {
  */
 export function createDesktopCommands(viewState, {
   getView,
+  getProfile,
   getWindows,
   getActiveWindowId,
   focusDesktop,
@@ -80,7 +80,7 @@ export function createDesktopCommands(viewState, {
       if (!fileTarget(target, true) || !fields(payload, [])) {
         return rejected('invalid_arguments', 'desktop.select requires target.fileId (a file ID or null) and an empty payload.');
       }
-      if (target.fileId !== null && !desktopFiles.some((file) => file.id === target.fileId)) {
+      if (target.fileId !== null && !getProfile().desktopFiles.some((file) => file.id === target.fileId)) {
         return rejected('not_found', 'Desktop file does not exist.');
       }
       if (!getView()) return rejected('unavailable', 'The desktop is not mounted.');
@@ -92,7 +92,7 @@ export function createDesktopCommands(viewState, {
       if (!fileTarget(target) || !fields(payload, [])) {
         return rejected('invalid_arguments', 'desktop.open requires target.fileId and an empty payload.');
       }
-      const file = desktopFiles.find((entry) => entry.id === target.fileId);
+      const file = getProfile().desktopFiles.find((entry) => entry.id === target.fileId);
       if (!file) return rejected('not_found', 'Desktop file does not exist.');
       if (!getView()) return rejected('unavailable', 'The desktop is not mounted.');
       const result = await openApp({ appId: file.appId }, { title: file.name });
@@ -204,10 +204,11 @@ export function createDesktopCommands(viewState, {
         valid = fields(target, ['control']);
       } else if (target?.control === 'file') {
         valid = fields(target, ['control', 'fileId']) && typeof target.fileId === 'string';
-        exists = desktopFiles.some((file) => file.id === target.fileId);
+        exists = getProfile().desktopFiles.some((file) => file.id === target.fileId);
       } else if (target?.control === 'dock') {
         if (Object.hasOwn(target, 'appId')) {
           valid = fields(target, ['control', 'appId']) && typeof target.appId === 'string';
+          const applications = getProfile().applications;
           exists = Object.hasOwn(applications, target.appId) && ['main', 'recent'].includes(applications[target.appId].dock);
         } else {
           valid = fields(target, ['control', 'itemId']) && typeof target.itemId === 'string';

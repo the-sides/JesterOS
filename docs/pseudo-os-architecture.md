@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Today JesterOS implements parts of the Mojave desktop and 31 shared browser-local app/window/desktop/Window-menu/Notes commands with detached state inspection and typed contract/live-target discovery. The [implemented command inventory](feature-commands.md) distinguishes current commands from future app/menu capabilities. OS-profile switching, universal future-feature coverage, and WebSocket control transport are not implemented. The [feature backlog](pseudo-os-backlog.md) tracks the work. Project terminology is in [CONTEXT.md](../CONTEXT.md).
+Today JesterOS explicitly binds its current scene to the immutable `macos-mojave-10.14` profile: app/desktop registry, native renderer, local assets/defaults, and capabilities. Its 31 shared commands publish detached state and typed contract/live-target discovery. Unsupported profile setup fails without a substitute desktop. The [implemented command inventory](feature-commands.md) distinguishes current commands from future app/menu capabilities. Additional profiles, live profile switching, universal future-feature coverage, and WebSocket control transport are not implemented. The [feature backlog](pseudo-os-backlog.md) tracks the work. Project terminology is in [CONTEXT.md](../CONTEXT.md).
 
 Build the actor-facing pseudo-OS first. **Implement feature command interfaces as part of that work; defer the Rust controller, WebSocket transport, server state, and persistence.** Deferring transport must not mean burying feature behavior in click handlers that later require a second implementation.
 
@@ -19,6 +19,16 @@ An OS profile defines the shell and app inventory, supported capabilities, versi
 Share genuinely common simulation data and operations—virtual files, contacts, scene time, notifications, app/window identities—where semantics match. Keep OS-specific shell behavior, app interfaces, and adapters separate. For example, Finder and File Explorer can use the same virtual files without sharing their menus or window layout. Do not assume every Windows/Linux profile has a Dock, Finder, iCloud, or Mojave-style preferences.
 
 Select a profile when setting up a scene. Initially switching profiles may start a fresh profile-specific scene; live conversion of open windows/documents is not required. Do not silently carry incompatible app/view state across profiles. Additional macOS releases and Windows 11 are planned; Linux remains a candidate rather than a committed next milestone. Exact release targets require later research.
+
+### Implemented Mojave boundary
+
+- `os-profiles.js` owns the sole immutable profile and own-property lookup. `mojave-applications.js` owns its stock app/desktop inventory. Coverage distinguishes launch-only windows, the fixed Messages sample, and functional plain-text Notes; native stock-app membership does not imply its interior is implemented.
+- Bootstrap accepts `?profile=macos-mojave-10.14`; absent selection chooses that default. Unknown, empty, or inherited IDs are not aliases: setup shows an explicit JesterOS error and does not mount a Mojave desktop or feature interface.
+- `profile-adapters.js` selects the named native adapter, never a generic renderer or a fallback. `mojave-adapter.js` owns Mojave views, native-font preference, scene fixture creation, responsive .75 scaling, menu-bar placement and cascade policy. `window-state.js` retains only shared physical clamp/fit/zoom calculations; fitting receives an explicit native-policy scale.
+- Desktop/icon/message assets, clock/battery defaults and stock registry come from the profile. Mojave font variables are scoped to its renderer. Inline SVG chrome remains part of native components. Existing visual research/asset provenance remains in [Mojave fidelity](mojave-fidelity.md) and [Notes](notes-mojave.md).
+- Every registered handler is capability/profile-gated, including handlers invoked by composed desktop/menu operations. A denied operation returns unsupported_profile before data/presentation mutation. Discovery filters supported commands and publishes active metadata; scene snapshots include profile identity. Workspace zoom is explicitly a macOS capability, not a Windows maximize convention.
+- An App instance captures one immutable profile and native adapter. Selecting a different profile must mount a fresh scene instance; changing a label over existing state is not a supported conversion. Closing/reopening apps within a scene retains their data.
+
 
 ## Every feature exposes commands
 

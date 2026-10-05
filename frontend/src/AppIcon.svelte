@@ -3,12 +3,12 @@
 </script>
 
 <script>
-  let { name } = $props();
+  let { name, assets } = $props();
 </script>
 
 {#if name === 'calendar'}
   <span class="app-icon composite-icon calendar-icon" aria-hidden="true">
-    <img src="/icons/calendar.png" alt="" draggable="false" />
+    <img src={`${assets.icons}/calendar.png`} alt="" draggable="false" />
     <svg viewBox="0 0 128 128">
       <defs>
         <linearGradient id="calendar-paper" x1="0" y1="0" x2="0" y2="1">
@@ -30,14 +30,14 @@
   </span>
 {:else if name === 'downloads'}
   <span class="app-icon composite-icon" aria-hidden="true">
-    <img src="/icons/folder.png" alt="" draggable="false" />
+    <img src={`${assets.icons}/folder.png`} alt="" draggable="false" />
     <svg viewBox="0 0 128 128">
       <path d="M59 48h10v22h13L64 89 46 70h13Z" transform="translate(0 1)" fill="#b8e7f8" opacity=".65" />
       <path d="M59 48h10v22h13L64 89 46 70h13Z" fill="#2e8cb9" opacity=".65" />
     </svg>
   </span>
 {:else}
-  <img class="app-icon" src={`/icons/${name}.${vectorIcons.has(name) ? 'svg' : 'png'}`} alt="" aria-hidden="true" draggable="false" />
+  <img class="app-icon" src={`${assets.icons}/${name}.${vectorIcons.has(name) ? 'svg' : 'png'}`} alt="" aria-hidden="true" draggable="false" />
 {/if}
 
 <style>

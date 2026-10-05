@@ -1,29 +1,32 @@
 <script>
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { createFeatureCommands, rejected } from './feature-commands.js';
   import { createWindowCommands } from './window-commands.js';
   import { createDesktopCommands } from './desktop-commands.js';
   import { createNotesCommands } from './notes-commands.js';
   import { commandCatalog } from './command-catalog.js';
-  import Desktop from './Desktop.svelte';
-  import MessagesWindow from './MessagesWindow.svelte';
-  import NotesWindow from './NotesWindow.svelte';
-  import { createNotesState, visibleNotes } from './notes-state.js';
-  import Window from './Window.svelte';
-  import { applications, desktopFiles } from './applications.js';
-  import { clampPosition, fitNormalBounds, initialBounds, zoomBounds } from './window-state.js';
+  import { visibleNotes } from './notes-state.js';
+  import { clampPosition, zoomBounds } from './window-state.js';
+
+  let { profile: profileInput, adapter: adapterInput } = $props();
+  // One immutable profile per scene instance. A profile change mounts a fresh
+  // instance instead of relabeling incompatible application/view state.
+  const profile = untrack(() => profileInput);
+  const adapter = untrack(() => adapterInput);
+  const { Desktop, Window, MessagesWindow, NotesWindow } = adapter;
+  const { applications, desktopFiles } = profile;
 
   let windows = $state([]);
   let activeWindowId = $state(null);
   let area = $state({ width: 0, height: 0 });
   // Application data outlives its window; close/minimize must not erase edits.
-  let notesState = $state(createNotesState());
+  let notesState = $state(adapter.createSceneData().notes);
   let desktopState = $state({ selectedFileId: null, windowMenuOpen: false, windowMenuItem: null, windowMenuScrollTop: 0, focusedControl: null });
   let notesViewState = $state({ context: null, contextItem: null, focusedControl: null, scroll: { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } });
   let desktopView = null;
   let notesView = null;
   let initialized = false;
-  const activeApp = $derived(applications[windows.find((window) => window.id === activeWindowId)?.appId] ?? applications.finder);
+  const activeApp = $derived(applications[windows.find((window) => window.id === activeWindowId)?.appId] ?? applications[profile.defaults.desktopAppId]);
 
   const handlers = {
     'app.open': async (target, payload) => {
@@ -57,6 +60,7 @@
     }),
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
+      getProfile: () => profile,
       focusDesktop,
       openApp: (target, payload) => handlers['app.open'](target, payload),
       windowAction: (command, target, payload) => handlers[command](target, payload),
@@ -67,9 +71,9 @@
     }),
   );
   const commands = createFeatureCommands(handlers,
-    () => $state.snapshot({ windows, activeWindowId, area, notes: notesState, desktop: desktopState, notesView: notesViewState }),
+    () => $state.snapshot({ profile, windows, activeWindowId, area, notes: notesState, desktop: desktopState, notesView: notesViewState }),
     settleCommands, commandCatalog, () => ({
-      applications: Object.values(applications).map(({ id, name, dock }) => ({ appId: id, name, dock: dock ?? null })),
+      applications: Object.values(applications).map(({ id, name, dock, coverage }) => ({ appId: id, name, dock: dock ?? null, coverage })),
       desktopFiles: desktopFiles.map(({ id, name, appId }) => ({ fileId: id, name, appId })),
       windows: windows.map(({ id, appId, minimized, zoomed }) => ({ windowId: id, appId, minimized, zoomed })),
       menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }],
@@ -77,7 +81,7 @@
         records: notesState.notes.map(({ id, deleted }) => ({ noteId: id, deleted })),
         eligibleIds: visibleNotes(notesState).map(({ id }) => id),
       },
-    }));
+    }), () => profile);
 
   async function settleCommands() {
     await tick();
@@ -170,7 +174,7 @@
       title: title ?? app.name,
       minimized: false,
       zoomed: false,
-      bounds: initialBounds(app, area, (windows.length % 6) * 22, globalThis.innerHeight),
+      bounds: adapter.initialBounds(app, area, windows.length, globalThis.innerHeight),
       restoreBounds: null,
     });
     activeWindowId = appId;
@@ -205,7 +209,7 @@
     if (!window) return;
     focusWindow(id);
     if (window.zoomed) {
-      window.bounds = fitNormalBounds(window.restoreBounds, applications[window.appId], area);
+      window.bounds = adapter.fitNormalBounds(window.restoreBounds, applications[window.appId], area);
       window.restoreBounds = null;
       window.zoomed = false;
     } else {
@@ -230,7 +234,7 @@
     if (nextArea.width <= 0 || nextArea.height <= 0) return;
     area = nextArea;
     for (const window of windows) {
-      const normal = fitNormalBounds(window.zoomed ? window.restoreBounds : window.bounds, applications[window.appId], area);
+      const normal = adapter.fitNormalBounds(window.zoomed ? window.restoreBounds : window.bounds, applications[window.appId], area);
       if (window.zoomed) {
         window.restoreBounds = normal;
         window.bounds = zoomBounds(normal, area);
@@ -240,12 +244,13 @@
     }
     if (!initialized) {
       initialized = true;
-      handlers['app.open']({ appId: 'messages' }, {});
+      handlers['app.open']({ appId: profile.defaults.startupAppId }, {});
     }
   }
 </script>
 
 <Desktop
+  {profile}
   {windows}
   {activeWindowId}
   {activeApp}
@@ -268,6 +273,7 @@
       >
         {#if window.appId === 'messages'}
           <MessagesWindow
+            assets={profile.assets}
             active={activeWindowId === window.id}
             zoomed={window.zoomed}
             onclose={() => windowCommand('window.close', window.id)}

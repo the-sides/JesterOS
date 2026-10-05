@@ -1,10 +1,21 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
+import UnsupportedProfile from './UnsupportedProfile.svelte';
+import { DEFAULT_PROFILE_ID, getOSProfile, listOSProfiles } from './os-profiles.js';
+import { getProfileAdapter } from './profile-adapters.js';
 import './fonts.css';
 import './styles.css';
 
-// Chromium's Linux "-apple-system" alias resolves before the web-font fallback.
-// Prefer native SF only on Apple platforms; use the bundled UI font elsewhere.
-document.documentElement.classList.toggle('native-apple-font', /Mac|iPhone|iPad|iPod/.test(navigator.platform));
-
-mount(App, { target: document.getElementById('app') });
+const requestedId = new URLSearchParams(location.search).get('profile') ?? DEFAULT_PROFILE_ID;
+const profile = getOSProfile(requestedId);
+const target = document.getElementById('app');
+if (profile) {
+  const adapter = getProfileAdapter(profile.renderer);
+  document.documentElement.dataset.osProfile = profile.id;
+  document.documentElement.dataset.osFamily = profile.family;
+  document.documentElement.dataset.osRenderer = profile.renderer;
+  adapter.prepareDocument();
+  mount(App, { target, props: { profile, adapter } });
+} else {
+  mount(UnsupportedProfile, { target, props: { requestedId, profiles: listOSProfiles() } });
+}

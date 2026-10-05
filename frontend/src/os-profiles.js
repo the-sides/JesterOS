@@ -1,0 +1,44 @@
+import { applications, desktopFiles } from './mojave-applications.js';
+
+export const DEFAULT_PROFILE_ID = 'macos-mojave-10.14';
+
+function freezeTree(value) {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) freezeTree(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+const profiles = freezeTree({
+  [DEFAULT_PROFILE_ID]: {
+    id: DEFAULT_PROFILE_ID,
+    name: 'macOS Mojave',
+    family: 'macos',
+    version: '10.14',
+    releaseYear: 2018,
+    renderer: 'mojave',
+    capabilities: [
+      'shell.apps', 'shell.windows', 'shell.macos-window-zoom',
+      'shell.desktop', 'shell.window-menu',
+      'notes.plain-text', 'notes.presentation', 'messages.sample',
+    ],
+    applications,
+    desktopFiles,
+    assets: {
+      wallpaper: '/wallpapers/mojave-day.webp',
+      icons: '/icons',
+      messages: '/messages',
+      fonts: ['/fonts/InterVariable.woff2', '/fonts/LiberationSans-Regular.ttf'],
+    },
+    defaults: { startupAppId: 'messages', desktopAppId: 'finder', clockLabel: 'Mon 5:42 PM', batteryPercent: 87 },
+  },
+});
+
+export function getOSProfile(id) {
+  return typeof id === 'string' && Object.hasOwn(profiles, id) ? profiles[id] : null;
+}
+
+export function listOSProfiles() {
+  return Object.values(profiles);
+}

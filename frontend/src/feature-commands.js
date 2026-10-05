@@ -8,15 +8,31 @@ export function rejected(code, message) {
   return { status: 'rejected', error: { code, message } };
 }
 
-export function createFeatureCommands(handlers, readState, afterApply, catalog, readTargets) {
+export function createFeatureCommands(handlers, readState, afterApply, catalog, readTargets, readProfile) {
   const commandNames = Object.keys(handlers);
   if (!isRecord(catalog)
     || commandNames.some((name) => !Object.hasOwn(catalog, name))
     || Object.keys(catalog).some((name) => !Object.hasOwn(handlers, name))) {
     throw new Error('Every feature handler needs exactly one command catalog descriptor.');
   }
+  function supported(name, profile) {
+    return profile !== null && profile !== undefined
+      && catalog[name].profiles.includes(profile.id)
+      && profile.capabilities.includes(catalog[name].capability);
+  }
+
+  function unsupportedProfile(name) {
+    return rejected('unsupported_profile', `The active OS profile does not support command: ${name}`);
+  }
+  // Composite handlers also use this registry: guard them before any mutation,
+  // without repeating the outer request's DOM-settlement step.
+  for (const name of commandNames) {
+    const handler = handlers[name];
+    handlers[name] = (target, payload) => supported(name, readProfile())
+      ? handler(target, payload)
+      : unsupportedProfile(name);
+  }
   Object.freeze(handlers);
-  const profiles = [...new Set(commandNames.flatMap((name) => catalog[name].profiles))];
   function finish(request, result) {
     return typeof request?.requestId === 'string'
       ? { ...result, requestId: request.requestId }
@@ -44,7 +60,12 @@ export function createFeatureCommands(handlers, readState, afterApply, catalog, 
       return finish(request, result);
     },
     inspect() {
-      return { commands: [...commandNames], state: readState() };
+      const profile = readProfile();
+      // The renderer supplies a detached, proxy-free snapshot; do not copy it twice.
+      return {
+        commands: commandNames.filter((name) => supported(name, profile)),
+        state: readState(),
+      };
     },
     describe(command) {
       if (command !== undefined && typeof command !== 'string') {
@@ -53,9 +74,19 @@ export function createFeatureCommands(handlers, readState, afterApply, catalog, 
       if (command !== undefined && !Object.hasOwn(catalog, command)) {
         return rejected('unsupported_command', `Unsupported command: ${command}`);
       }
+      const profile = readProfile();
+      if (command !== undefined && !supported(command, profile)) {
+        return unsupportedProfile(command);
+      }
+      const supportedNames = commandNames.filter((name) => supported(name, profile));
+      const commands = command === undefined
+        ? Object.fromEntries(supportedNames.map((name) => [name, catalog[name]]))
+        : { [command]: catalog[command] };
       return structuredClone({
-        version: 1, profiles,
-        commands: command === undefined ? catalog : { [command]: catalog[command] },
+        version: 1,
+        profile,
+        profiles: [...new Set(supportedNames.flatMap((name) => catalog[name].profiles))],
+        commands,
         targets: readTargets(),
       });
     },

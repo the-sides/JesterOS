@@ -8,6 +8,9 @@ JesterOS simulates operating-system desktops and applications for actors to use 
 A specific operating-system family, release/era, and optional hardware or regional configuration reproduced by JesterOS. Mojave 10.14 and Windows 11 are different profiles, not alternate color themes.
 _Avoid_: Skin, theme when referring to an entire OS
 
+**Profile capability**:
+A simulated behavior or surface currently available in an OS profile. Native features not yet reproduced by JesterOS are outside that profile's capabilities.
+
 **Puppet screen**:
 The actor-facing simulated desktop and its applications. It depicts the selected OS profile rather than operating the host computer.
 
