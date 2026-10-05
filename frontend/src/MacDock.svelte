@@ -7,7 +7,7 @@
 
   let {
     profile, state: dockState, applications, tiles = [], folders = [], trash, runningAppIds = [], activeAppId,
-    execute, renderWindowTile, element = $bindable(),
+    execute, renderWindowTile, presentationVisible, element = $bindable(),
   } = $props();
 
   const modern = $derived(profile.renderer === 'sonoma');
@@ -22,7 +22,7 @@
       ...tiles.map(tile => [`window:${tile.id}`, { id: `window:${tile.id}`, tile }])]);
     return dockState.secondaryOrderItemIds.filter(id => items.has(id)).map(id => items.get(id));
   });
-  const visible = $derived(!preferences.autoHide || dockState.revealed || Boolean(dockState.context || dockState.folderStack || dockState.drag || dockState.focusedItemId));
+  const visible = $derived(presentationVisible ?? (!preferences.autoHide || dockState.revealed || Boolean(dockState.context || dockState.folderStack || dockState.drag || dockState.focusedItemId)));
   const keys = $derived([...main.map(app => `app:${app.id}`), ...recent.map(app => `app:${app.id}`),
     'separator', ...secondary.map(item => item.id), 'trash']);
   const iconKeys = $derived(keys.filter(key => key !== 'separator'));
@@ -46,7 +46,7 @@
   const send = (command, target = {}, payload = {}) => queue(() => request(command, target, payload));
   const controls = () => [...(element?.querySelectorAll('button[data-dock-item-key]') ?? [])];
   const control = itemId => controls().find(button => button.dataset.dockItemKey === itemId);
-  const available = () => Boolean(element?.isConnected && !element.closest('[inert]')
+  const available = () => Boolean(visible && element?.isConnected && !element.closest('[inert]')
     && !element.parentElement?.querySelector('[aria-modal="true"]'));
   const detached = rect => ({ x: rect.x, y: rect.y, left: rect.left, top: rect.top,
     right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height });
@@ -185,13 +185,13 @@
     const button = event.target?.closest?.('button[data-dock-item-key]');
     const itemId = button?.dataset.dockItemKey ?? null;
     send('dock.hover', { itemId }, itemId ? { x: event.clientX } : {});
-    if (!itemId && preferences.autoHide) send('dock.visibility', {}, { visible: true });
+    if (!itemId && preferences.autoHide && presentationVisible === undefined) send('dock.visibility', {}, { visible: true });
   }
 
   function leave() {
     if (gesture || dockState.drag) return;
     send('dock.hover', { itemId: null });
-    if (preferences.autoHide) send('dock.visibility', {}, { visible: false });
+    if (preferences.autoHide && presentationVisible === undefined) send('dock.visibility', {}, { visible: false });
   }
   function leaveEdge() {
     queue(() => {
@@ -459,12 +459,13 @@
   class:modern class:hidden-dock={!visible} data-dock-root data-dock-visible={visible}
   data-dock-base-height={layout.height} data-dock-auto-hide={preferences.autoHide}
   aria-label="Application Dock" aria-hidden={!visible} inert={!visible}
+  style:visibility={presentationVisible === false ? 'hidden' : undefined} style:z-index={presentationVisible === true ? 10000 : undefined}
   style:--base-size={`${layout.base}px`} style:--item-gap={`${layout.gap}px`}
   style:--base-height={`${layout.height}px`} style:--separator-width={`${layout.separatorWidth}px`}
   style:--padding-x={`${layout.paddingX}px`} style:--padding-top={`${layout.paddingTop}px`}
   style:--padding-bottom={`${layout.paddingBottom}px`} style:--bottom-inset={`${layout.inset}px`}
   onfocusout={focusOut} onpointermove={hover} onpointerleave={leave}
-  onpointerenter={() => send('dock.visibility', {}, { visible: true })}
+  onpointerenter={() => { if (presentationVisible === undefined) send('dock.visibility', {}, { visible: true }); }}
   ondragover={dragover} ondrop={drop} oncontextmenu={backgroundContext}>
   <ul class={modern ? 'sonoma-dock-apps managed-list' : 'dock-apps managed-list'}
     class:insertion-end={insertionEnd('main')} aria-label="Applications" data-dock-main>
@@ -529,7 +530,7 @@
   </ul>
 </footer>
 
-{#if preferences.autoHide}
+{#if preferences.autoHide && presentationVisible === undefined}
   <button type="button" class="reveal-edge" data-dock-reveal-edge aria-label="Show Dock" title="Show Dock"
     tabindex={visible ? -1 : 0} onpointerenter={() => send('dock.visibility', {}, { visible: true })}
     onpointerleave={leaveEdge}

@@ -23,6 +23,7 @@ function applied(target) {
  */
 export function createDesktopCommands(viewState, {
   getView,
+  windowMenuAvailable,
   getFiles,
   getItems,
   openedFile,
@@ -35,7 +36,7 @@ export function createDesktopCommands(viewState, {
   function enabledMenuItemIds() {
     const windows = getWindows();
     const active = windows.find((window) => window.id === getActiveWindowId());
-    return [...(active ? windowOperations : []), ...windows.map((window) => `window:${window.id}`)];
+    return [...(active ? active.fullScreen ? ['close'] : windowOperations : []), ...windows.map((window) => `window:${window.id}`)];
   }
 
   function menuTarget(target, withItem = false, nullableItem = false) {
@@ -47,9 +48,11 @@ export function createDesktopCommands(viewState, {
 
   function menuItemError(itemId) {
     if (windowOperations.includes(itemId)) {
-      return getWindows().some((window) => window.id === getActiveWindowId())
-        ? null
-        : rejected('disabled', 'This Window menu action requires an active window.');
+      const active = getWindows().find(window => window.id === getActiveWindowId());
+      if (!active) return rejected('disabled', 'This Window menu action requires an active window.');
+      return active.fullScreen && itemId !== 'close'
+        ? rejected('disabled', 'Exit full screen before minimizing or zooming the window.')
+        : null;
     }
     if (itemId.startsWith('window:') && itemId.length > 'window:'.length) {
       return getWindows().some((window) => `window:${window.id}` === itemId)
@@ -112,7 +115,7 @@ export function createDesktopCommands(viewState, {
         if (error) return error;
       }
       const view = getView();
-      if (!view) return rejected('unavailable', 'The desktop is not mounted.');
+      if (!view || !windowMenuAvailable()) return rejected('unavailable', 'Reveal the native menu bar before opening its Window menu.');
       const items = enabledMenuItemIds();
       const itemId = payload.itemId ?? items[payload.position === 'last' ? items.length - 1 : 0] ?? null;
       view.prepareWindowMenu();
@@ -147,7 +150,7 @@ export function createDesktopCommands(viewState, {
       const error = target.itemId === null ? null : menuItemError(target.itemId);
       if (error) return error;
       const view = getView();
-      if (!view || !viewState.windowMenuOpen) return rejected('unavailable', 'The Window menu is not open.');
+      if (!view || !viewState.windowMenuOpen || !windowMenuAvailable()) return rejected('unavailable', 'The Window menu is not visible.');
       viewState.windowMenuItem = target.itemId;
       viewState.focusedControl = target.itemId === null
         ? { control: 'window-menu' }
@@ -164,7 +167,7 @@ export function createDesktopCommands(viewState, {
       const error = menuItemError(target.itemId);
       if (error) return error;
       const view = getView();
-      if (!view) return rejected('unavailable', 'The desktop is not mounted.');
+      if (!view || !windowMenuAvailable()) return rejected('unavailable', 'The native menu bar is not visible.');
       let command;
       let windowId;
       let windowPayload = {};
@@ -202,6 +205,7 @@ export function createDesktopCommands(viewState, {
       if (!exists) return rejected('not_found', 'Desktop control does not exist.');
       const view = getView();
       if (!view) return rejected('unavailable', 'The desktop is not mounted.');
+      if (target.control === 'window-menu' && !windowMenuAvailable()) return rejected('unavailable', 'The native menu bar is not visible.');
       if (target.control !== null) await view.focusControl(target);
       viewState.focusedControl = target.control === null ? null : { ...target };
       if (target.control === 'window-menu' && viewState.windowMenuOpen) viewState.windowMenuItem = null;
@@ -214,7 +218,7 @@ export function createDesktopCommands(viewState, {
         return rejected('invalid_arguments', "desktop.scroll requires target.region:'window-menu' and a finite nonnegative payload.top.");
       }
       const view = getView();
-      if (!view || !viewState.windowMenuOpen) return rejected('unavailable', 'The Window menu is not open.');
+      if (!view || !viewState.windowMenuOpen || !windowMenuAvailable()) return rejected('unavailable', 'The Window menu is not visible.');
       viewState.windowMenuScrollTop = await view.scrollWindowMenu(payload.top);
       return applied({ region: 'window-menu' });
     },

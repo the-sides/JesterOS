@@ -4,9 +4,9 @@
   import WindowResizeHandles from './WindowResizeHandles.svelte';
   import './windows.css';
 
-  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onmove, resizable = false, onresize, presentationBounds, interactive = true, visible = true, children } = $props();
+  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu, fullScreen = false, revealedTop = true, modernGreenMenu = false, onmove, resizable = false, onresize, presentationBounds, interactive = true, visible = true, children } = $props();
   const bounds = $derived(presentationBounds ?? window.bounds);
-  $effect(() => { if (!interactive) endDrag(); });
+  $effect(() => { if (!interactive || !visible || fullScreen) endDrag(); });
   let element;
   let drag = null;
 
@@ -18,10 +18,10 @@
   }
 
   function startDrag(event) {
-    if (!event.isPrimary || event.button !== 0) return;
+    if (!interactive || !visible || !event.isPrimary || event.button !== 0) return;
     onfocus();
     const target = event.target;
-    if (window.zoomed || !(target instanceof Element) || !target.closest('[data-window-drag]')) return;
+    if (fullScreen || window.zoomed || !(target instanceof Element) || !target.closest('[data-window-drag]')) return;
     if (target.closest('button, input, textarea, select, a, [contenteditable], [role="button"], [data-window-no-drag]')) return;
     endDrag();
     element.focus({ preventScroll: true });
@@ -50,6 +50,7 @@
   class="window-position managed-window"
   class:inactive={!active}
   class:zoomed={window.zoomed}
+  class:full-screen={fullScreen}
   data-window-id={window.id}
   role="dialog"
   aria-label={window.title}
@@ -70,8 +71,8 @@
 >
   <div
     class="window-surface"
-    style:width="{window.bounds.width / window.bounds.scale}px"
-    style:height="{window.bounds.height / window.bounds.scale}px"
+    style:width="{bounds.width / bounds.scale}px"
+    style:height="{bounds.height / bounds.scale}px"
     style:transform="scale({bounds.scale})"
   >
     {#if window.appId === 'messages' || window.appId === 'notes'}
@@ -79,12 +80,16 @@
     {:else}
       <div class="application-window">
         <header class="application-titlebar" data-window-drag>
-          <WindowControls {active} zoomed={window.zoomed} {onclose} {onminimize} {onzoom} />
+          <WindowControls {active} zoomed={window.zoomed} {onclose} {onminimize} {onzoom} {onfullscreen} {onsplitbegin} {onsplitside} {ongreenmenu} {fullScreen} {revealedTop} {modernGreenMenu} />
           <span class="application-title">{window.title}</span>
         </header>
         <div class="application-content">{@render children()}</div>
       </div>
     {/if}
   </div>
-  <WindowResizeHandles windowId={window.id} bounds={window.bounds} {resizable} {onfocus} {onresize} />
+  <WindowResizeHandles windowId={window.id} bounds={window.bounds} resizable={resizable && interactive && visible && !fullScreen} {onfocus} {onresize} />
 </div>
+
+<style>
+  .full-screen :global(.window-surface), .full-screen :global(.window-surface > *) { border-radius: 0; box-shadow: none; }
+</style>

@@ -4,7 +4,7 @@
   import { noteTitle, notePreview, visibleNotes } from './notes-state.js';
   import './notes.css';
 
-  let { state: noteState, viewState, execute, registerView, active = true, zoomed = false, onclose, onminimize, onzoom } = $props();
+  let { state: noteState, viewState, execute, registerView, active = true, zoomed = false, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu, fullScreen = false, revealedTop = true, modernGreenMenu = false } = $props();
   let root;
   let titleInput = $state(null);
   let bodyInput = $state(null);
@@ -194,7 +194,7 @@
 
 <section class="notes-window" class:inactive={!active} bind:this={root} aria-label="Notes application" onfocusin={observeFocus} onfocusout={observeBlur}>
   <header class="notes-toolbar" data-window-drag>
-    <WindowControls class="notes-traffic-lights" {active} {zoomed} {onclose} {onminimize} {onzoom} />
+    <WindowControls class="notes-traffic-lights" {active} {zoomed} {onclose} {onminimize} {onzoom} {onfullscreen} {onsplitbegin} {onsplitside} {ongreenmenu} {fullScreen} {revealedTop} {modernGreenMenu} />
     <div class="notes-toolbar-actions" data-window-no-drag>
       <button type="button" class="notes-tool" data-notes-control="sidebar" aria-label={noteState.sidebarVisible ? 'Hide folders' : 'Show folders'} title="Show or hide folders" aria-pressed={noteState.sidebarVisible} onclick={() => command('setSidebarVisible', {}, { visible: !noteState.sidebarVisible })}>{@render icon('sidebar')}</button>
       <button type="button" class="notes-tool" data-notes-control="new-note" aria-label="New note" title="New note (⌘N)" onclick={newNote}>{@render icon('new')}</button>

@@ -5,7 +5,7 @@
   import { desktopContextItems } from './desktop-context-model.js';
   import { createDesktopItemInteractions, revealDesktopItem } from './desktop-item-interactions.js';
   import './windows11.css';
-  let { profile, desktopItems = [], desktopDetails = {}, children, windows = [], runningAppIds = [], activeWindowId = null, activeApp, viewState, native, execute, registerView, onlayout } = $props();
+  let { profile, desktopItems = [], desktopDetails = {}, children, windows = [], runningAppIds = [], activeWindowId = null, activeApp, viewState, native, execute, registerView, onlayout, fullScreenStage = { mode: 'normal', topRevealed: false, launcherRevealed: false }, onfullscreenreveal } = $props();
   const shell = $derived(native.shell);
   const apps = $derived(Object.values(profile.applications));
   const files = $derived(desktopItems);
@@ -167,7 +167,7 @@
       if (shell.panel && !panel?.contains(event.target) && !event.target.closest('[data-shell-trigger]')) request('win11.panel.close', {}, { restoreFocus: false });
     }
     function focus(event) {
-      if (event.target?.closest?.('[data-shell-switcher]')) return;
+      if (event.target?.closest?.('[data-shell-switcher], [data-split-view-picker], [data-window-green-menu]')) return;
       const controlId = event.target instanceof Element && event.target.hasAttribute('data-shell-control') ? event.target.dataset.shellControl : null;
       if (controlId !== (shell.focusedControl?.controlId ?? null)) request('win11.shell.focus', { controlId });
     }
@@ -206,9 +206,9 @@
   });
 </script>
 <div bind:this={root} class="win11-desktop" class:win11-dark={native.apps.settings.theme === 'dark'} class:win11-glow={native.apps.settings.wallpaper === 'glow'} class:win11-flow={native.apps.settings.wallpaper === 'flow'} style:--win11-accent={native.apps.settings.accent}>
-  <div bind:this={workspace} class="win11-workspace" data-shell-control="desktop" tabindex="-1" role="group" aria-label="Windows desktop" onpointerdown={workspacePointer}>
+  <div bind:this={workspace} class="win11-workspace" data-shell-control="desktop" tabindex="-1" role="group" aria-label="Windows desktop" style:overflow={fullScreenStage.mode !== 'normal' ? 'visible' : undefined} onpointerdown={workspacePointer}>
     {#if shell.viewOptions.showIcons}
-      <div bind:this={desktopSurface} class="win11-desktop-files" data-shell-scroll="desktop" onscroll={(event) => observeScroll(event, 'desktop')} inert={Boolean(shell.dialog)} style:--desktop-icon-size="{shell.viewOptions.iconSize}px">
+      <div bind:this={desktopSurface} class="win11-desktop-files" data-shell-scroll="desktop" onscroll={(event) => observeScroll(event, 'desktop')} inert={Boolean(shell.dialog) || fullScreenStage.mode !== 'normal'} style:--desktop-icon-size="{shell.viewOptions.iconSize}px">
         {#each files as file (file.id)}
           <div class="win11-desktop-entry" style:transform={shell.positions[file.id] ? `translate(${shell.positions[file.id].x}px, ${shell.positions[file.id].y}px)` : undefined}>
             <button class="win11-desktop-file" class:selected={shell.selectedFileIds.includes(file.id)} aria-pressed={shell.selectedFileIds.includes(file.id)} data-file-id={file.id} data-folder-id={file.folderId} data-shell-control="file:{file.id}" onclick={(event) => interactions.click(event, file.id)} onpointerdown={(event) => interactions.pointerdown(event, file.id)} ondblclick={() => request('win11.desktop.open', { fileId: file.id })} oncontextmenu={(event) => desktopContext(event, file.id)} onkeydown={(event) => desktopKey(event, file.id)}>
@@ -280,7 +280,7 @@
       {/if}
     </div>
   {/if}
-  <footer bind:this={taskbar} class="win11-taskbar" aria-label="Taskbar" inert={Boolean(shell.dialog)}>
+  <footer bind:this={taskbar} class="win11-taskbar" aria-label="Taskbar" inert={Boolean(shell.dialog) || (fullScreenStage.mode !== 'normal' && !fullScreenStage.launcherRevealed)} style:visibility={fullScreenStage.mode !== 'normal' && !fullScreenStage.launcherRevealed ? 'hidden' : undefined} style:z-index={fullScreenStage.mode !== 'normal' ? 10000 : undefined} onpointerenter={() => { if (fullScreenStage.mode !== 'normal') onfullscreenreveal?.('launcher', true); }}>
     <div class="win11-taskbar-apps" data-keyboard-group data-shell-scroll="taskbar" onscroll={(event) => observeScroll(event, 'taskbar')}>
       <button data-shell-trigger data-shell-control="start-trigger" aria-label="Start" aria-expanded={shell.panel === 'start'} class:active={shell.panel === 'start'} onclick={() => togglePanel('start')}><Windows11Icon name="windows" size={26}/></button>
       <button class="win11-taskbar-search" data-shell-trigger data-shell-control="search-trigger" aria-label="Search" aria-expanded={shell.panel === 'search'} onclick={() => togglePanel('search')}><span aria-hidden="true">⌕</span><span class="win11-search-label">Search</span></button>

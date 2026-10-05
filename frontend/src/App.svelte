@@ -7,6 +7,10 @@
     applicationSwitcherItems, applicationMenuItems, createApplicationSwitchingCommands } from './application-switching.js';
   import ApplicationSwitcher from './ApplicationSwitcher.svelte';
   import MacApplicationMenu from './MacApplicationMenu.svelte';
+  import { fullScreenDefaults, reconcileFullScreenWindowing, fullScreenStage as deriveFullScreenStage,
+    splitViewItems, windowGreenMenuItems, createFullScreenCommands } from './full-screen-windowing.js';
+  import SplitViewPicker from './SplitViewPicker.svelte';
+  import WindowGreenMenu from './WindowGreenMenu.svelte';
   import { createDesktopCommands } from './desktop-commands.js';
   import { createDesktopItemCommands } from './desktop-item-commands.js';
   import { createDesktopContextCommands } from './desktop-context-commands.js';
@@ -47,6 +51,7 @@
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
   const hasDockContext = profile.capabilities.includes('shell.dock-context');
+  const hasFullScreen = profile.capabilities.includes('shell.full-screen');
   const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
   const desktopUtilityApps = macDesktop ? {
     'desktop-info': { ...applications.finder, width: 360, height: 560, minimumSize: { width: 300, height: 300 } },
@@ -101,6 +106,79 @@
   let nextWindowId = 1;
   let disposed = false;
   let area = $state({ width: 0, height: 0 });
+  let presentation = $state(fullScreenDefaults());
+  let stageArea = $state({ x: 0, y: 0, width: 0, height: 0, menuHeight: 0 });
+  let pairingControls = $state();
+  let greenMenuControls = $state();
+  let pairingPreviewSlots = $state({});
+  let greenMenuAnchor = $state(null);
+  const fullScreenStage = $derived(deriveFullScreenStage(presentation, windows, activeWindowId, switching.hiddenAppIds));
+  const pairingItems = $derived(splitViewItems(profile, presentation, windows, switching.hiddenAppIds, pendingQuitAppIds));
+  const greenMenuWindow = $derived(windows.find(window => window.id === presentation.greenMenu?.windowId));
+  const greenMenuItems = $derived(greenMenuWindow ? windowGreenMenuItems(profile, presentation, greenMenuWindow) : []);
+  const stageRects = $derived.by(() => {
+    if (fullScreenStage.mode === 'normal') return {};
+    const top = macDesktop && fullScreenStage.topRevealed ? stageArea.menuHeight : 0;
+    const rect = { x: stageArea.x, y: stageArea.y + top, width: stageArea.width, height: Math.max(1, stageArea.height - top) };
+    if (fullScreenStage.mode === 'fullScreen') return { [fullScreenStage.windowIds[0]]: rect };
+    const ratio = fullScreenStage.mode === 'split' ? fullScreenStage.ratio : .5;
+    const left = { ...rect, width: Math.max(1, rect.width * ratio - 2) };
+    const right = { ...rect, x: rect.x + left.width + 4, width: Math.max(1, rect.width - left.width - 4) };
+    return fullScreenStage.mode === 'split'
+      ? { [fullScreenStage.leftWindowId]: left, [fullScreenStage.rightWindowId]: right }
+      : { [fullScreenStage.windowId]: fullScreenStage.side === 'left' ? left : right };
+  });
+  const pairingRect = $derived.by(() => {
+    if (fullScreenStage.mode !== 'pairing') return null;
+    const primary = stageRects[fullScreenStage.windowId];
+    return { x: fullScreenStage.side === 'left' ? stageArea.width / 2 + 2 : 0,
+      y: primary.y - stageArea.y, width: Math.max(1, stageArea.width / 2 - 2), height: primary.height };
+  });
+  const fullScreenWindowBounds = $derived.by(() => {
+    const projections = {};
+    for (const [windowId, rect] of Object.entries(stageRects)) {
+      const window = windows.find(window => window.id === windowId);
+      if (!window) continue;
+      const minimum = windowApplication(window).minimumSize;
+      const scale = Math.min(window.bounds.scale, rect.width / minimum.width, rect.height / minimum.height);
+      projections[windowId] = { ...rect, scale: Math.max(.001, scale) };
+    }
+    return projections;
+  });
+  const pairingWindowBounds = $derived.by(() => {
+    if (fullScreenStage.mode !== 'pairing') return {};
+    const projections = {};
+    for (const item of pairingItems) {
+      const slot = pairingPreviewSlots[item.windowId];
+      const window = windows.find(window => window.id === item.windowId);
+      if (!slot || !window || slot.width <= 0 || slot.height <= 0) continue;
+      const logicalWidth = window.bounds.width / window.bounds.scale;
+      const logicalHeight = window.bounds.height / window.bounds.scale;
+      const scale = Math.min(window.bounds.scale, slot.width / logicalWidth, slot.height / logicalHeight);
+      const width = logicalWidth * scale, height = logicalHeight * scale;
+      projections[window.id] = { x: slot.x + stageArea.x + (slot.width - width) / 2,
+        y: slot.y + stageArea.y + (slot.height - height) / 2, width, height, scale };
+    }
+    return projections;
+  });
+  $effect(() => {
+    reconcileFullScreenWindowing(presentation, windows, switching.hiddenAppIds, pendingQuitAppIds);
+  });
+  $effect(() => {
+    const menu = presentation.greenMenu;
+    stageArea; fullScreenStage; windows;
+    if (!menu) { greenMenuAnchor = null; return; }
+    let cancelled = false;
+    tick().then(() => {
+      if (cancelled || presentation.greenMenu !== menu) return;
+      const button = managedWindowElement(menu.windowId)?.querySelector('.traffic-light.zoom');
+      if (!button || button.closest('[inert]') || getComputedStyle(button).visibility !== 'visible') { greenMenuAnchor = null; return; }
+      const rect = button.getBoundingClientRect();
+      greenMenuAnchor = { x: rect.x, y: rect.y, left: rect.left, top: rect.top, right: rect.right,
+        bottom: rect.bottom, width: rect.width, height: rect.height };
+    });
+    return () => { cancelled = true; };
+  });
   // Application data outlives its window; close/minimize must not erase edits.
   const initialData = adapter.createSceneData();
   let notesState = $state(initialData.notes);
@@ -226,6 +304,7 @@
       if (!desktopView) return rejected('unavailable', 'The desktop is not mounted.');
       const bounds = desktopView.measureWorkspace();
       if (!bounds.width || !bounds.height) return rejected('unavailable', 'The workspace has no visible area.');
+      measureStageArea();
       layoutWindows(bounds);
       reconcileDesktopPositions(bounds);
       reconcileDesktopContext();
@@ -328,6 +407,22 @@
     invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
   }));
   Object.assign(handlers,
+    createFullScreenCommands({
+      profile, state: presentation, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
+      getHiddenAppIds: () => switching.hiddenAppIds, getPendingQuitAppIds: () => pendingQuitAppIds,
+      available: sceneInteractionsAvailable, settle: async () => { await tick(); await tick(); },
+      focusWindow: focusFullScreenWindow,
+      restoreFocus: restoreFullScreenFocus,
+      clearPresentations: clearFullScreenPresentations, restorePresentations: restoreFullScreenPresentations,
+      getStageView: () => ({ available: () => Boolean(desktopView && stageArea.width > 0 && stageArea.height > 0),
+        canReveal: (edge, visible) => visible || (edge === 'top'
+          ? !presentation.greenMenu && !switching.appMenu && !desktopState.windowMenuOpen
+          : !desktopState.dock?.context && !desktopState.dock?.folderStack && !desktopState.dock?.appWindows
+            && !desktopState.dock?.focusedItemId && !nativeState?.shell.panel
+            && !document.activeElement?.closest('.dock, .sonoma-dock, .win11-taskbar')) }),
+      getPairingView: () => pairingControls,
+      getGreenMenuView: () => greenMenuControls,
+    }),
     createWindowCommands(() => windows, {
       focus: focusWindow, close: requestCloseWindow, minimize: minimizeWindow, expand: expandWindow, move: moveWindow,
       focusKeyboard: focusKeyboardWindow,
@@ -336,6 +431,7 @@
     }, expandedProperty),
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
+      windowMenuAvailable: () => fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed,
       getFiles: () => macDesktop ? macFiles.files.filter(file => !isTrashed(macFiles, file))
         .map(file => ({ ...file, appId: file.appId ?? (file.kind === 'folder' ? 'finder' : 'preview') })) : getDesktopItems(),
       getItems: getDesktopItems,
@@ -354,8 +450,8 @@
   );
   if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
     getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes').id),
-    isVisible: () => !desktopState.dock?.appWindows && !switching.switcher && !isAppHidden('notes')
-      && windows.some((window) => window.appId === 'notes' && !window.minimized),
+    isVisible: () => !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
+      && windows.some(window => window.appId === 'notes' && !window.minimized && windowPresented(window)),
   }));
   if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
     native: nativeState,
@@ -375,7 +471,7 @@
   // capability-guarded registry after native profile selection.
   handlers = Object.fromEntries(Object.entries(handlers).filter(([name]) => Object.hasOwn(sceneCatalog, name)));
   const commands = createFeatureCommands(handlers,
-    () => $state.snapshot({ profile, windows, activeWindowId, activeAppId, runningAppIds, pendingQuitAppIds, switching, area, desktop: desktopState,
+    () => $state.snapshot({ profile, windows, activeWindowId, activeAppId, runningAppIds, pendingQuitAppIds, switching, presentation, area, desktop: desktopState,
       ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(nativeState ? { native: nativeState } : {}),
@@ -449,8 +545,20 @@
           cycle: macDesktop ? 'Command+`' : 'Alt+Escape', cycleAlias: 'Control+Shift+F8',
           nativeDelivery: 'Host/browser may intercept reserved chords; aliases require delivered page events. Ctrl+Tab/Ctrl+Shift+Tab are never intercepted.' },
       } } : {}),
+      ...(hasFullScreen ? { presentation: {
+        splitViews: presentation.splitViews.map(pair => ({ ...pair })),
+        stage: { ...fullScreenStage, windowIds: [...fullScreenStage.windowIds] },
+        revealed: { ...presentation.revealed },
+        pairing: presentation.pairing ? { ...presentation.pairing,
+          windowIds: [...presentation.pairing.windowIds], scroll: { ...presentation.pairing.scroll },
+          items: pairingItems.map(item => ({ ...item })), renderedWindowIds: pairingControls?.windowIds() ?? [],
+          bounds: pairingRect ? { ...pairingRect } : null } : null,
+        greenMenu: presentation.greenMenu ? { ...presentation.greenMenu, items: greenMenuItems.map(item => ({ ...item })) } : null,
+        shortcuts: { fullScreen: macDesktop ? 'Control+Command+F' : 'F11', alias: 'Control+Shift+F9',
+          nativeDelivery: 'Host/browser may intercept native chords; only delivered page events are handled. The simulation never requests host fullscreen.' },
+      } } : {}),
       windows: windows.map((window) => ({
-        windowId: window.id, appId: window.appId, minimized: window.minimized, [expandedProperty]: window[expandedProperty],
+        windowId: window.id, appId: window.appId, minimized: window.minimized, fullScreen: window.fullScreen, [expandedProperty]: window[expandedProperty],
         ...(macDesktop ? { hidden: isAppHidden(window.appId) } : {}),
         bounds: { ...window.bounds },
         ...(window.folderId ? { folderId: window.folderId } : {}),
@@ -463,8 +571,10 @@
           ...(dockWindowBounds[window.id] ? { overviewBounds: { ...dockWindowBounds[window.id] } } : {}) } : {}),
         ...(switching.switcher?.kind === 'windows' ? { presentationVisible: Boolean(switcherWindowBounds[window.id]),
           ...(switcherWindowBounds[window.id] ? { switcherBounds: { ...switcherWindowBounds[window.id] } } : {}) } : {}),
-        presentationInteractive: !switching.switcher && !desktopState.dock?.appWindows && !window.minimized && !isAppHidden(window.appId),
-        resize: { available: hasWindowResize && !switching.switcher && !isAppHidden(window.appId)
+        presentationVisible: windowVisible(window), presentationInteractive: windowInteractive(window),
+        ...(fullScreenWindowBounds[window.id] ? { fullScreenBounds: { ...fullScreenWindowBounds[window.id] } } : {}),
+        ...(pairingWindowBounds[window.id] ? { pairingBounds: { ...pairingWindowBounds[window.id] } } : {}),
+        resize: { available: hasWindowResize && windowInteractive(window) && !window.fullScreen
           && !window.minimized && !window[expandedProperty] && windowInteractionsAvailable(), edges: resizeEdges, minimumSize: windowApplication(window).minimumSize },
       })),
       ...(hasWindowMenu ? { menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }] } : {}),
@@ -505,6 +615,15 @@
       const top = applicationMenuControls?.scrollPosition();
       if (top !== null && top !== undefined && top !== switching.appMenu.scrollTop) switching.appMenu.scrollTop = top;
     }
+    if (presentation.pairing && pairingControls) {
+      const actual = pairingControls.scrollPosition();
+      if (actual && (actual.top !== presentation.pairing.scroll.top || actual.left !== presentation.pairing.scroll.left))
+        presentation.pairing.scroll = actual;
+    }
+    if (presentation.greenMenu && greenMenuControls) {
+      const top = greenMenuControls.scrollTop();
+      if (top !== null && top !== presentation.greenMenu.scrollTop) presentation.greenMenu.scrollTop = top;
+    }
   }
 
   function registerDesktopView(view) {
@@ -530,15 +649,21 @@
   }
 
   function getApplicationView(windowId) {
-    if (!windowInteractionsAvailable() || switching.switcher) return undefined;
-    return windows.some(window => window.id === windowId && !window.minimized && !isAppHidden(window.appId))
+    if (!windowInteractionsAvailable() || switching.switcher || presentation.pairing) return undefined;
+    return windows.some(window => window.id === windowId && !window.minimized && windowPresented(window))
       ? applicationViews.get(windowId)
       : undefined;
   }
 
+  function managedWindowElement(id) {
+    return [...document.querySelectorAll('.managed-window[data-window-id]')].find(element => element.dataset.windowId === id);
+  }
   async function focusKeyboardWindow(id) {
     await tick();
-    [...document.querySelectorAll('[data-window-id]')].find((element) => element.dataset.windowId === id)?.focus({ preventScroll: true });
+    const element = managedWindowElement(id);
+    if (!element || element.closest('[inert]') || getComputedStyle(element).visibility !== 'visible') return false;
+    element.focus({ preventScroll: true });
+    return document.activeElement === element;
   }
   function createMacSceneFiles() {
     const store = createMacDesktopFileStore(profile, initialData.notes.timeBase + 42 * 60_000);
@@ -766,6 +891,7 @@
   function focusDesktop() {
     switching.switcher = null; switching.appMenu = null;
     unhideApplication(profile.defaults.desktopAppId);
+    cancelPairingForActivation(null);
     activeWindowId = null;
     activeAppId = profile.defaults.desktopAppId;
     if (macDesktop) recordApplicationActivation(switching, activeAppId);
@@ -792,6 +918,162 @@
     const window = windows.find((entry) => entry.id === id);
     return windowCommand('window.setMaximized', id, { maximized: !window?.maximized });
   }
+  function toggleWindowFullScreen(id) {
+    const window = windows.find(entry => entry.id === id);
+    return windowCommand('window.setFullScreen', id, { fullScreen: !window.fullScreen });
+  }
+  function splitSide(event) {
+    return Number.isFinite(event?.clientX) && event.clientX >= stageArea.width / 2 ? 'right' : 'left';
+  }
+  function beginSplitView(id, event) {
+    return windowCommand('window.splitView.begin', id, { side: splitSide(event) });
+  }
+  function changeSplitSide(id, event) {
+    const side = splitSide(event);
+    if (presentation.pairing?.windowId === id && presentation.pairing.side !== side)
+      return windowCommand('window.splitView.setSide', id, { side });
+  }
+  function revealFullScreen(edge, visible) {
+    if (fullScreenStage.mode === 'normal' || presentation.revealed[edge] === visible) return;
+    return commands.execute({ command: 'shell.fullScreen.reveal', target: { edge }, payload: { visible } });
+  }
+  function cancelPairingForActivation(id) {
+    const pairing = presentation.pairing;
+    if (!pairing || id === pairing.windowId) return;
+    const initiator = windows.find(window => window.id === pairing.windowId);
+    if (initiator) initiator.fullScreen = pairing.previousFullScreen;
+    if (pairing.previousSplitView && windows.some(window => window.id === pairing.previousSplitView.leftWindowId)
+      && windows.some(window => window.id === pairing.previousSplitView.rightWindowId))
+      presentation.splitViews.push({ ...pairing.previousSplitView });
+    presentation.pairing = null;
+  }
+  function windowPresented(window) {
+    if (isAppHidden(window.appId)) return false;
+    return fullScreenStage.mode === 'normal' ? !window.fullScreen : Boolean(fullScreenWindowBounds[window.id]);
+  }
+  function windowVisible(window) {
+    if (window.minimized && !switcherWindowBounds[window.id] && !dockWindowBounds[window.id]) return false;
+    if (isAppHidden(window.appId)) return false;
+    if (switching.switcher?.kind === 'windows') return Boolean(switcherWindowBounds[window.id]);
+    if (desktopState.dock?.appWindows) return Boolean(dockWindowBounds[window.id]);
+    if (fullScreenStage.mode === 'pairing') return Boolean(fullScreenWindowBounds[window.id] || pairingWindowBounds[window.id]);
+    return windowPresented(window);
+  }
+  function windowInteractive(window) {
+    return !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
+      && fullScreenStage.mode !== 'pairing' && windowPresented(window);
+  }
+  function measureStageArea() {
+    const workspace = document.querySelector(macDesktop ? '.desktop-workspace, .sonoma-workspace' : '.win11-workspace');
+    const root = workspace?.parentElement;
+    if (!root) return;
+    const scene = root.getBoundingClientRect(), area = workspace.getBoundingClientRect();
+    const next = { x: scene.left - area.left, y: scene.top - area.top, width: scene.width, height: scene.height,
+      menuHeight: macDesktop ? area.top - scene.top : 0 };
+    if (Object.keys(next).some(key => next[key] !== stageArea[key])) stageArea = next;
+  }
+  function clearFullScreenPresentations() {
+    captureSwitchingFocus();
+    const snapshot = { base: clearSwitchingPresentations(),
+      switching: $state.snapshot({ switcher: switching.switcher, appMenu: switching.appMenu,
+        activationAppIds: switching.activationAppIds, activationWindowIds: switching.activationWindowIds }),
+      windowIds: windows.map(window => window.id), activeWindowId, activeAppId };
+    switching.switcher = null; switching.appMenu = null;
+    return snapshot;
+  }
+  let ownedWindowFocus = false;
+  async function focusFullScreenWindow(windowId) {
+    ownedWindowFocus = true;
+    try { focusWindow(windowId); return await focusKeyboardWindow(windowId); }
+    finally { ownedWindowFocus = false; }
+  }
+  async function restoreFullScreenFocus(windowId) {
+    ownedWindowFocus = true;
+    try {
+      if (windowId && switchingReturnFocusIdentity?.windowId && switchingReturnFocusIdentity.windowId !== windowId) {
+        switchingReturnFocus = null; switchingReturnFocusIdentity = null;
+        return await focusKeyboardWindow(windowId);
+      }
+      return await restoreSwitchingFocus();
+    }
+    finally { ownedWindowFocus = false; }
+  }
+  async function restoreFullScreenPresentations(snapshot) {
+    Object.assign(switching, snapshot.switching);
+    const order = new Map(snapshot.windowIds.map((id, index) => [id, index]));
+    windows.sort((a, b) => order.get(a.id) - order.get(b.id));
+    activeWindowId = snapshot.activeWindowId; activeAppId = snapshot.activeAppId;
+    await restoreSwitchingPresentations(snapshot.base);
+  }
+  let stageDrag = null;
+  function fullScreenKeydown(event) {
+    if (!hasFullScreen || event.defaultPrevented || event.isComposing || !sceneInteractionsAvailable()
+      || switching.switcher || !activeWindowId) return;
+    const native = macDesktop ? event.metaKey && event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f'
+      : event.key === 'F11' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+    const alias = event.key === 'F9' && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
+    if (native || alias) {
+      consumeSwitchingKey(event);
+      if (!event.repeat) toggleWindowFullScreen(activeWindowId);
+    }
+  }
+  function stagePointerDown(event) {
+    if (fullScreenStage.mode !== 'split' || event.button !== 0 || !event.isPrimary) return;
+    const target = event.target;
+    if (!target?.closest?.('[data-window-drag]') || target.closest('button,input,textarea,select,a,[contenteditable],[data-window-no-drag]')) return;
+    const id = target.closest('.managed-window')?.dataset.windowId;
+    if (!fullScreenStage.windowIds.includes(id)) return;
+    stageDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      side: fullScreenStage.leftWindowId === id ? 'left' : 'right', element: target.closest('[data-window-drag]') };
+    stageDrag.element.setPointerCapture(event.pointerId);
+  }
+  function stagePointerUp(event) {
+    const drag = stageDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    stageDrag = null;
+    if (drag.element.hasPointerCapture(event.pointerId)) drag.element.releasePointerCapture(event.pointerId);
+    if (event.type !== 'pointerup' || fullScreenStage.mode !== 'split' || Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return;
+    const divider = stageArea.width * fullScreenStage.ratio;
+    if (drag.side === 'left' ? event.clientX > divider : event.clientX < divider)
+      commands.execute({ command: 'window.splitView.swap' });
+  }
+  function stagePointerMove(event) {
+    if (fullScreenStage.mode === 'normal' || switching.switcher || !sceneInteractionsAvailable()) return;
+    const topLocked = Boolean(presentation.greenMenu || switching.appMenu || desktopState.windowMenuOpen);
+    const topLimit = presentation.revealed.top ? stageArea.menuHeight + 50 : 2;
+    revealFullScreen('top', topLocked || event.clientY <= topLimit);
+    const footer = document.querySelector(macDesktop ? '.dock, .sonoma-dock' : '.win11-taskbar');
+    const bounds = footer?.getBoundingClientRect();
+    const locked = Boolean(desktopState.dock?.context || desktopState.dock?.folderStack || desktopState.dock?.appWindows
+      || desktopState.dock?.focusedItemId || nativeState?.shell.panel);
+    const near = event.clientY >= (presentation.revealed.launcher ? (bounds?.top ?? stageArea.height - 80) - 8 : stageArea.height - 2);
+    revealFullScreen('launcher', locked || near);
+  }
+  function resizeSplitView(event) {
+    if (fullScreenStage.mode !== 'split') return;
+    const ratio = Math.max(.2, Math.min(.8, event.clientX / stageArea.width));
+    return commands.execute({ command: 'window.splitView.resize', payload: { ratio } });
+  }
+  function splitDividerDown(event) {
+    if (event.button !== 0 || !event.isPrimary) return;
+    event.preventDefault(); event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.focus({ preventScroll: true });
+    resizeSplitView(event);
+  }
+  function splitDividerMove(event) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId) && event.buttons) resizeSplitView(event);
+  }
+  function splitDividerUp(event) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+  function splitDividerKey(event) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || fullScreenStage.mode !== 'split') return;
+    event.preventDefault(); event.stopPropagation();
+    const ratio = event.key === 'Home' ? .2 : event.key === 'End' ? .8
+      : Math.max(.2, Math.min(.8, fullScreenStage.ratio + (event.key === 'ArrowLeft' ? -.05 : .05)));
+    commands.execute({ command: 'window.splitView.resize', payload: { ratio } });
+  }
 
   function isAppHidden(appId) {
     return macDesktop && switching.hiddenAppIds.includes(appId);
@@ -805,7 +1087,7 @@
   }
   function applicationHeaderRect(appId) {
     const node = applicationHeader(appId);
-    if (!node || !node.getClientRects().length) return null;
+    if (!node || !node.getClientRects().length || node.closest('[inert]') || getComputedStyle(node).visibility !== 'visible') return null;
     const rect = node.getBoundingClientRect();
     return { x: rect.x, y: rect.y, left: rect.left, top: rect.top, right: rect.right,
       bottom: rect.bottom, width: rect.width, height: rect.height };
@@ -889,6 +1171,7 @@
     const ownerWindows = windows.filter(window => window.appId === appId && !window.minimized);
     const window = switching.activationWindowIds.map(id => ownerWindows.find(window => window.id === id)).find(Boolean)
       ?? ownerWindows.at(-1);
+    cancelPairingForActivation(window?.id ?? null);
     if (window) focusWindow(window.id);
     else {
       activeAppId = appId; activeWindowId = null;
@@ -989,11 +1272,14 @@
     commands.execute({ command: 'shell.switcher.activate' });
   }
   function switchingOutside(event) {
+    if (event.type === 'focusin' && ownedWindowFocus) return;
     const target = event.target;
     if (switching.switcher && !target?.closest?.('[data-shell-switcher]'))
       commands.execute({ command: 'shell.switcher.close', payload: { restoreFocus: false } });
     if (switching.appMenu && !target?.closest?.('[data-application-menu], [data-application-menu-button]'))
       commands.execute({ command: 'app.menu.close', payload: { restoreFocus: false } });
+    if (presentation.greenMenu && !target?.closest?.('[data-window-green-menu], [data-window-green-control]'))
+      commands.execute({ command: 'window.greenMenu.close', payload: { restoreFocus: false } });
   }
   function cancelHeldSwitcher() {
     if (switching.switcher?.commitOnRelease) commands.execute({ command: 'shell.switcher.close', payload: { restoreFocus: false } });
@@ -1005,6 +1291,11 @@
   onMount(() => {
     const unregister = registerCommands(commands);
     const stopScene = adapter.startScene?.(nativeState, commands.execute);
+    window.addEventListener('keydown', fullScreenKeydown, true);
+    document.addEventListener('pointermove', stagePointerMove, true);
+    document.addEventListener('pointerdown', stagePointerDown, true);
+    document.addEventListener('pointerup', stagePointerUp, true);
+    document.addEventListener('pointercancel', stagePointerUp, true);
     window.addEventListener('keydown', switchingKeydown, true);
     window.addEventListener('keyup', switchingKeyup, true);
     window.addEventListener('blur', cancelHeldSwitcher);
@@ -1015,6 +1306,12 @@
       disposed = true; stopScene?.(); unregister();
       window.removeEventListener('keydown', switchingKeydown, true);
       window.removeEventListener('keyup', switchingKeyup, true);
+      window.removeEventListener('keydown', fullScreenKeydown, true);
+      document.removeEventListener('pointermove', stagePointerMove, true);
+      document.removeEventListener('pointerdown', stagePointerDown, true);
+      document.removeEventListener('pointerup', stagePointerUp, true);
+      document.removeEventListener('pointercancel', stagePointerUp, true);
+      if (stageDrag) stagePointerUp({ pointerId: stageDrag.pointerId, type: 'pointercancel' });
       window.removeEventListener('blur', cancelHeldSwitcher);
       document.removeEventListener('visibilitychange', switchingVisibility);
       document.removeEventListener('pointerdown', switchingOutside, true);
@@ -1027,6 +1324,8 @@
     const index = windows.findIndex((window) => window.id === id);
     if (index < 0) return;
     const window = windows[index];
+    if (presentation.greenMenu?.windowId !== id) presentation.greenMenu = null;
+    cancelPairingForActivation(id);
     unhideApplication(window.appId);
     switching.switcher = null; switching.appMenu = null;
     window.minimized = false;
@@ -1051,6 +1350,7 @@
   function openWindow(appId, title, fresh = false) {
     const app = applications[appId];
     unhideApplication(appId);
+    if (fresh || !windows.some(window => window.appId === appId && !window.utilityKind)) cancelPairingForActivation(null);
     switching.switcher = null; switching.appMenu = null;
     const existing = !fresh && windows.findLast(window => window.appId === appId && !window.utilityKind);
     if (existing) {
@@ -1065,7 +1365,7 @@
     adapter.createWindow?.(nativeState, id, appId, { fresh });
     windows.push({
       id, appId, title: title ?? app.name,
-      minimized: false, [expandedProperty]: false,
+      minimized: false, fullScreen: false, [expandedProperty]: false,
       bounds: adapter.initialBounds(app, area, windows.length, globalThis.innerHeight),
       restoreBounds: null,
       ...(macDesktop && appId === 'finder' ? { folderId: 'desktop' } : {}),
@@ -1113,12 +1413,19 @@
     const index = windows.findIndex(window => window.id === id);
     if (index < 0) return;
     const appId = windows[index].appId;
+    const pair = presentation.splitViews.find(entry => entry.leftWindowId === id || entry.rightWindowId === id);
+    const partnerId = pair && (pair.leftWindowId === id ? pair.rightWindowId : pair.leftWindowId);
+    const partner = windows.find(window => window.id === partnerId && window.fullScreen
+      && !window.minimized && !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId));
     windows.splice(index, 1);
     adapter.releaseWindow?.(nativeState, id, appId);
     if (!adapter.closeKeepsRunning && !windows.some(window => window.appId === appId)) {
       runningAppIds = runningAppIds.filter(entry => entry !== appId);
     }
-    if (activeWindowId === id) focusRemaining();
+    if (activeWindowId === id) {
+      if (partner) await focusFullScreenWindow(partner.id);
+      else focusRemaining();
+    }
     if (hasWindowMenu) {
       desktopState.windowMenuOpen = false;
       desktopState.windowMenuItem = null;
@@ -1241,7 +1548,14 @@
         {presentationBounds}
         {interactive}
         {visible}
-        onfocus={() => windowCommand('window.focus', window.id, { keyboard: false })}
+        fullScreen={window.fullScreen}
+        revealedTop={fullScreenStage.topRevealed}
+        modernGreenMenu={profile.renderer === 'sonoma'}
+        onfullscreen={() => toggleWindowFullScreen(window.id)}
+        onsplitbegin={event => beginSplitView(window.id, event)}
+        onsplitside={event => changeSplitSide(window.id, event)}
+        ongreenmenu={() => windowCommand('window.greenMenu.open', window.id)}
+        onfocus={() => { if (!ownedWindowFocus) windowCommand('window.focus', window.id, { keyboard: false }); }}
         onclose={() => windowCommand('window.close', window.id)}
         onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
         onzoom={() => toggleWindowZoom(window.id)}
@@ -1257,6 +1571,13 @@
             assets={profile.assets}
             {active}
             zoomed={window.zoomed}
+            fullScreen={window.fullScreen}
+            revealedTop={fullScreenStage.topRevealed}
+            modernGreenMenu={profile.renderer === 'sonoma'}
+            onfullscreen={() => toggleWindowFullScreen(window.id)}
+            onsplitbegin={event => beginSplitView(window.id, event)}
+            onsplitside={event => changeSplitSide(window.id, event)}
+            ongreenmenu={() => windowCommand('window.greenMenu.open', window.id)}
             onclose={() => windowCommand('window.close', window.id)}
             onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
             onzoom={() => toggleWindowZoom(window.id)}
@@ -1269,6 +1590,13 @@
             registerView={registerNotesView}
             {active}
             zoomed={window.zoomed}
+            fullScreen={window.fullScreen}
+            revealedTop={fullScreenStage.topRevealed}
+            modernGreenMenu={profile.renderer === 'sonoma'}
+            onfullscreen={() => toggleWindowFullScreen(window.id)}
+            onsplitbegin={event => beginSplitView(window.id, event)}
+            onsplitside={event => changeSplitSide(window.id, event)}
+            ongreenmenu={() => windowCommand('window.greenMenu.open', window.id)}
             onclose={() => windowCommand('window.close', window.id)}
             onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
             onzoom={() => toggleWindowZoom(window.id)}
@@ -1299,6 +1627,8 @@
   {profile}
   {windows}
   switchingState={switching}
+  {fullScreenStage}
+  onfullscreenreveal={revealFullScreen}
   {runningAppIds}
   {activeWindowId}
   {activeApp}
@@ -1317,16 +1647,37 @@
   registerView={registerDesktopView}
   onlayout={() => commands.execute({ command: 'desktop.refreshLayout' })}
 >
+  {#if fullScreenStage.mode !== 'normal'}
+    <div class="stage-backdrop" aria-hidden="true" style:left="{stageArea.x}px" style:top="{stageArea.y}px"
+      style:width="{stageArea.width}px" style:height="{stageArea.height}px"></div>
+  {/if}
   {#each windows as window, index (window.id)}
-    {@const projection = switcherWindowBounds[window.id] ?? dockWindowBounds[window.id]}
+    {@const projection = switcherWindowBounds[window.id] ?? dockWindowBounds[window.id]
+      ?? pairingWindowBounds[window.id] ?? fullScreenWindowBounds[window.id]}
     {#if !window.minimized || projection}
       {@render managedWindow(window, activeWindowId === window.id && !switching.switcher && !isAppHidden(window.appId),
-        switcherWindowBounds[window.id] ? 11001 : dockWindowBounds[window.id] ? 7001 : index + 1,
-        projection, !desktopState.dock?.appWindows && !switching.switcher && !isAppHidden(window.appId),
-        !isAppHidden(window.appId) && (switching.switcher?.kind === 'windows'
-          ? Boolean(switcherWindowBounds[window.id]) : !desktopState.dock?.appWindows || Boolean(dockWindowBounds[window.id])))}
+        switcherWindowBounds[window.id] ? 11001 : dockWindowBounds[window.id] ? 7001
+          : pairingWindowBounds[window.id] ? 9101 : fullScreenWindowBounds[window.id] ? index + 2 : index + 1,
+        projection, windowInteractive(window), windowVisible(window))}
     {/if}
   {/each}
+  {#if fullScreenStage.mode === 'pairing' && pairingRect}
+    <SplitViewPicker {profile} state={presentation.pairing} items={pairingItems} rect={pairingRect}
+      execute={commands.execute} onlayout={slots => { pairingPreviewSlots = slots; }} bind:this={pairingControls} />
+  {/if}
+  {#if fullScreenStage.mode === 'split'}
+    <div class="split-divider" data-split-view-divider role="slider" aria-label="Resize Split View" aria-orientation="horizontal"
+      aria-valuemin="20" aria-valuemax="80" aria-valuenow={Math.round(fullScreenStage.ratio * 100)} tabindex="0"
+      style:left="{stageArea.x + stageArea.width * fullScreenStage.ratio - 2}px" style:top="{stageArea.y}px"
+      style:height="{stageArea.height}px" onpointerdown={splitDividerDown} onpointermove={splitDividerMove}
+      style:z-index={windows.length + 2}
+      onpointerup={splitDividerUp} onpointercancel={splitDividerUp} onkeydown={splitDividerKey}
+      ondblclick={() => commands.execute({ command: 'window.splitView.resize', payload: { ratio: .5 } })}></div>
+  {/if}
+  {#if presentation.greenMenu && greenMenuWindow && greenMenuAnchor}
+    <WindowGreenMenu {profile} window={greenMenuWindow} state={presentation.greenMenu} items={greenMenuItems}
+      anchor={greenMenuAnchor} execute={commands.execute} bind:this={greenMenuControls} />
+  {/if}
   {#if desktopState.dock?.appWindows}
     <MacDockAppWindows {profile} app={applications[desktopState.dock.appWindows.appId]} state={desktopState.dock.appWindows} cards={dockWindowCards} {area} execute={commands.execute} />
   {/if}
@@ -1343,3 +1694,9 @@
       items={appMenuItems} anchor={applicationMenuAnchor} execute={commands.execute} bind:this={applicationMenuControls} />
   {/if}
 </Desktop>
+
+<style>
+  .stage-backdrop { position: absolute; z-index: 1; background: black; pointer-events: none; }
+  .split-divider { position: absolute; width: 4px; background: #171717; cursor: col-resize; touch-action: none; outline: none; }
+  .split-divider:focus-visible { background: #5797dc; }
+</style>

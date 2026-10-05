@@ -3,7 +3,7 @@
   import WindowControls from './WindowControls.svelte';
   import './messages.css';
 
-  let { assets, onclose, onminimize, onzoom, active = true, zoomed = false } = $props();
+  let { assets, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu, fullScreen = false, revealedTop = true, modernGreenMenu = false, active = true, zoomed = false } = $props();
 </script>
 
 {#snippet bubbleTail(direction, color)}
@@ -20,7 +20,7 @@
 <section class="messages-window" class:inactive={!active} aria-label="Messages">
   <header class="messages-toolbar" data-window-drag>
     <div class="messages-toolbar-sidebar">
-      <WindowControls class="messages-traffic-lights" {onclose} {onminimize} {onzoom} {active} {zoomed} />
+      <WindowControls class="messages-traffic-lights" {onclose} {onminimize} {onzoom} {active} {zoomed} {onfullscreen} {onsplitbegin} {onsplitside} {ongreenmenu} {fullScreen} {revealedTop} {modernGreenMenu} />
 
       <div class="messages-search">
         <svg viewBox="0 0 20 20" aria-hidden="true">

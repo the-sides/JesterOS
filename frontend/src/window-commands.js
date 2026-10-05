@@ -24,7 +24,7 @@ export function createWindowCommands(getWindows, actions, expandedProperty) {
   function setExpanded(property) {
     return withWindow(async (window, payload) => {
       if (typeof payload[property] !== 'boolean') return rejected('invalid_arguments', `${property} must be a boolean.`);
-      if (window.minimized || actions.isHidden(window.appId)) return rejected('unavailable', 'Restore/show the window before changing its expanded state.');
+      if (window.minimized || window.fullScreen || actions.isHidden(window.appId)) return rejected('unavailable', 'Exit full screen and restore/show the window before changing its expanded state.');
       if (window[property] !== payload[property]) actions.expand(window.id);
       await actions.focusKeyboard(window.id);
       return applied(window);
@@ -45,6 +45,7 @@ export function createWindowCommands(getWindows, actions, expandedProperty) {
     }),
     'window.setMinimized': withWindow(async (window, payload) => {
       if (typeof payload.minimized !== 'boolean') return rejected('invalid_arguments', 'minimized must be a boolean.');
+      if (payload.minimized && window.fullScreen) return rejected('disabled', 'Exit full screen before minimizing the window.');
       if (payload.minimized) actions.minimize(window.id);
       else {
         actions.focus(window.id);
@@ -58,7 +59,7 @@ export function createWindowCommands(getWindows, actions, expandedProperty) {
       if (!Number.isFinite(payload.x) || !Number.isFinite(payload.y)) {
         return rejected('invalid_arguments', 'Window coordinates must be finite workspace pixels.');
       }
-      if (window.minimized || actions.isHidden(window.appId) || window[expandedProperty]) return rejected('unavailable', 'Only visible normal windows can be moved.');
+      if (window.minimized || window.fullScreen || actions.isHidden(window.appId) || window[expandedProperty]) return rejected('unavailable', 'Only visible normal windows can be moved.');
       actions.move(window.id, payload.x, payload.y);
       return applied(window);
     }, ['x', 'y']),
@@ -71,7 +72,7 @@ export function createWindowCommands(getWindows, actions, expandedProperty) {
         || (axes.includes('x') && !Number.isFinite(payload.x)) || (axes.includes('y') && !Number.isFinite(payload.y))) {
         return rejected('invalid_arguments', 'Supply finite workspace coordinates for exactly the resized axes.');
       }
-      if (window.minimized || actions.isHidden(window.appId) || window[expandedProperty]) return rejected('unavailable', 'Only visible normal windows can be resized.');
+      if (window.minimized || window.fullScreen || actions.isHidden(window.appId) || window[expandedProperty]) return rejected('unavailable', 'Only visible normal windows can be resized.');
       actions.resize(window.id, payload.edge, payload);
       return applied(window);
     }, ['edge', 'x', 'y']),

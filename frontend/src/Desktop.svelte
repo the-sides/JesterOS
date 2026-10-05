@@ -28,6 +28,8 @@
     activeApp = profile.applications.finder,
     viewState,
     switchingState,
+    fullScreenStage = { mode: 'normal', topRevealed: false, launcherRevealed: false },
+    onfullscreenreveal,
     execute,
     registerView,
     onlayout,
@@ -345,7 +347,7 @@
 
   function enabledMenuItemIds() {
     return [
-      ...(activeWindow ? ['close', 'minimize', 'zoom'] : []),
+      ...(activeWindow ? activeWindow.fullScreen ? ['close'] : ['close', 'minimize', 'zoom'] : []),
       ...windows.map((window) => `window:${window.id}`),
     ];
   }
@@ -434,6 +436,7 @@
       }
     }
     function dismissOutside(event) {
+      if (event.target?.closest?.('[data-split-view-picker], [data-window-green-menu]')) return;
       dockView.dismissOutside(event);
       if (viewState.context && !event.target?.closest?.('[data-desktop-context-menu]')) {
         request('desktop.context.close', {}, { restoreFocus: false });
@@ -445,7 +448,7 @@
     function observeFocus(event) {
       dismissOutside(event);
       const target = event.target;
-      if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu], [data-dock-stack], [data-shell-switcher], [data-application-menu], [data-application-menu-button]')) return;
+      if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu], [data-dock-stack], [data-shell-switcher], [data-application-menu], [data-application-menu-button], [data-split-view-picker], [data-window-green-menu], [data-split-view-divider]')) return;
       if (!dock.contains(target) && viewState.dock.focusedItemId) request('dock.focus', { itemId: null }, { observe: true });
       if (!windowMenuContainer.contains(target)
         && !dock.contains(target)
@@ -557,7 +560,7 @@
 <svelte:window onkeydown={escapeKey} />
 
 <div class="desktop" data-os-profile={profile.id} data-os-family={profile.family} style:background-image={`url("${profile.assets.wallpaper}")`}>
-  <header class="menu-bar" aria-label="Desktop menu bar">
+  <header class="menu-bar" aria-label="Desktop menu bar" inert={fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed} style:visibility={fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed ? 'hidden' : undefined} style:z-index={fullScreenStage.mode !== 'normal' ? 10000 : undefined}>
     <div class="menu-headings">
       <span class="apple-mark" aria-label="Apple menu"><svg viewBox="0 0 20 24" aria-hidden="true"><path fill="currentColor" d="M13.1 4.1c1-1.1 1.6-2.6 1.4-4.1-1.4.1-3 .9-4 2-1 1.1-1.7 2.6-1.5 4 1.6.1 3.1-.8 4.1-1.9ZM17 12.7c0-2.7 2.2-4 2.3-4.1-1.3-1.9-3.4-2.1-4.1-2.1-1.8-.2-3.5 1.1-4.4 1.1s-2.3-1.1-3.8-1.1C5 6.6 3 7.9 2 9.8c-2.1 3.8-.5 9.3 1.5 12.1 1 1.4 2.1 2.8 3.6 2.7 1.5-.1 2-1 3.8-1s2.3 1 3.9 1c1.6 0 2.6-1.4 3.5-2.8 1.1-1.6 1.6-3.1 1.6-3.2-.1 0-3-1.1-2.9-5.9Z" transform="translate(0 -1) scale(.9)"/></svg></span>
       <button type="button" class="window-menu-button app-menu"
@@ -581,8 +584,8 @@
         {#if viewState.windowMenuOpen}
           <div class="window-menu-panel" id="window-menu" bind:this={windowMenuPanel} role="menu" tabindex="-1" aria-labelledby="window-menu-button" style:left={`clamp(4px, ${windowMenuLeft}px, calc(100vw - min(260px, calc(100vw - 8px)) - 4px))`} onkeydown={menuKeydown} onscroll={observeMenuScroll}>
             <button type="button" role="menuitem" data-menu-item-id="close" disabled={!activeWindow} onfocus={() => observeMenuItem('close')} onclick={() => executeMenuItem('close')}>Close</button>
-            <button type="button" role="menuitem" data-menu-item-id="minimize" disabled={!activeWindow} onfocus={() => observeMenuItem('minimize')} onclick={() => executeMenuItem('minimize')}>Minimize</button>
-            <button type="button" role="menuitem" data-menu-item-id="zoom" disabled={!activeWindow} onfocus={() => observeMenuItem('zoom')} onclick={() => executeMenuItem('zoom')}>Zoom</button>
+            <button type="button" role="menuitem" data-menu-item-id="minimize" disabled={!activeWindow || activeWindow.fullScreen} onfocus={() => observeMenuItem('minimize')} onclick={() => executeMenuItem('minimize')}>Minimize</button>
+            <button type="button" role="menuitem" data-menu-item-id="zoom" disabled={!activeWindow || activeWindow.fullScreen} onfocus={() => observeMenuItem('zoom')} onclick={() => executeMenuItem('zoom')}>Zoom</button>
             {#if windows.length}
               <div class="window-menu-separator" role="separator"></div>
               {#each windows as window (window.id)}
@@ -610,6 +613,7 @@
   <main class="desktop-workspace" bind:this={workspace} tabindex="-1" aria-label="macOS Mojave-style desktop" onpointerdown={focusDesktop}
     oncontextmenu={(event) => { if (event.target === workspace || event.target === filesPanel) openContext(event); }}>
     <section class="desktop-files" bind:this={filesPanel} class:stacks-enabled={stacksEnabled} class:custom-view={customView} class:right-label={options.labelPosition === 'right'} class:wrapped-grid={wrappedGrid !== null} aria-label="Desktop files"
+      inert={fullScreenStage.mode !== 'normal'}
       style:max-height={filesHeight !== undefined ? `${filesHeight}px` : undefined}
       style:--grid-height={filesHeight !== undefined ? `${filesHeight}px` : undefined} style:--grid-rows={wrappedGrid?.rows}
       style:--grid-item-height={wrappedGrid ? `${wrappedGrid.height}px` : undefined} style:--grid-item-width={wrappedGrid ? `${wrappedGrid.width}px` : undefined}
@@ -653,7 +657,7 @@
   </main>
 
   <MacDock {profile} state={viewState.dock} applications={dockApplications} tiles={dockTiles} folders={dockFolders} trash={dockTrash} {runningAppIds}
-    activeAppId={activeApp.id} {execute} {renderWindowTile} bind:element={dock} bind:this={dockControls} />
+    activeAppId={activeApp.id} {execute} {renderWindowTile} presentationVisible={fullScreenStage.mode === 'normal' ? undefined : fullScreenStage.launcherRevealed} bind:element={dock} bind:this={dockControls} />
 </div>
 
 <style>

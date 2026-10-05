@@ -3,12 +3,12 @@
   import WindowControls from './WindowControls.svelte';
   import SonomaSymbol from './SonomaSymbol.svelte';
   import './sonoma.css';
-  let { assets, onclose, onminimize, onzoom, active = true, zoomed = false } = $props();
+  let { assets, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu, fullScreen = false, revealedTop = true, modernGreenMenu = true, active = true, zoomed = false } = $props();
 </script>
 <section class="sonoma-messages" class:inactive={!active} aria-label="Messages fixed sample">
   <aside class="sonoma-messages-sidebar" aria-label="Conversations">
     <header class="sonoma-messages-sidebar-toolbar" data-window-drag>
-      <WindowControls {onclose} {onminimize} {onzoom} {active} {zoomed} />
+      <WindowControls {onclose} {onminimize} {onzoom} {active} {zoomed} {onfullscreen} {onsplitbegin} {onsplitside} {ongreenmenu} {fullScreen} {revealedTop} {modernGreenMenu} />
       <button type="button" class="sonoma-tool" aria-label="New message — sample only" disabled><SonomaSymbol name="new" /></button>
     </header>
     <label class="sonoma-messages-search"><SonomaSymbol name="search" /><input aria-label="Search conversations — sample only" placeholder="Search" disabled /></label>

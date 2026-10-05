@@ -8,6 +8,7 @@ import { desktopStacksCatalog } from './desktop-stacks-catalog.js';
 import { macDockCatalog } from './mac-dock-catalog.js';
 import { macDockFoldersCatalog } from './mac-dock-folders-catalog.js';
 import { applicationSwitchingCatalog } from './application-switching-catalog.js';
+import { fullScreenCatalog } from './full-screen-catalog.js';
 
 const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -35,6 +36,7 @@ quitContract[1].resultSchema.required.push('quit', 'confirmationRequired');
 
 export const commandCatalog = {
   ...applicationSwitchingCatalog,
+  ...fullScreenCatalog,
   ...Object.fromEntries([
   defineShared('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
     ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],
@@ -58,23 +60,23 @@ export const commandCatalog = {
     ['Close this window only, or present its own native unsaved-document confirmation. macOS keeps the application running; Windows ends its foreground running marker after its last window.'],
     ['Release only this window session; shared records and retained application data follow native close policy.']),
   defineShared('window.setMinimized', 'shell.windows', windowTarget, object({ minimized: flag }),
-    ['windowId is in targets.windows.', windowAvailable],
+    ['windowId is in targets.windows; minimizing requires exiting full screen first.', windowAvailable],
     ['Set minimized state; false restores/activates/focuses the root; retain app data and scroll.']),
   define('window.setZoomed', 'shell.macos-window-zoom', windowTarget, object({ zoomed: flag }),
-    ['Existing non-minimized window.', windowAvailable],
+    ['Existing visible, non-minimized, non-full-screen window.', windowAvailable],
     ['Set workspace zoom or restore normal bounds; activate and focus the root.']),
   defineWindows('window.setMaximized', 'shell.windows-maximize', windowTarget, object({ maximized: flag }),
-    ['Existing non-minimized Windows window.', windowAvailable],
+    ['Existing visible, non-minimized, non-full-screen Windows window.', windowAvailable],
     ['Set native workspace maximization or restore normal bounds; activate and focus the root.']),
   defineShared('window.move', 'shell.windows', windowTarget, object({ x: number, y: number }),
-    ['Existing, non-minimized, non-expanded window; coordinates are finite physical workspace pixels.', windowAvailable],
+    ['Existing, non-minimized, non-expanded, non-full-screen window; coordinates are finite physical workspace pixels.', windowAvailable],
     ['Clamp window position to workspace; no activation.']),
   defineShared('window.resize', 'shell.window-resize', windowTarget, { oneOf: [
     object({ edge: choice('e', 'w'), x: number }),
     object({ edge: choice('n', 's'), y: number }),
     object({ edge: choice('ne', 'nw', 'se', 'sw'), x: number, y: number }),
   ] },
-    ['Existing visible normal window; finite absolute physical workspace edge coordinates.', windowAvailable],
+    ['Existing visible normal, non-full-screen window; finite absolute physical workspace edge coordinates.', windowAvailable],
     ['Clamp resized edges to workspace and per-app logical minimums at the current scale; anchor opposite edges. No activation; retain normal logical size through viewport refitting and expansion/restore.'], NONE, NONE,
     object({ appId: identity, windowId: identity })),
   defineShared('desktop.refreshLayout', 'shell.desktop', empty, empty,
@@ -101,23 +103,23 @@ export const commandCatalog = {
     object({ control: { const: 'window-menu' } }),
     object({ control: { const: null } }),
   ] }, empty,
-    ['Mounted desktop control; file identity must be in the actual desktop registry. Native Dock uses dock.focus.'],
+    ['Mounted desktop control; file identity must be in the actual desktop registry. The Window control requires the native menu bar visible. Native Dock uses dock.focus.'],
     ['Focus semantic control; null only records focus outside desktop controls without moving it.']),
   define('desktop.scroll', 'shell.window-menu', object({ region: { const: 'window-menu' } }), object({ top: offset }),
-    ['Window popup is open; mounted desktop view.'],
+    ['Window popup is open; mounted desktop view and visible native menu bar.'],
     ['Set popup scroll; retain its actual clamped pixel offset.']),
   define('menu.open', 'shell.window-menu', menuTarget, {
     ...object({ position: choice('first', 'last'), itemId: identity }, NONE),
     not: match({ position: true, itemId: true }),
-  }, ['Mounted Window menu; an explicit item must currently be enabled.'],
+  }, ['Mounted Window menu with visible native menu bar; an explicit item must currently be enabled.'],
     ['Open at menu-bar anchor; select/focus first (default), last, or specified enabled item; empty menu selects null.']),
   define('menu.close', 'shell.window-menu', menuTarget, object({ restoreFocus: flag }, NONE), NONE,
     ['Dismiss popup and reset its scroll; restore button focus defaults true.']),
   define('menu.select', 'shell.window-menu', object({ menuId: { const: 'window' }, itemId: { type: ['string', 'null'] } }), empty,
-    ['Open popup; item is enabled and current; null only when there are no enabled items.'],
+    ['Open popup and visible native menu bar; item is enabled and current; null only when there are no enabled items.'],
     ['Select and focus semantic menu item.']),
   define('menu.execute', 'shell.window-menu', menuItemTarget, empty,
-    ['Item is currently enabled; menu need not be open; shared window-operation requirements apply.'],
+    ['Visible native menu bar and currently enabled item; menu need not be open; shared window-operation requirements apply.'],
     ['Run shared close/minimize/zoom/focus operation; dismiss popup; focus Window button.']),
   define('notes.create', 'notes.plain-text', empty, optionalFocus, [requestedFocus],
     ['Switch to Notes folder, clear search, select new record; optional title focus.'],

@@ -90,3 +90,9 @@ A running macOS application whose entire window group is temporarily invisible a
 
 **Window cycling**:
 Immediate activation in stable scene creation order, skipping hidden/minimized frames. macOS cycles only the active application's windows; Windows cycles all eligible managed windows. This order is independent of activation MRU and Dock recent history.
+
+**Full-screen stage**:
+A page-contained projection of an original managed window, independent of normal/restore bounds and zoom/maximize state. Its retained membership is `window.fullScreen`; temporary menu/caption and launcher reveal never changes host fullscreen, display settings or Dock preferences.
+
+**Split View pair**:
+A macOS presentation group of two original full-screen managed windows with left/right identities and a retained divider ratio. Background groups survive activation changes. The candidate picker selects existing windows, not duplicate application instances; cancellation restores prior membership.

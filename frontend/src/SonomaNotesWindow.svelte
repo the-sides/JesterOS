@@ -5,7 +5,7 @@
   import { noteTitle, notePreview, visibleNotes } from './notes-state.js';
   import { createSonomaNotesView } from './sonoma-notes-view.js';
   import './sonoma.css';
-  let { state: noteState, viewState, execute, registerView, active = true, zoomed = false, onclose, onminimize, onzoom } = $props();
+  let { state: noteState, viewState, execute, registerView, active = true, zoomed = false, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu, fullScreen = false, revealedTop = true, modernGreenMenu = true } = $props();
   let root, searchInput, listElement;
   let titleInput = $state(null), bodyInput = $state(null), contextElement = $state(null);
   const context = $derived(viewState.context);
@@ -23,7 +23,7 @@
 <section class="sonoma-notes" class:inactive={!active} class:folders-hidden={!noteState.sidebarVisible} bind:this={root} aria-label="Notes application" onfocusin={view.observeFocus} onfocusout={view.observeBlur}>
   <header class="sonoma-notes-toolbar" data-window-drag>
     <div class="sonoma-notes-leading">
-      <WindowControls {active} {zoomed} {onclose} {onminimize} {onzoom} />
+      <WindowControls {active} {zoomed} {onclose} {onminimize} {onzoom} {onfullscreen} {onsplitbegin} {onsplitside} {ongreenmenu} {fullScreen} {revealedTop} {modernGreenMenu} />
       <button type="button" class="sonoma-tool" data-window-no-drag data-notes-control="sidebar" aria-label={noteState.sidebarVisible ? 'Hide folders' : 'Show folders'} title="Show or hide folders" aria-pressed={noteState.sidebarVisible} onclick={() => view.command('setSidebarVisible', {}, { visible: !noteState.sidebarVisible })}><SonomaSymbol name="sidebar" /></button>
     </div>
     <div class="sonoma-notes-list-tools" data-window-no-drag>
