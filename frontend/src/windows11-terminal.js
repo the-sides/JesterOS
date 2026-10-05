@@ -78,7 +78,7 @@ export function createCommands(apps, context) {
       const content = args.slice(0, at).join(' '); const file = path(args[at + 1]);
       if (file) { if (file.kind !== 'text') return { error: 'Destination is not a text file.' }; writeFile(apps, file, content); return { lines: ['Text saved to shared virtual file.'] }; }
       const dest = destination(apps, args[at + 1], item.cwd, ''); if (dest.error) return dest;
-      const result = await context.invoke('win11.explorer.create', { folderId: dest.folderId }, { name: dest.name, kind: 'text' });
+      const result = await context.invoke('win11.files.create', { folderId: dest.folderId }, { name: dest.name, kind: 'text' });
       if (result.status !== 'applied') return { error: errorOf(result) };
       const created = liveFile(apps, result.target.fileId); writeFile(apps, created, content); return { lines: ['Text saved to shared virtual file.'] };
     }
@@ -86,20 +86,20 @@ export function createCommands(apps, context) {
       if (!exact(1)) return { error: `Usage: ${name} <new-path>` };
       if (path(args[0])) return { error: 'Path already exists.' };
       const dest = destination(apps, args[0], item.cwd, ''); if (dest.error) return dest;
-      return invoke('win11.explorer.create', { folderId: dest.folderId }, { name: dest.name, kind: name === 'mkdir' ? 'folder' : 'text' });
+      return invoke('win11.files.create', { folderId: dest.folderId }, { name: dest.name, kind: name === 'mkdir' ? 'folder' : 'text' });
     }
     if (name === 'restore') {
       if (!exact(1)) return { error: 'Usage: restore <id|name|path>' };
       const value = args[0].toLowerCase(); const matches = children(apps, 'trash').filter(file => file.id.toLowerCase() === value || file.name.toLowerCase() === value || pathOf(apps, file.id).toLowerCase() === value);
       if (matches.length !== 1) return { error: matches.length ? 'Ambiguous name; use the file ID from dir trash.' : 'Deleted item not found. Use dir trash.' };
-      return invoke('win11.explorer.restore', { fileId: matches[0].id });
+      return invoke('win11.files.restore', { fileId: matches[0].id });
     }
     const count = name === 'del' ? 1 : 2; if (!exact(count)) return { error: `Usage: ${name} <path>${count === 2 ? ' <destination>' : ''}` };
     const source = path(args[0]); if (!source) return { error: 'Source path not found.' };
-    if (name === 'del') return invoke('win11.explorer.trash', { fileId: source.id });
-    if (name === 'rename') return invoke('win11.explorer.rename', { fileId: source.id }, { name: args[1] });
+    if (name === 'del') return invoke('win11.files.trash', { fileId: source.id });
+    if (name === 'rename') return invoke('win11.files.rename', { fileId: source.id }, { name: args[1] });
     const dest = destination(apps, args[1], item.cwd, source.name); if (dest.error) return dest;
-    return invoke(`win11.explorer.${name}`, { fileId: source.id }, dest);
+    return invoke(`win11.files.${name}`, { fileId: source.id }, dest);
   }
   return {
     'win11.terminal.new': () => { if (state.ui.dialog) return invalid('Close the dialog first.'); const item = add(); state.ui.menu = null; return applied({ tabId: item.id }); },

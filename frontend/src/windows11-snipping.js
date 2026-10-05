@@ -1,14 +1,15 @@
 import { text, identity, choice, object, empty } from './command-schema.js';
 import { applied, invalid, stale, unavailable, uiState, liveFile, createFile, validName, uniqueName, drawingSvg } from './windows11-app-helpers.js';
 
-export const createState = () => ({ ui: uiState(), phase: 'empty', source: null, selection: null, selectionAnchor: null, pointerId: null, annotations: [], activeStrokeId: null, nextStrokeId: 1, color: '#e53935', saveName: 'Snip.svg', savedFileId: null });
+export const createState = () => ({ ui: uiState(), phase: 'empty', source: null, sourceWindowId: null, selection: null, selectionAnchor: null, pointerId: null, annotations: [], activeStrokeId: null, nextStrokeId: 1, color: '#e53935', saveName: 'Snip.svg', savedFileId: null });
 export const menus = ['snip'];
 const pointerId = { type: 'integer', minimum: 0 };
 const x = { type: 'number', minimum: 0, maximum: 640 };
 const y = { type: 'number', minimum: 0, maximum: 400 };
 const point = object({ x, y, pointerId });
 export const specs = {
-  'win11.snipping.new': [empty, empty],
+  'win11.snipping.new': [object({ sourceWindowId: identity }, []), empty],
+  'win11.snipping.source': [object({ sourceWindowId: { anyOf: [identity, { const: null }] } }), empty],
   'win11.snipping.selection.set': [empty, object({ x, y, width: { type: 'number', exclusiveMinimum: 0, maximum: 640 }, height: { type: 'number', exclusiveMinimum: 0, maximum: 400 } })],
   'win11.snipping.selection.begin': [empty, point],
   'win11.snipping.selection.extend': [empty, point],
@@ -42,16 +43,25 @@ export function createCommands(apps, context) {
   const selecting = () => s.phase === 'selecting' && s.source && !s.ui.dialog;
   const annotating = () => s.phase === 'captured' && s.selection && !s.ui.dialog;
   return {
-    'win11.snipping.new': async () => {
+    'win11.snipping.source': ({ sourceWindowId }) => {
       if (s.ui.dialog || s.pointerId !== null) return invalid('Finish the active gesture or dialog first.');
-      if (!context.getWindows().some(window => window.appId === 'paint' && !window.minimized)) return unavailable('Open or restore Paint first. Only its visible mounted canvas can be captured.');
-      const view = context.getApplicationView('paint');
+      if (sourceWindowId !== null && !context.getWindows().some(window => window.id === sourceWindowId && window.appId === 'paint')) return stale('This Paint window no longer exists.');
+      s.sourceWindowId = sourceWindowId; return applied({ sourceWindowId });
+    },
+    'win11.snipping.new': async ({ sourceWindowId = s.sourceWindowId }) => {
+      if (s.ui.dialog || s.pointerId !== null) return invalid('Finish the active gesture or dialog first.');
+      const paints = context.getWindows().filter(window => window.appId === 'paint');
+      if (!sourceWindowId && paints.length > 1) return invalid('Specify sourceWindowId: multiple Paint windows are open.');
+      const window = sourceWindowId ? paints.find(window => window.id === sourceWindowId) : paints[0];
+      if (sourceWindowId && !window) return stale('This Paint capture source no longer exists.');
+      if (!window || window.minimized) return unavailable('Open or restore the requested Paint window first. Only its visible mounted canvas can be captured.');
+      const view = context.getApplicationView(window.id);
       if (!view?.captureSurface) return unavailable('Open Paint first. This tool captures only its mounted canvas, never the desktop or host screen.');
       const source = await view.captureSurface();
       if (!source || typeof source.svg !== 'string' || !/^\s*<svg[\s>]/.test(source.svg) || !Number.isFinite(source.width) || !Number.isFinite(source.height) || source.width <= 0 || source.height <= 0) return unavailable('The mounted Paint canvas is unavailable.');
       if (s.ui.dialog || s.pointerId !== null) return stale('The capture state changed.');
-      if (!context.getWindows().some(window => window.appId === 'paint' && !window.minimized)) return unavailable('Paint is no longer available for capture.');
-      s.source = { svg: source.svg, width: source.width, height: source.height, label: 'Paint canvas' };
+      if (!context.getWindows().some(item => item.id === window.id && item.appId === 'paint' && !item.minimized)) return unavailable('Paint is no longer available for capture.');
+      s.source = { svg: source.svg, width: source.width, height: source.height, label: 'Paint canvas', windowId: window.id };
       s.selection = { x: 0, y: 0, width: source.width, height: source.height };
       s.selectionAnchor = null;
       s.annotations = [];
@@ -59,7 +69,7 @@ export function createCommands(apps, context) {
       s.phase = 'selecting';
       s.savedFileId = null;
       s.ui.menu = null;
-      return applied();
+      return applied({ sourceWindowId: window.id });
     },
     'win11.snipping.selection.set': (_, p) => { if (!selecting() || s.pointerId !== null) return stale('No idle Paint selection is active.'); if (![p.x,p.y,p.width,p.height].every(Number.isFinite) || p.x < 0 || p.y < 0 || p.width <= 0 || p.height <= 0 || p.x + p.width > s.source.width || p.y + p.height > s.source.height) return invalid('The rectangle must fit inside the captured Paint canvas.'); s.selection = { ...p }; return applied(); },
     'win11.snipping.selection.begin': (_, p) => { if (!selecting() || s.pointerId !== null) return stale('No idle Paint selection is active.'); if (!inside(p, s.source.width, s.source.height)) return invalid('The point is outside the Paint snapshot.'); s.selectionAnchor = { x: p.x, y: p.y }; s.pointerId = p.pointerId; s.selection = { x: p.x, y: p.y, width: 0, height: 0 }; return applied(); },
@@ -77,4 +87,4 @@ export function createCommands(apps, context) {
     'win11.snipping.save': () => { if (s.ui.dialog !== 'save' || s.phase !== 'captured') return stale('No captured image is awaiting save.'); if (!validName(s.saveName) || !/\.svg$/i.test(s.saveName)) return invalid('Enter a valid image name ending in .svg.'); if (liveFile(apps,'pictures')?.kind !== 'folder') return stale('Pictures is unavailable.'); if (!uniqueName(apps,'pictures',s.saveName)) return invalid('An image with that name already exists.'); const file = createFile(apps,'pictures',s.saveName,'image',croppedSvg(s)); s.savedFileId = file.id; s.ui.dialog = null; return applied({ fileId: file.id }); },
   };
 }
-export const readTargets = apps => ({ scope: 'Mounted Paint canvas only; no desktop or host screen capture', phase: apps.snipping.phase, source: apps.snipping.source ? { width: apps.snipping.source.width, height: apps.snipping.source.height, label: apps.snipping.source.label } : null, selection: apps.snipping.selection ? { ...apps.snipping.selection } : null, pointerId: apps.snipping.pointerId, activeStrokeId: apps.snipping.activeStrokeId, annotations: apps.snipping.annotations.map(item => ({ id: item.id })), savedFileId: apps.snipping.savedFileId, ui: { menu: apps.snipping.ui.menu, dialog: apps.snipping.ui.dialog } });
+export const readTargets = apps => ({ scope: 'Mounted Paint canvas only; no desktop or host screen capture', phase: apps.snipping.phase, sourceWindowId: apps.snipping.sourceWindowId, source: apps.snipping.source ? { windowId: apps.snipping.source.windowId, width: apps.snipping.source.width, height: apps.snipping.source.height, label: apps.snipping.source.label } : null, selection: apps.snipping.selection ? { ...apps.snipping.selection } : null, pointerId: apps.snipping.pointerId, activeStrokeId: apps.snipping.activeStrokeId, annotations: apps.snipping.annotations.map(item => ({ id: item.id })), savedFileId: apps.snipping.savedFileId, ui: { menu: apps.snipping.ui.menu, dialog: apps.snipping.ui.dialog } });

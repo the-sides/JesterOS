@@ -1,10 +1,11 @@
 // Release attribution, complete native inventory and bounded coverage: docs/windows11-profile.md.
 // Logical simulation layout limits, not measured factory Windows app minima.
-const application = (id, name, width, height, minimumSize, taskbar = 'running') => ({ id, name, icon: id, width, height, minimumSize, taskbar, coverage: 'local-simulation' });
+const singleWindowApps = new Set(['settings', 'clock', 'snipping']);
+const application = (id, name, width, height, minimumSize, taskbar = 'running') => ({ id, name, icon: id, width, height, minimumSize, multipleWindows: !singleWindowApps.has(id), quitAllowed: true, taskbar, coverage: 'local-simulation' });
 export const windows11Profile = {
   id: 'windows11-23h2-22631.2428', name: 'Windows 11 Pro', family: 'windows',
   version: '23H2', build: '22631.2428', releaseYear: 2023, renderer: 'windows11',
-  capabilities: ['shell.apps', 'shell.windows', 'shell.windows-maximize', 'shell.window-resize', 'shell.desktop', 'scene.profile-selection', 'windows.shell', 'windows.apps'],
+  capabilities: ['shell.apps', 'shell.windows', 'shell.windows-maximize', 'shell.window-resize', 'shell.window-create', 'app.lifecycle', 'shell.desktop', 'scene.profile-selection', 'windows.shell', 'windows.apps'],
   applications: {
     explorer: application('explorer', 'File Explorer', 1000, 650, { width: 640, height: 420 }, 'pinned'),
     edge: application('edge', 'Microsoft Edge', 1060, 720, { width: 640, height: 460 }, 'pinned'),

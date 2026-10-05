@@ -1,15 +1,29 @@
 <script>
+ import { onMount } from 'svelte';
  import { keys } from './windows11-calculator.js';
  let {native,execute}=$props();
+ let element;
  const state=$derived(native.apps.calculator);
  const labels={'backspace':'⌫',reciprocal:'1/x',square:'x²',sqrt:'√x',divide:'÷',multiply:'×',subtract:'−',add:'+',sign:'+/−',equals:'='};
  const send=(name,payload={},target={})=>execute({command:`win11.calculator.${name}`,target,payload});
- function keyboard(event){if(event.target instanceof HTMLInputElement)return;const key= /^\d$/.test(event.key)?event.key:({'+':'add','-':'subtract','*':'multiply','/':'divide','Enter':'equals','=':'equals','Escape':'C','Backspace':'backspace','.':'.','%':'%'}[event.key]);if(key){event.preventDefault();send('key',{key});}}
+ function keyboard(event) {
+  if(event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey
+   || event.target instanceof HTMLInputElement
+   || (event.target instanceof Element && event.target.closest('button') && ['Enter',' '].includes(event.key))) return;
+  const key = /^\d$/.test(event.key) ? event.key : ({'+':'add','-':'subtract','*':'multiply','/':'divide','Enter':'equals','=':'equals','Escape':'C','Backspace':'backspace','.':'.','%':'%'}[event.key]);
+  if(key) { event.preventDefault(); send('key',{key}); }
+ }
+ onMount(() => {
+  // Root focus after app.open belongs to the interactive managed dialog, not
+  // its inner section. Listen on this frame only, including its native controls.
+  const frame = element.closest('.managed-window[data-window-id]');
+  frame.addEventListener('keydown', keyboard);
+  return () => frame.removeEventListener('keydown', keyboard);
+ });
 </script>
-<svelte:window onkeydown={event=>{if(event.target?.closest?.('[data-calculator]'))keyboard(event);}} />
-<section class="calculator" data-calculator data-control="calculator-keyboard" tabindex="-1" aria-label="Standard Calculator">
+<section class="calculator" data-calculator data-control="calculator-keyboard" tabindex="-1" aria-label="Standard Calculator" bind:this={element}>
  <div class="w11-app-toolbar"><button data-control="calculator-navigation" aria-label="Navigation" onclick={()=>execute({command:'win11.apps.menu',target:{appId:'calculator'},payload:{menu:state.ui.menu?null:'navigation'}})}>☰</button><h2>Standard</h2><button data-control="calculator-toggle-history" aria-label="History" onclick={()=>send('panel',{panel:state.panel==='none'?'history':'none'})}>◷</button></div>
- {#if state.ui.menu}<div class="w11-app-menu"><strong>Calculator</strong><button data-control="calculator-standard" onclick={()=>execute({command:'win11.apps.menu',target:{appId:'calculator'},payload:{menu:null}})}>Standard ✓</button><small>Other calculator modes are not represented.</small></div>{/if}
+ {#if state.ui.menu}<div class="w11-app-menu"><strong>Calculator</strong><button data-control="calculator-standard" onclick={()=>execute({command:'win11.apps.menu',target:{appId:'calculator'},payload:{menu:null}})}>Standard ✓</button><button data-control="calculator-new-window" onclick={()=>execute({command:'window.create',target:{appId:'calculator'},payload:{}})}>New window</button><button data-control="calculator-exit" onclick={()=>execute({command:'app.quit',target:{appId:'calculator'},payload:{}})}>Exit</button><small>Other calculator modes are not represented.</small></div>{/if}
  <div class="calculator-body"><div class="main"><div class="expression">{state.expression || ' '}</div><output aria-live="polite" class:error={state.error}>{state.display}</output>
  <div class="memory-bar">{#each [['clear','MC'],['recall','MR'],['add','M+'],['subtract','M−'],['store','MS']] as [action,label]}<button data-control={`calculator-memory-${action}`} disabled={['clear','recall'].includes(action)&&!state.memory.length} onclick={()=>send('memory',{action})}>{label}</button>{/each}<button data-control="calculator-memory-panel" onclick={()=>send('panel',{panel:state.panel==='memory'?'none':'memory'})}>M▾</button></div>
  <div class="keypad">{#each keys as key}<button class:digit={/^\d$/.test(key)||key==='.'||key==='sign'} class:equals={key==='equals'} data-control={`calculator-key-${key}`} aria-label={key==='backspace'?'Backspace':labels[key]||key} onclick={()=>send('key',{key})}>{labels[key]||key}</button>{/each}</div></div>

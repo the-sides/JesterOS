@@ -39,6 +39,8 @@
       <button data-control="explorer-view-details" onclick={() => send('win11.explorer.view', {}, { view: 'details' })}>Details {state.view === 'details' ? '✓' : ''}</button>
       <button data-control="explorer-view-icons" onclick={() => send('win11.explorer.view', {}, { view: 'icons' })}>Large icons {state.view === 'icons' ? '✓' : ''}</button>
     {:else}
+      <button data-control="explorer-new-window" onclick={() => send('window.create', { appId: 'explorer' })}>New window <span>Ctrl+N</span></button>
+      <button data-control="explorer-exit" onclick={() => send('app.quit', { appId: 'explorer' })}>Exit</button>
       <button data-control="explorer-menu-open" disabled={!selected || state.folderId === 'trash'} onclick={() => open(selected)}>Open</button>
       <button data-control="explorer-menu-properties" disabled={!selected} onclick={() => send('win11.explorer.properties', { fileId: selected.id })}>Properties</button>
     {/if}

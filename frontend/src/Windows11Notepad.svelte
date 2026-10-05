@@ -23,7 +23,7 @@
       event.preventDefault();
       if (dialog) return;
       if (key === 's') event.shiftKey ? send('win11.notepad.dialog.open', {}, { kind: 'save-as' }) : send('win11.notepad.save', { tabId: tab.id });
-      if (key === 'n') send('win11.notepad.new');
+      if (key === 'n' && !event.shiftKey) send('win11.notepad.new');
       if (key === 'o') send('win11.notepad.dialog.open', {}, { kind: 'open' });
       if (key === 'f') send('win11.notepad.dialog.open', {}, { kind: 'find' });
     }
@@ -41,11 +41,13 @@
   {#if state.ui.menu && !dialog}<div class="w11-app-menu dropdown">
     {#if state.ui.menu === 'file'}
       <button data-control="notepad-file-new" onclick={() => send('win11.notepad.new')}>New tab <span>Ctrl+N</span></button>
+      <button data-control="notepad-file-new-window" onclick={() => send('window.create', { appId: 'notepad' })}>New window <span>Ctrl+Shift+N</span></button>
       <button data-control="notepad-file-open" onclick={() => send('win11.notepad.dialog.open', {}, { kind: 'open' })}>Open… <span>Ctrl+O</span></button>
       <button data-control="notepad-file-save" onclick={() => send('win11.notepad.save', { tabId: tab.id })}>Save <span>Ctrl+S</span></button>
       <button data-control="notepad-file-save-as" onclick={() => send('win11.notepad.dialog.open', {}, { kind: 'save-as' })}>Save as… <span>Ctrl+Shift+S</span></button>
       <hr/><button data-control="notepad-file-close-tab" onclick={() => send('win11.notepad.closeTab', { tabId: tab.id })}>Close tab</button>
-      <button data-control="notepad-file-exit" onclick={() => send('win11.notepad.requestWindowClose')}>Exit</button>
+      <button data-control="notepad-file-close-window" onclick={() => send('win11.notepad.requestWindowClose')}>Close window</button>
+      <button data-control="notepad-file-exit" onclick={() => send('app.quit', { appId: 'notepad' })}>Exit</button>
     {:else if state.ui.menu === 'edit'}
       <button data-control="notepad-edit-find" onclick={() => send('win11.notepad.dialog.open', {}, { kind: 'find' })}>Find… <span>Ctrl+F</span></button>
       <p class="limitation">Text selection and editing use the native local editor. No system clipboard access.</p>

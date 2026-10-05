@@ -15,6 +15,63 @@ export function createWindows11AppState() {
   const file = (id,parentId,name,kind,content='') => ({id,parentId,name,kind,content,deleted:false,revision:1});
   return { nextFileId:1, files:[file('root',null,'C:','folder'),file('desktop','root','Desktop','folder'),file('documents','root','Documents','folder'),file('pictures','root','Pictures','folder'),file('call-sheet','desktop','Call sheet.txt','text','CALL SHEET — TUESDAY, OCTOBER 31, 2023\n\nProduction: Northlight / Scene 06\nCrew call: 09:00\nLocation: Studio B\n\n09:41 — Desktop insert\n10:15 — Camera rehearsal\n11:00 — First take\n\nAll names and schedules in this scene are fictional.\n'),file('readme','documents','Welcome.txt','text','Welcome to this fictional Windows scene.\nFiles live only in this browser session.\nUse File Explorer, Notepad, Paint, Photos, Snipping Tool and Terminal with the same virtual folders.\n'),file('studio-photo','pictures','Studio.svg','image',studio),file('coast-photo','pictures','Coast.svg','image',coast)], ...Object.fromEntries(Object.entries(appModules).map(([id,module]) => [id,module.createState()])) };
 }
+const sharedAppIds = new Set(['settings', 'clock', 'snipping']);
+const windowSessions = new WeakMap();
+
+function sessionsFor(apps) {
+  let sessions = windowSessions.get(apps);
+  if (!sessions) { sessions = new Map(); windowSessions.set(apps, sessions); }
+  return sessions;
+}
+
+// Authorities are forwarded, not copied: replacements and file IDs remain shared.
+function scopedApps(apps, appId, state) {
+  const scoped = {};
+  for (const key of ['files', 'nextFileId', ...Object.keys(appModules)]) {
+    Object.defineProperty(scoped, key, {
+      enumerable: true,
+      get: () => key === appId ? state : apps[key],
+      set: value => { if (key === appId) throw new Error('Window sessions cannot be replaced.'); apps[key] = value; },
+    });
+  }
+  return scoped;
+}
+
+export function createWindows11AppWindow(apps, windowId, appId, { fresh = false } = {}) {
+  const sessions = sessionsFor(apps);
+  if (sessions.has(windowId)) throw new Error(`Window session already allocated: ${windowId}`);
+  apps.windowSessions ||= {};
+  apps.windowSessions[windowId] = sharedAppIds.has(appId) || !fresh ? apps[appId] : appModules[appId].createState();
+  sessions.set(windowId, { appId, apps: scopedApps(apps, appId, apps.windowSessions[windowId]) });
+}
+
+export function releaseWindows11AppWindow(apps, windowId, appId) {
+  const sessions = sessionsFor(apps), session = sessions.get(windowId);
+  if (!session || session.appId !== appId) return;
+  const state = session.apps[appId];
+  state.ui.menu = null; state.ui.dialog = null; state.ui.focused = null; state.ui.selection = null;
+  if ('activeStrokeId' in state) state.activeStrokeId = null;
+  if ('pointerId' in state) state.pointerId = null;
+  if ('selectionAnchor' in state) state.selectionAnchor = null;
+  apps[appId] = session.apps[appId];
+  sessions.delete(windowId);
+  delete apps.windowSessions[windowId];
+}
+
+export function windows11AppsForWindow(apps, windowId) {
+  return sessionsFor(apps).get(windowId)?.apps || null;
+}
+
+export function readWindows11AppWindows(apps) {
+  const sessions = sessionsFor(apps);
+  return Object.keys(apps.windowSessions || {}).map(windowId => ({ windowId, appId: sessions.get(windowId).appId }));
+}
+
+export function canCreateWindows11AppWindow(apps, appId) {
+  return ![...sessionsFor(apps).values()].some(session => session.appId === appId &&
+    (session.apps[appId].ui.dialog || session.apps[appId].pendingClose));
+}
+
 // Scheduling supplies only deterministic single-second inputs; no host clock is read.
 export function startWindows11AppClock(apps, invoke) {
   let disposed = false, pending = false;

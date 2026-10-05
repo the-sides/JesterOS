@@ -6,6 +6,7 @@
     profile,
     children,
     windows = [],
+    runningAppIds = [],
     activeWindowId = null,
     activeApp = profile.applications.finder,
     viewState,
@@ -24,7 +25,7 @@
   let windowMenuButton;
   let windowMenuPanel = $state(null);
   let windowMenuLeft = $state(0);
-  const runningApps = $derived(new Set(windows.map((window) => window.appId)));
+  const runningApps = $derived(new Set(runningAppIds));
   const activeWindow = $derived(windows.find((window) => window.id === activeWindowId));
 
   function request(command, target = {}, payload = {}) {
@@ -151,7 +152,34 @@
     }
   }
 
+  function lifecycleKeydown(event) {
+    if (event.defaultPrevented || event.isComposing || !(event.metaKey || event.ctrlKey)
+      || event.altKey || event.shiftKey) return;
+    const key = event.key.toLowerCase();
+    if (key !== 'n' && key !== 'q') return;
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest('[inert], [aria-modal="true"]')) return;
+    const focusedWindow = target.closest('[data-window-id]');
+    if (focusedWindow) {
+      if (!activeWindow || focusedWindow.dataset.windowId !== activeWindow.id
+        || activeWindow.appId !== activeApp.id) return;
+    } else if (!workspace?.parentElement.contains(target)
+      && target !== document.body && target !== document.documentElement) return;
+    if (key === 'n') {
+      if (!activeApp.multipleWindows || target.isContentEditable
+        || target.closest('input, textarea, select, [contenteditable], [role="textbox"]')) return;
+      event.preventDefault();
+      if (!event.repeat) request('window.create', { appId: activeApp.id });
+    } else {
+      // Finder cannot quit, and its shortcut must not quit the host browser.
+      if (!activeApp.quitAllowed && activeApp.id !== 'finder') return;
+      event.preventDefault();
+      if (activeApp.quitAllowed && !event.repeat) request('app.quit', { appId: activeApp.id });
+    }
+  }
+
   function escapeKey(event) {
+    lifecycleKeydown(event);
     if (event.key !== 'Escape') return;
     request('desktop.select', { fileId: null });
     if (viewState.windowMenuOpen) {

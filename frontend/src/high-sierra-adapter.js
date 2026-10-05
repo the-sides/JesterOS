@@ -54,6 +54,7 @@ export const highSierraAdapter = Object.freeze({
   MessagesWindow,
   NotesWindow,
   expandedProperty: 'zoomed',
+  closeKeepsRunning: true,
   prepareDocument,
   createSceneData,
   initialBounds,

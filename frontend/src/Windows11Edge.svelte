@@ -30,6 +30,8 @@
   {#if state.ui.menu === 'browser'}
     <div class="w11-app-menu">
       <button data-control="edge-menu-new" onclick={() => send('win11.edge.tab.new')}>New tab</button>
+      <button data-control="edge-menu-new-window" onclick={() => send('window.create', { appId: 'edge' })}>New window <span>Ctrl+N</span></button>
+      <button data-control="edge-menu-exit" onclick={() => send('app.quit', { appId: 'edge' })}>Exit</button>
       <button data-control="edge-menu-history" onclick={() => send('win11.edge.history.show')}>History</button>
       <button data-control="edge-menu-about" onclick={() => go('jester://about')}>About this local browser</button>
     </div>

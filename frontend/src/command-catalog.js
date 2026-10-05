@@ -20,6 +20,12 @@ const windowAvailable = 'No profile-native global modal blocks window interactio
 const define = defineCommand.bind(null, MAC_PROFILES);
 const defineShared = defineCommand.bind(null, ALL_PROFILES);
 const defineWindows = defineCommand.bind(null, WINDOWS_PROFILES);
+const quitContract = defineShared('app.quit', 'app.lifecycle', object({ appId: identity }), empty,
+  ['Registered application permits quit; no global modal blocks interaction.'],
+  ['Close all application windows through native unsaved-document confirmation; stop its running marker only when complete. Cancel preserves remaining windows.'],
+  ['Retain fictional application records according to native close policy.'], NONE, object({ appId: identity }));
+Object.assign(quitContract[1].resultSchema.properties, { quit: flag, confirmationRequired: flag });
+quitContract[1].resultSchema.required.push('quit', 'confirmationRequired');
 
 export const commandCatalog = {
   ...Object.fromEntries([
@@ -30,14 +36,20 @@ export const commandCatalog = {
     object({ profileId: identity })),
   defineShared('app.open', 'shell.apps', object({ appId: identity }), object({ title: text }, NONE),
     ['appId is in targets.applications; workspace dimensions are available.', windowAvailable],
-    ['Open/restore, activate and stack the window; optional contextual title; focus its root.'], NONE, NONE,
+    ['Reactivate the most-recent application window, including minimized windows, or reopen one retaining fictional app data. Optional contextual title; root focus. Never duplicates an existing window.'], NONE, NONE,
     object({ appId: identity, windowId: identity })),
+  defineShared('window.create', 'shell.window-create', object({ appId: identity }), object({ title: text }, NONE),
+    ['Registered application supports multipleWindows; actual workspace is available; no pending application quit or blocking dialog.', windowAvailable],
+    ['Create, activate and focus a fresh independent managed window with a new scene-local ID. Existing windows are unchanged.'], ['Initialize fresh window-local app state; shared fictional records are unchanged.'], NONE,
+    object({ appId: identity, windowId: identity })),
+  quitContract,
   defineShared('window.focus', 'shell.windows', windowTarget, object({ keyboard: flag }, NONE),
     ['windowId is in targets.windows, including minimized windows.', windowAvailable],
     ['Restore, activate, stack; root keyboard focus defaults true, false preserves native child focus.']),
   defineShared('window.close', 'shell.windows', windowTarget, empty,
     ['windowId is in targets.windows.', windowAvailable],
-    ['Request native close; remove the window and choose the last visible active window, or show the Windows Notepad dirty-close dialog. App data otherwise survives.']),
+    ['Close this window only, or present its own native unsaved-document confirmation. macOS keeps the application running; Windows ends its foreground running marker after its last window.'],
+    ['Release only this window session; shared records and retained application data follow native close policy.']),
   defineShared('window.setMinimized', 'shell.windows', windowTarget, object({ minimized: flag }),
     ['windowId is in targets.windows.', windowAvailable],
     ['Set minimized state; false restores/activates/focuses the root; retain app data and scroll.']),

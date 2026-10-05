@@ -11,7 +11,7 @@ Installed profiles span **macOS High Sierra 10.13 (2017), Mojave 10.14 (2018), S
 - macOS Notes supports plain-text creation/editing, search, pinning, trash, and recovery; other macOS applications except the fixed Messages sample remain launch-only. Windows has ten functional offline simulations: File Explorer, Edge, Notepad, Calculator, Settings, Paint, Photos, Clock, Snipping Tool, and Terminal. Wider researched inventories do not imply implemented workflows.
 - macOS Messages retains its sample conversation; its conversation selection, search, message editing/history, menu-bar clock and battery are fixed scene content.
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
-- Browser-local `jesteros.execute()` supports 33 commands in each macOS profile and 152 in Windows; `jesteros.inspect()` exposes detached state and `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics, and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Rust control and further app/menu features remain queued.
+- Browser-local `jesteros.execute()` supports 35 commands in each macOS profile and 161 in Windows; `jesteros.inspect()` exposes detached state and `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics, and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Rust control and further app/menu features remain queued.
 
 ## OS profile setup
 
@@ -30,14 +30,18 @@ Conditional [Linux research](docs/ubuntu-24.04-profile.md) selects **Ubuntu Desk
 
 ## macOS desktop interactions
 
-- Click a Dock icon, or focus it and press Enter/Space, to open, raise, or restore its application's single window. Repeated activation does not create duplicates.
-- Click a desktop icon to select it; double-click or press Enter to open it. Macintosh HD, Personal, Downloads, and Trash open the same Finder window with the corresponding title. Itinerary.pdf opens Preview. These are simulated locations, not host files.
+- Click a Dock icon, or focus it and press Enter/Space, to open, raise, or restore the application's most recently used window. Repeated activation does not create duplicates. `window.create` explicitly creates a new window for apps whose discovery metadata permits it.
+- Click a desktop icon to select it; double-click or press Enter to open it. Macintosh HD, Personal, Downloads, and Trash reopen the most recent Finder window with the corresponding title. Itinerary.pdf opens Preview. These are simulated locations, not host files.
 - Click a window to raise and activate it. Drag its title bar to move it within the space below the menu bar and above the Dock. Windows refit when the viewport changes.
 - Drag any edge or corner to resize a normal window. App-specific logical minimum sizes and native workspace boundaries apply; zoom/minimize/restore and viewport fitting retain the resized logical dimensions. Fixed/launch-only interiors have conservative layout limits, not measured factory minimums.
-- Red closes the window. Yellow minimizes it while retaining its title, position, and zoom state; the Dock or Window menu restores it. Green toggles workspace-sized zoom and the prior normal bounds, without entering browser fullscreen.
+- Red closes only that window; the macOS application remains running and can remain active with no windows. Yellow minimizes it while retaining its title, position, and zoom state; the Dock or Window menu restores it. Green toggles workspace-sized zoom and the prior normal bounds, without entering browser fullscreen.
 - The Window menu closes, minimizes, zooms, or switches to any open/minimized window, including Preview. Arrow keys, Home/End, Enter, and Escape work in the menu. Escape also clears desktop selection; clicking the background focuses the desktop.
-- Dock running dots include minimized applications. Finder's dot remains because the desktop is always running. Window state is client-side and resets on reload to the initial Messages scene; it is not persisted or synchronized through Rust.
+- Dock dots represent application lifetime, including apps with minimized or no windows. Finder always runs and cannot quit. Browser-delivered Command/Ctrl+N creates a window for a multi-window active app outside text inputs; Command/Ctrl+Q quits the active application. Notes retains its own new-note shortcut and single collection window. Window/application state resets on reload; Rust does not persist or synchronize it.
 - Other menus and status items remain static scene dressing.
+
+Application discovery distinguishes `appId` from live `windowIds` and reports `running`, `active`, `quitting`, `multipleWindows`, and `quitAllowed`. Window IDs are not app IDs and closed IDs are never reused within a scene. Finder, Safari, and Preview allow multiple managed windows in all macOS profiles; Sonoma also allows TextEdit, Terminal, Script Editor, and QuickTime Player windows. Those interiors remain launch-only. Fixed Messages and the current Notes collection remain single-window.
+
+Windows allows independent Explorer, Edge, Notepad, Calculator, Paint, Photos, and Terminal windows. Settings, Clock, and Snipping Tool retain one represented primary window. Closing the last Windows foreground window removes its running marker; native Exit invokes `app.quit` for all windows. Dirty Notepad quit proceeds through real Save/Discard/Cancel prompts, including minimized windows, and Cancel aborts the quit without discarding remaining edits. Files, file-ID allocation, Settings and Clock remain shared scene authorities; native commands use an explicit `target.windowId` whenever an app has multiple windows.
 
 ## Notes
 
@@ -130,6 +134,7 @@ backend/
   src/main.rs        HTTP server, CLI, health endpoint, static files
 frontend/
   src/App.svelte            Profile-bound scene, window lifecycle, command routing
+  src/application-commands.js Shared explicit new-window, reopen and guarded quit contracts
   src/os-profiles.js        Immutable profile identity, capabilities, inventory/assets
   src/profile-adapters.js  Explicit native renderer selection
   src/mojave-adapter.js     Mojave views, font preference, fixture/placement policy
@@ -187,6 +192,8 @@ Notes was exercised in the live Rust-served build at the same three viewport siz
 Earlier backend smoke checks covered the health response, unknown API routes, unsupported health methods, root HTML, missing assets, and the missing-frontend startup diagnostic. The combined development command and Vite API proxy were also exercised. The latest health check returned `status: ok`. There is no application UI test suite; `bun test tools/compare-mojave.test.mjs` passes a real-ImageMagick regression for RGB errors, transparent padding, and visible difference maps.
 
 OS-05 browser proof covered all eight resize edges/corners in each installed profile, physical pointer deltas at reduced scale, minimum/workspace clamps, cancellation and outgoing-scene disposal, global-modal/expanded/minimized rejection, native caption controls, and retained logical dimensions through minimized expansion at 390×844 and back. Notes, Calculator and Settings minimum layouts were visually inspected. Fresh lifecycle diagnostics were empty; the default Mojave comparison measured zero changed pixels. `bun test tools/window-resize.test.mjs tools/profile-capabilities.test.mjs tools/compare-mojave.test.mjs tools/windows11-terminal.test.mjs` passed eight behavioral regressions with 74 assertions.
+
+OS-06 production-browser proof covered multiple Finder/browser/document windows, independent native data and presentation, stable live IDs, app-close versus quit/reopen, protected Finder, native keyboard/New Window/Exit actions, and multi-window Notepad save conflicts and Save/Discard/Cancel continuations. Minimized quit prompts restored the exact window. Real DOM selection/scroll survived remount and caption states after correcting caret restoration without focus theft; new-window pointer resizing and 390×844 round trips passed in every installed profile. All current request/result schemas compiled strictly. Fresh diagnostics had no warnings, page errors, broken images, external resources or overflow; the viewport-initialized default comparison measured zero changed pixels. The clean build and complete `bun test` suite passed eight regressions with 68 assertions.
 
 ## Visual comparison
 

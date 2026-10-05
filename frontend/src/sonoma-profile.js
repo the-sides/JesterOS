@@ -2,7 +2,8 @@
 // Stock membership does not imply a functional application interior.
 // Launch-only shells keep their represented size; these are simulation layout
 // limits, not measured factory macOS minima.
-const launchOnly = (id, name, dock) => ({ id, name, icon: id, width: 880, height: 620, minimumSize: { width: 880, height: 620 }, ...(dock ? { dock } : {}), coverage: 'launch-only' });
+const multipleWindowApps = new Set(['finder', 'safari', 'preview', 'textedit', 'terminal', 'scripteditor', 'quicktime']);
+const launchOnly = (id, name, dock) => ({ id, name, icon: id, width: 880, height: 620, minimumSize: { width: 880, height: 620 }, multipleWindows: multipleWindowApps.has(id), quitAllowed: id !== 'finder', ...(dock ? { dock } : {}), coverage: 'launch-only' });
 
 export const sonomaProfile = {
   id: 'macos-sonoma-14.0',
@@ -13,6 +14,7 @@ export const sonomaProfile = {
   renderer: 'sonoma',
   capabilities: [
     'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
+    'shell.window-create', 'app.lifecycle',
     'shell.desktop', 'shell.window-menu', 'scene.profile-selection',
     'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
@@ -20,7 +22,7 @@ export const sonomaProfile = {
     finder: launchOnly('finder', 'Finder', 'main'),
     launchpad: launchOnly('launchpad', 'Launchpad', 'main'),
     safari: launchOnly('safari', 'Safari', 'main'),
-    messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 1024, height: 740, minimumSize: { width: 800, height: 600 }, dock: 'main', coverage: 'sample' },
+    messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 1024, height: 740, minimumSize: { width: 800, height: 600 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'sample' },
     mail: launchOnly('mail', 'Mail', 'main'),
     maps: launchOnly('maps', 'Maps', 'main'),
     photos: launchOnly('photos', 'Photos', 'main'),
@@ -28,7 +30,7 @@ export const sonomaProfile = {
     calendar: launchOnly('calendar', 'Calendar', 'main'),
     contacts: launchOnly('contacts', 'Contacts', 'main'),
     reminders: launchOnly('reminders', 'Reminders', 'main'),
-    notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 720, minimumSize: { width: 960, height: 420 }, dock: 'main', coverage: 'plain-text' },
+    notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 720, minimumSize: { width: 960, height: 420 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
     settings: launchOnly('settings', 'System Settings', 'main'),
     music: launchOnly('music', 'Music', 'recent'),
     appstore: launchOnly('appstore', 'App Store'),

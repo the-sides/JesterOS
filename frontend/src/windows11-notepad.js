@@ -31,15 +31,15 @@ export function createCommands(apps, context) {
   const dirty = item => item.content !== item.savedContent;
   const add = () => { const item = newTab(`tab-${state.nextTabId++}`); state.tabs.push(item); state.activeTabId = item.id; return item; };
   const remove = id => { const index = state.tabs.findIndex(item => item.id === id); state.tabs.splice(index, 1); if (state.activeTabId === id) state.activeTabId = state.tabs[Math.min(index, state.tabs.length - 1)]?.id || null; if (!state.tabs.length) add(); };
-  const finishClose = () => {
+  const finishClose = async () => {
     const pending = state.pendingClose; if (!pending) return stale('No close is pending.');
     const item = pending.kind === 'tab' ? tab(pending.tabId) : state.tabs.find(dirty);
     if (item && dirty(item)) { state.activeTabId = item.id; state.ui.dialog = { kind: 'close', tabId: item.id }; return applied({}, { confirmationRequired: true, closed: false }); }
     if (pending.kind === 'tab') { if (item) remove(item.id); state.pendingClose = null; state.ui.dialog = null; return applied({}, { confirmationRequired: false, closed: true }); }
-    const window = context.getWindows().find(item => item.appId === 'notepad');
+    const window = context.getWindow();
     if (!window) return stale('Notepad window no longer exists.');
     if (typeof context.closeWindow !== 'function') return unavailable('Private window close integration is unavailable.');
-    state.pendingClose = null; state.ui.dialog = null; state.tabs = []; add(); context.closeWindow(window.id);
+    state.pendingClose = null; state.ui.dialog = null; state.tabs = []; add(); await context.closeWindow(window.id);
     return applied({ windowId: window.id }, { confirmationRequired: false, closed: true });
   };
   const save = item => {
@@ -66,7 +66,7 @@ export function createCommands(apps, context) {
       const item = tab(tabId); if (!item || tabId !== state.activeTabId) return stale();
       if (state.ui.dialog) return unavailable('Close the dialog before selecting document text.');
       if (!Number.isInteger(start) || !Number.isInteger(end) || start > end || end > item.content.length) return invalid('Selection is outside the document.');
-      const view = context.getApplicationView('notepad');
+      const view = context.getApplicationView(context.getWindow()?.id);
       if (!view?.controls().some(control => control.id === 'notepad-editor' && !control.disabled)) return unavailable('Notepad editor is not mounted and available.');
       const actual = view.readSelection('notepad-editor');
       if (actual?.start !== start || actual?.end !== end) { await tick(); if (!await view.select('notepad-editor', start, end)) return unavailable('The editor could not select this range.'); }
@@ -86,7 +86,7 @@ export function createCommands(apps, context) {
       state.pendingClose = { kind: 'tab', tabId }; state.ui.menu = null; return finishClose();
     },
     'win11.notepad.requestWindowClose': async () => {
-      const window = context.getWindows().find(item => item.appId === 'notepad');
+      const window = context.getWindow();
       if (!window) return stale('Notepad window no longer exists.');
       if (context.native.shell.dialog || (state.ui.dialog && !state.pendingClose)) return unavailable('Resolve the current dialog first.');
       if (state.tabs.some(dirty) && (!state.pendingClose || window.minimized)) {
@@ -98,7 +98,7 @@ export function createCommands(apps, context) {
     'win11.notepad.close.resolve': (_, { action }) => {
       if (context.native.shell.dialog) return unavailable('Resolve the native global modal first.');
       const dialog = state.ui.dialog; const item = tab(dialog?.tabId); if (dialog?.kind !== 'close' || !state.pendingClose || !item) return stale('No close confirmation is pending.');
-      if (action === 'cancel') { state.pendingClose = null; state.ui.dialog = null; return applied({}, { confirmationRequired: false, closed: false }); }
+      if (action === 'cancel') { state.pendingClose = null; state.ui.dialog = null; context.cancelAppQuit('notepad'); return applied({}, { confirmationRequired: false, closed: false }); }
       if (action === 'save') { const result = save(item); if (result.status !== 'applied' || !result.saved) return result; }
       else { const file = item.fileId && liveFile(apps, item.fileId); item.content = file?.kind === 'text' ? file.content : item.savedContent; item.savedContent = item.content; }
       return finishClose();
@@ -119,11 +119,11 @@ export function createCommands(apps, context) {
       if (result.status === 'applied' && dialog.kind !== 'find') { state.ui.dialog = null; if (state.pendingClose) return finishClose(); }
       return result;
     },
-    'win11.notepad.dialog.cancel': () => { if (!state.ui.dialog || state.ui.dialog.kind === 'close') return stale(); state.ui.dialog = null; state.pendingClose = null; return applied({}, { closed: false }); },
+    'win11.notepad.dialog.cancel': () => { if (!state.ui.dialog || state.ui.dialog.kind === 'close') return stale(); state.ui.dialog = null; if (state.pendingClose) context.cancelAppQuit('notepad'); state.pendingClose = null; return applied({}, { closed: false }); },
     'win11.notepad.find': async ({ tabId }, { query, matchCase, direction }) => {
       const item = tab(tabId); if (!item || tabId !== state.activeTabId) return stale(); if (!query) return invalid('Enter text to find.');
       if (state.ui.dialog && state.ui.dialog.kind !== 'find') return unavailable('Close the current dialog before finding text.');
-      const view = context.getApplicationView('notepad'); if (!view?.select || !context.getWindows().some(window => window.appId === 'notepad' && !window.minimized)) return unavailable('Notepad editor is not mounted and visible.');
+      const window = context.getWindow(), view = context.getApplicationView(window?.id); if (!view?.select || !window || window.minimized) return unavailable('Notepad editor is not mounted and visible.');
       const haystack = matchCase ? item.content : item.content.toLowerCase(); const needle = matchCase ? query : query.toLowerCase();
       let index = direction === 'next' ? haystack.indexOf(needle, item.selectionEnd) : haystack.lastIndexOf(needle, item.selectionStart - 1);
       if (direction === 'previous' && item.selectionStart === 0) index = -1;

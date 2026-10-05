@@ -14,5 +14,17 @@ export const baseAppSpecs = {
   'win11.apps.selection':[controlTarget,object({start:{type:'integer',minimum:0},end:{type:'integer',minimum:0}}),['Select actual editable control text and retain selection.'],[]],
   'win11.apps.selection.observe':[controlTarget,object({start:{type:'integer',minimum:0},end:{type:'integer',minimum:0}}),['Retain actual observed editable text selection.'],[]],
 };
-export const windows11AppSpecs = {...baseAppSpecs,...Object.assign({},...Object.values(appModules).map(module => module.specs))};
-export const windows11AppCatalog = Object.fromEntries(Object.entries(windows11AppSpecs).map(([name,[target,payload,presentation=[],data=[],rules=[]]]) => defineCommand(['windows11-23h2-22631.2428'],name,'windows.apps',target,payload,['Targets must be live in this profile session. Presentation commands require a visible mounted view.'],presentation,data,rules)));
+const nativeSpecs = { ...baseAppSpecs, ...appModules.explorer.fileSpecs, ...Object.assign({}, ...Object.values(appModules).map(module => module.specs)) };
+const globalFileCommand = name => name.startsWith('win11.files.') && name !== 'win11.files.open';
+export const windows11AppSpecs = Object.fromEntries(Object.entries(nativeSpecs).map(([name, spec]) =>
+  [name, globalFileCommand(name) ? spec : [{ ...spec[0], properties: { ...spec[0].properties, windowId: identity } }, ...spec.slice(1)]]));
+export const windows11AppCatalog = Object.fromEntries(Object.entries(windows11AppSpecs).map(([name, [target, payload, presentation = [], data = [], rules = []]]) => {
+  const descriptor = defineCommand(['windows11-23h2-22631.2428'], name, 'windows.apps', target, payload,
+    globalFileCommand(name) ? ['Global virtual filesystem authority; no application window or mounted view is required.'] :
+      ['Targets must be live in this profile session. Presentation commands require a visible mounted view.',
+        'windowId selects an exact application session. Omit it only with zero or one application window; multiple-window ambiguity rejects without mutation.'],
+    presentation, data, rules, globalFileCommand(name) ? object({ fileId: identity }) :
+      { type: 'object', properties: { appId: choice(...appIds), windowId: identity }, required: ['appId'], additionalProperties: true });
+  if (!nativeSpecs[name][0].required.length) descriptor[1].requestSchema.required = descriptor[1].requestSchema.required.filter(key => key !== 'target');
+  return descriptor;
+}));

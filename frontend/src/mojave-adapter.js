@@ -40,6 +40,7 @@ export const mojaveAdapter = Object.freeze({
   MessagesWindow,
   NotesWindow,
   expandedProperty: 'zoomed',
+  closeKeepsRunning: true,
   prepareDocument,
   createSceneData,
   initialBounds,

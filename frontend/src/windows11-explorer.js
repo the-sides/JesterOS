@@ -30,6 +30,44 @@ function cycle(apps, sourceId, destinationId) {
   while (id && !seen.has(id)) { if (id === sourceId) return true; seen.add(id); id = liveFile(apps, id)?.parentId; }
   return false;
 }
+export const fileSpecs = Object.fromEntries(['create', 'rename', 'copy', 'move', 'trash', 'restore'].map(name =>
+  [`win11.files.${name}`, specs[`win11.explorer.${name}`]]));
+
+// Filesystem operations have no application/window scope. Explorer wraps these
+// same reducers to retain its local selection policy; Terminal uses them directly.
+export function createFileCommands(apps) {
+  return {
+    'win11.files.create': ({ folderId }, { name, kind }) => {
+      if (!folder(apps, folderId)) return stale('Destination folder no longer exists.');
+      if (!validName(name) || !uniqueName(apps, folderId, name)) return invalid('Use a valid, unique file name.');
+      const file = createFile(apps, folderId, name, kind); return applied({ fileId: file.id });
+    },
+    'win11.files.rename': ({ fileId }, { name }) => {
+      const file = mutable(apps, fileId); if (!file) return stale('This item cannot be renamed.');
+      if (!validName(name) || !uniqueName(apps, file.parentId, name, fileId)) return invalid('Use a valid, unique name.');
+      file.name = name; file.revision++; return applied({ fileId });
+    },
+    'win11.files.copy': ({ fileId }, { folderId, name }) => {
+      const file = liveFile(apps, fileId); if (!file || fileId === 'root' || !folder(apps, folderId)) return stale('Source or destination no longer exists.');
+      if (!validName(name) || !uniqueName(apps, folderId, name) || cycle(apps, fileId, folderId)) return invalid('Destination name conflicts or would create a folder cycle.');
+      const duplicate = (source, parentId, title) => { const descendants = source.kind === 'folder' ? children(apps, source.id) : []; const content = source.content && typeof source.content === 'object' ? JSON.parse(JSON.stringify(source.content)) : source.content; const copy = createFile(apps, parentId, title, source.kind, content); for (const child of descendants) duplicate(child, copy.id, child.name); return copy; };
+      return applied({ fileId: duplicate(file, folderId, name).id });
+    },
+    'win11.files.move': ({ fileId }, { folderId, name }) => {
+      const file = mutable(apps, fileId); if (!file || !folder(apps, folderId)) return stale('Source or destination no longer exists.');
+      if (!validName(name) || !uniqueName(apps, folderId, name, fileId) || cycle(apps, fileId, folderId)) return invalid('Destination name conflicts or would create a folder cycle.');
+      file.parentId = folderId; file.name = name; file.revision++; return applied({ fileId });
+    },
+    'win11.files.trash': ({ fileId }) => { const file = mutable(apps, fileId); if (!file) return stale('This item cannot be deleted.'); file.deleted = true; file.revision++; return applied({ fileId }); },
+    'win11.files.restore': ({ fileId }) => {
+      const file = apps.files.find(item => item.id === fileId && item.deleted); if (!file) return stale('Item is not directly in Recycle Bin.');
+      if (!folder(apps, file.parentId)) return stale('Restore the original parent folder first.');
+      if (!uniqueName(apps, file.parentId, file.name, fileId)) return invalid('An item with that name already exists.');
+      file.deleted = false; file.revision++; return applied({ fileId });
+    },
+  };
+}
+
 export function createCommands(apps, context) {
   const state = apps.explorer;
   const setFolder = id => { state.folderId = id; state.selectedId = null; state.search = ''; state.ui.menu = null; };
@@ -56,34 +94,12 @@ export function createCommands(apps, context) {
     },
     'win11.explorer.view': (_, { view }) => { state.view = view; state.ui.menu = null; return applied(); },
     'win11.explorer.search': (_, { query }) => { state.search = query; state.selectedId = null; return applied(); },
-    'win11.explorer.create': ({ folderId }, { name, kind }) => {
-      if (!folder(apps, folderId)) return stale('Destination folder no longer exists.');
-      if (!validName(name) || !uniqueName(apps, folderId, name)) return invalid('Use a valid, unique file name.');
-      const file = createFile(apps, folderId, name, kind); return applied({ fileId: file.id });
-    },
-    'win11.explorer.rename': ({ fileId }, { name }) => {
-      const file = mutable(apps, fileId); if (!file) return stale('This item cannot be renamed.');
-      if (!validName(name) || !uniqueName(apps, file.parentId, name, fileId)) return invalid('Use a valid, unique name.');
-      file.name = name; file.revision++; return applied({ fileId });
-    },
-    'win11.explorer.copy': ({ fileId }, { folderId, name }) => {
-      const file = liveFile(apps, fileId); if (!file || fileId === 'root' || !folder(apps, folderId)) return stale('Source or destination no longer exists.');
-      if (!validName(name) || !uniqueName(apps, folderId, name) || cycle(apps, fileId, folderId)) return invalid('Destination name conflicts or would create a folder cycle.');
-      const duplicate = (source, parentId, title) => { const descendants = source.kind === 'folder' ? children(apps, source.id) : []; const content = source.content && typeof source.content === 'object' ? JSON.parse(JSON.stringify(source.content)) : source.content; const copy = createFile(apps, parentId, title, source.kind, content); for (const child of descendants) duplicate(child, copy.id, child.name); return copy; };
-      return applied({ fileId: duplicate(file, folderId, name).id });
-    },
-    'win11.explorer.move': ({ fileId }, { folderId, name }) => {
-      const file = mutable(apps, fileId); if (!file || !folder(apps, folderId)) return stale('Source or destination no longer exists.');
-      if (!validName(name) || !uniqueName(apps, folderId, name, fileId) || cycle(apps, fileId, folderId)) return invalid('Destination name conflicts or would create a folder cycle.');
-      file.parentId = folderId; file.name = name; file.revision++; state.selectedId = null; return applied({ fileId });
-    },
-    'win11.explorer.trash': ({ fileId }) => { const file = mutable(apps, fileId); if (!file) return stale('This item cannot be deleted.'); file.deleted = true; file.revision++; state.selectedId = null; return applied({ fileId }); },
-    'win11.explorer.restore': ({ fileId }) => {
-      const file = apps.files.find(item => item.id === fileId && item.deleted); if (!file) return stale('Item is not directly in Recycle Bin.');
-      if (!folder(apps, file.parentId)) return stale('Restore the original parent folder first.');
-      if (!uniqueName(apps, file.parentId, file.name, fileId)) return invalid('An item with that name already exists.');
-      file.deleted = false; file.revision++; state.selectedId = null; return applied({ fileId });
-    },
+    ...Object.fromEntries(Object.entries(createFileCommands(apps)).map(([name, handler]) =>
+      [name.replace('win11.files.', 'win11.explorer.'), (target, payload) => {
+        const result = handler(target, payload);
+        if (result.status === 'applied' && ['move', 'trash', 'restore'].includes(name.split('.')[2])) state.selectedId = null;
+        return result;
+      }])),
     'win11.explorer.properties': ({ fileId }) => {
       const file = apps.files.find(item => item.id === fileId); if (!file || (isTrashed(apps, file) && !file.deleted)) return stale();
       state.ui.dialog = { kind: 'properties', fileId }; state.ui.menu = null; return applied({ fileId });

@@ -16,9 +16,13 @@ export function createWindows11ShellCommands(shell, context) {
     if (result.status === 'applied') dismiss();
     return result;
   };
-  const openFile = (entry) => entry.folderId
-    ? closeAfter('win11.explorer.navigate', { folderId: entry.folderId })
-    : closeAfter('win11.files.open', { fileId: entry.fileId });
+  const openFile = async entry => {
+    const opened = await context.invoke('app.open', { appId: entry.appId }, {});
+    if (opened.status !== 'applied') return opened;
+    return entry.folderId
+      ? closeAfter('win11.explorer.navigate', { folderId: entry.folderId, windowId: opened.target.windowId })
+      : closeAfter('win11.files.open', { fileId: entry.fileId, windowId: opened.target.windowId });
+  };
   const handler = (targetNames, payloadNames, run, optional = []) => async (target, payload) => {
     if (!fields(target, targetNames) || !fields(payload, payloadNames, payloadNames.filter((name) => !optional.includes(name)))) return invalid();
     if (!view()) return rejected('unavailable', 'The Windows desktop is not mounted.');
@@ -71,7 +75,7 @@ export function createWindows11ShellCommands(shell, context) {
     'win11.taskbar.activate': handler(['appId'], [], ({ appId }) => {
       if (typeof appId !== 'string') return invalid();
       if (!app(appId)) return rejected('not_found', 'This app is not represented.');
-      const window = context.getWindows().find((entry) => entry.appId === appId);
+      const window = context.getWindows().findLast(entry => entry.appId === appId);
       if (!window) return closeAfter('app.open', { appId });
       return window.id === context.getActiveWindowId() && !window.minimized
         ? closeAfter('window.setMinimized', { windowId: window.id }, { minimized: true })

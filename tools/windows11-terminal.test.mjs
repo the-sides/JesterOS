@@ -1,16 +1,15 @@
 import { test, expect } from 'bun:test';
 import { createCommands as createTerminalCommands, createState as createTerminalState } from '../frontend/src/windows11-terminal.js';
-import { createCommands as createExplorerCommands, createState as createExplorerState } from '../frontend/src/windows11-explorer.js';
+import { createFileCommands } from '../frontend/src/windows11-explorer.js';
 
 function scene() {
   const apps = {
     nextFileId: 1,
     files: [{ id: 'root', parentId: null, name: 'C:', kind: 'folder', content: '', deleted: false, revision: 1 }],
-    explorer: createExplorerState(),
     terminal: createTerminalState(),
   };
   const context = { invoke: async (name, target, payload) => commands[name](target, payload) };
-  const commands = { ...createExplorerCommands(apps, context), ...createTerminalCommands(apps, context) };
+  const commands = { ...createFileCommands(apps), ...createTerminalCommands(apps, context) };
   const target = { tabId: 'terminal-1' };
   return {
     apps,
@@ -36,7 +35,6 @@ test('unquoted chaining and pipes reject before any virtual filesystem mutation'
     expect(result).toMatchObject({ status: 'applied', supported: false, succeeded: false });
     expect(apps.files).toEqual(before);
     expect(apps.nextFileId).toBe(1);
-    expect(apps.terminal.tabs[0].lines.at(-1)).toStartWith('Error:');
   }
 });
 

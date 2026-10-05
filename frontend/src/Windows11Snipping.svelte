@@ -3,6 +3,7 @@
   let { native, execute } = $props();
   const state = $derived(native.apps.snipping);
   const selection = $derived(state.selection);
+  const paintWindows = $derived(native.applicationWindows.filter(window => window.appId === 'paint'));
   let surfaceHost = $state();
   const send = (command, target = {}, payload = {}) => execute({ command, target, payload });
   function point(e) {
@@ -22,6 +23,7 @@
     <div class="w11-app-toolbar snip-toolbar">
       <button class="new-button" data-control="snipping-new" onclick={() => send('win11.snipping.new')}>+ New</button>
       <span class="scope">Rectangle · Paint canvas only</span>
+      {#if paintWindows.length > 1 || state.sourceWindowId}<label>Paint source<select data-control="snipping-source" value={state.sourceWindowId || ''} onchange={event => send('win11.snipping.source', { sourceWindowId: event.currentTarget.value || null })}><option value="">Choose a Paint window</option>{#each paintWindows as window}<option value={window.windowId}>Paint · {window.windowId}</option>{/each}</select></label>{/if}
       {#if state.phase === 'captured'}<button data-control="snipping-save-dialog" onclick={() => dialog('save')}>Save as…</button>{/if}
       <button data-control="snipping-menu" aria-label="Snipping menu" onclick={() => send('win11.apps.menu', { appId: 'snipping' }, { menu: state.ui.menu ? null : 'snip' })}>···</button>
     </div>

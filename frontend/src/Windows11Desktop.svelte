@@ -3,12 +3,12 @@
   import Windows11Icon from './Windows11Icon.svelte';
   import { windows11DesktopFiles } from './windows11-shell-state.js';
   import './windows11.css';
-  let { profile, children, windows = [], activeWindowId = null, activeApp, viewState, native, execute, registerView, onlayout } = $props();
+  let { profile, children, windows = [], runningAppIds = [], activeWindowId = null, activeApp, viewState, native, execute, registerView, onlayout } = $props();
   const shell = $derived(native.shell);
   const apps = $derived(Object.values(profile.applications));
   const desktopFiles = $derived(windows11DesktopFiles(profile, native.apps));
   const files = $derived(shell.sortByName ? [...desktopFiles].sort((a, b) => a.name.localeCompare(b.name)) : desktopFiles);
-  const taskbarApps = $derived(apps.filter((app) => app.taskbar === 'pinned' || windows.some((window) => window.appId === app.id)));
+  const taskbarApps = $derived(apps.filter((app) => app.taskbar === 'pinned' || runningAppIds.includes(app.id)));
   const results = $derived(apps.filter((app) => app.name.toLowerCase().includes(shell.query.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name)));
   const fileResults = $derived(shell.query ? files.filter((file) => file.name.toLowerCase().includes(shell.query.toLowerCase())) : []);
   const monthLabel = $derived(new Date(Date.UTC(shell.calendar.year, shell.calendar.month, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }));
@@ -20,6 +20,7 @@
   let workspace, root, taskbar;
   let panel = $state(), contextMenu = $state(), properties = $state();
   function request(command, target = {}, payload = {}) { return execute({ command, target, payload }); }
+  function recentWindow(appId) { return windows.findLast(window => window.appId === appId); }
   function togglePanel(panelId) { return shell.panel === panelId ? request('win11.panel.close') : request('win11.panel.open', { panelId }); }
   $effect(() => {
     if (shell.selectedFileId !== null && !files.some((file) => file.id === shell.selectedFileId)) request('win11.desktop.select', { fileId: null });
@@ -182,7 +183,7 @@
     <div class="win11-taskbar-apps" data-keyboard-group data-shell-scroll="taskbar" onscroll={(event) => observeScroll(event, 'taskbar')}>
       <button data-shell-trigger data-shell-control="start-trigger" aria-label="Start" aria-expanded={shell.panel === 'start'} class:active={shell.panel === 'start'} onclick={() => togglePanel('start')}><Windows11Icon name="windows" size={26}/></button>
       <button class="win11-taskbar-search" data-shell-trigger data-shell-control="search-trigger" aria-label="Search" aria-expanded={shell.panel === 'search'} onclick={() => togglePanel('search')}><span aria-hidden="true">⌕</span><span class="win11-search-label">Search</span></button>
-      {#each taskbarApps as app}{@const window = windows.find((window) => window.appId === app.id)}<button class:running={Boolean(window)} class:active={window?.id === activeWindowId && !window?.minimized} class:minimized={window?.minimized} data-app-id={app.id} data-shell-control="taskbar:{app.id}" aria-label="{app.name}{window ? window.minimized ? ' (minimized)' : ' (running)' : ''}" title={app.name} onclick={() => request('win11.taskbar.activate', { appId: app.id })}><Windows11Icon name={app.icon} size={26}/></button>{/each}
+      {#each taskbarApps as app}{@const window = recentWindow(app.id)}<button class:running={runningAppIds.includes(app.id)} class:active={window?.id === activeWindowId && !window?.minimized} class:minimized={window?.minimized} data-app-id={app.id} data-shell-control="taskbar:{app.id}" aria-label="{app.name}{runningAppIds.includes(app.id) ? window?.minimized ? ' (minimized)' : ' (running)' : ''}" title={app.name} onclick={() => request('win11.taskbar.activate', { appId: app.id })}><Windows11Icon name={app.icon} size={26}/></button>{/each}
     </div>
     <div class="win11-system-tray"><button data-shell-trigger data-shell-control="quick-trigger" aria-label="Quick Settings" aria-expanded={shell.panel === 'quick'} onclick={() => togglePanel('quick')}><span aria-hidden="true">{shell.quick.airplane ? '✈' : shell.quick.wifi ? '⌁' : '⊗'} {shell.quick.volume ? '◖♪' : '◖×'}</span></button><button class="win11-clock-trigger" data-shell-trigger data-shell-control="notifications-trigger" aria-label="Notifications and calendar" aria-expanded={shell.panel === 'notifications'} onclick={() => togglePanel('notifications')}><span>{profile.defaults.clockLabel}</span><span>{profile.defaults.dateLabel}</span></button><button class="win11-show-desktop" data-shell-control="show-desktop" aria-label="Show desktop" title="Show desktop" onclick={() => request('win11.desktop.show')}></button></div>
   </footer>

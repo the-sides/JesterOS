@@ -1,6 +1,6 @@
 <script>
   import { pathOf, liveFile } from './windows11-app-helpers.js';
-  let { native, execute } = $props();
+  let { native, execute, windowId } = $props();
   const apps = $derived(native.apps);
   const state = $derived(apps.terminal);
   const tab = $derived(state.tabs.find(item => item.id === state.activeTabId));
@@ -18,13 +18,15 @@
   </div>
   {#if state.ui.menu && !state.ui.dialog}<div class="w11-app-menu dropdown">
     <button data-control="terminal-menu-new" onclick={() => send('win11.terminal.new')}>Windows PowerShell <span>Local</span></button><hr/>
+    <button data-control="terminal-menu-new-window" onclick={() => send('window.create', { appId: 'terminal' })}>New window</button>
+    <button data-control="terminal-menu-exit" onclick={() => send('app.quit', { appId: 'terminal' })}>Exit</button>
     <button data-control="terminal-menu-clear" onclick={() => send('win11.terminal.clear', { tabId: tab.id })}>Clear buffer <span>Ctrl+L</span></button>
     <button data-control="terminal-menu-settings" onclick={() => send('win11.terminal.dialog.open', {}, { kind: 'settings' })}>Settings</button>
     <button data-control="terminal-menu-about" onclick={() => send('win11.terminal.dialog.open', {}, { kind: 'about' })}>About</button>
   </div>{/if}
   {#if tab}<div class="terminal-surface" inert={!!state.ui.dialog}>
     <textarea class="output" data-control="terminal-output" data-area="terminal-output" readonly aria-label="Terminal output" value={tab.lines.join('\n')} spellcheck="false" onscroll={event => send('win11.apps.scroll.observe', { appId: 'terminal', area: 'terminal-output' }, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft })}></textarea>
-    <div class="prompt"><label for="terminal-input">PS {pathOf(apps, tab.cwd)}&gt;</label><textarea id="terminal-input" data-control="terminal-input" data-area="terminal-input" aria-label="Virtual command" rows="1" spellcheck="false" value={tab.input} oninput={event => send('win11.terminal.input', { tabId: tab.id }, { input: event.currentTarget.value })} onkeydown={keys} onscroll={event => send('win11.apps.scroll.observe', { appId: 'terminal', area: 'terminal-input' }, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft })}></textarea><button data-control="terminal-run" aria-label="Run virtual command" disabled={liveFile(apps, tab.cwd)?.kind !== 'folder'} onclick={() => send('win11.terminal.run', { tabId: tab.id })}>↵</button></div>
+    <div class="prompt"><label for={`terminal-input-${windowId}`}>PS {pathOf(apps, tab.cwd)}&gt;</label><textarea id={`terminal-input-${windowId}`} data-control="terminal-input" data-area="terminal-input" aria-label="Virtual command" rows="1" spellcheck="false" value={tab.input} oninput={event => send('win11.terminal.input', { tabId: tab.id }, { input: event.currentTarget.value })} onkeydown={keys} onscroll={event => send('win11.apps.scroll.observe', { appId: 'terminal', area: 'terminal-input' }, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft })}></textarea><button data-control="terminal-run" aria-label="Run virtual command" disabled={liveFile(apps, tab.cwd)?.kind !== 'folder'} onclick={() => send('win11.terminal.run', { tabId: tab.id })}>↵</button></div>
     {#if liveFile(apps, tab.cwd)?.kind !== 'folder'}<p class="cwd-error">Current folder was deleted. Use ＋ to open a new tab at C:.</p>{/if}
   </div>{/if}
   <div class="status">Local virtual filesystem · Enter to run · ↑↓ history · No host shell</div>

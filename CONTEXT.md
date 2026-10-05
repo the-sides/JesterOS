@@ -25,3 +25,17 @@ An individual run of a scene during which actor actions and operator cues change
 
 **Operator cue**:
 An instruction to make a particular change or presentation occur on a puppet screen, such as receiving a message, opening a dialog, or showing a low battery.
+
+**Simulated application**:
+A program depicted inside a scene, with its own fictional records and running state. It can remain running without an open window when the selected OS profile uses that lifecycle.
+_Avoid_: Host process
+
+**Managed window**:
+An individually movable, resizable and closable scene surface belonging to a simulated application. Closing one window is not the same action as quitting its application.
+_Avoid_: App when referring to one of its windows
+
+**Application quit**:
+The scene action that closes an application's windows and ends its running state, subject to any unsaved-document confirmation. It never terminates a host program.
+
+**Active application**:
+The simulated application supplying the foreground menus and application shortcuts. In a macOS scene it can remain active and running after its last window closes.
