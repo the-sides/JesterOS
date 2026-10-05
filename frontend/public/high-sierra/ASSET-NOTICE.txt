@@ -1,0 +1,18 @@
+High Sierra profile artwork provenance and rights
+
+Apple artwork (wallpaper, guide icons and discrete Messages photographs/portraits) remains copyright Apple Inc. and/or the respective rights holders. Public download availability does not grant a redistribution or commercial-production license. No independent open-source license for the Apple artwork is asserted. Obtain appropriate clearance before distributing a commercial prop product or using these assets commercially.
+
+wallpaper.webp: resized/encoded from High Sierra.jpg distributed at https://raw.githubusercontent.com/foxt/macOS-Wallpapers/master/High%20Sierra.jpg . This is a distribution mirror, not the authority for UI research or a grant of rights. Visual identity is supported by Apple's September 25, 2017 High Sierra release photograph: https://www.apple.com/newsroom/2017/09/macos-high-sierra-now-available-as-a-free-update/ . The press media's separate legal notice permits personal/editorial, non-commercial use; this is not a license for every guide image or for the mirrored wallpaper.
+
+icons/safari.png, mail.png, contacts.png, calendar.png, notes.png, messages.png, photos.png, launchpad.png and settings.png: Apple Help image assets linked by the respective version-selected macOS High Sierra 10.13 guides. Individual URLs are recorded in docs/high-sierra-profile.md.
+The opaque white guide surrounds in launchpad.png/settings.png are made transparent with a 2% edge-connected flood fill; enclosed icon artwork is retained. This local adaptation is not a claim of exact installer bytes.
+
+messages/*.png: discrete content crops from Apple's Messages Help 11.0 screenshot selected for macOS High Sierra 10.13, https://help.apple.com/assets/5A540238680CE27D670ECE25/5A540239680CE27D670ECE2C/en_US/f2c77ee0cd2951b6636c60051623f5ad.png . No whole window or desktop screenshot is shipped as a runtime interface.
+
+icons/finder.png: existing pre-Big-Sur Apple artwork mirrored by YaxinCheng/macOS10icons, which identifies Catalina 10.15.5. Exact High Sierra icon-byte equivalence is not established; period Finder icon silhouette is corroborated by Apple's 10.13 Finder guide. The mirror software license is retained in icons/MACOS10ICONS-LICENSE.txt; it does not independently license Apple's artwork.
+
+icons/folder.png: existing Yosemite-family asset from lgarron/folderify v2.4.2, whose version selection covers macOS 10.10–10.15. Software notice retained in icons/FOLDERIFY-LICENSE.txt; not independent clearance of Apple's artwork.
+
+icons/drive.svg, pdf.svg and trash.svg are existing project illustrations, not original Apple system icon files. Downloads and date-aware Calendar overlays and the Siri/Tapback glyphs are reconstructed DOM/SVG in the profile views.
+
+Fonts are reused unchanged from /fonts with their existing SIL Open Font License 1.1 notices. San Francisco is not bundled. Browser-native Apple system fonts are preferred only on Apple platforms; Inter and Liberation Sans are disclosed cross-platform approximations.

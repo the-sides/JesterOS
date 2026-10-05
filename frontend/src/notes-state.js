@@ -1,39 +1,40 @@
 const SCENE_TIME = Date.UTC(2018, 8, 24, 17, 0);
 
-export function createNotesState() {
+export function createNotesState(timeBase = SCENE_TIME) {
   return {
+    timeBase,
     notes: [
       {
         id: 'note-1',
         text: 'Camping trip\nLeave Friday after lunch and drive up to the lake.\n\nBring the tent, sleeping bags, a lantern, and the little camp stove. Check the weather before we go.\n\nMeet Emma at the trailhead at 3:00. She is bringing coffee and the map.',
         pinned: true,
         deleted: false,
-        createdAt: SCENE_TIME,
-        updatedAt: SCENE_TIME + 42 * 60 * 1000,
+        createdAt: timeBase,
+        updatedAt: timeBase + 42 * 60 * 1000,
       },
       {
         id: 'note-2',
         text: 'Photography spots\nThe old pier at sunrise.\nThe overlook above the lake, just before sunset.\nThe trail through the birch trees if the leaves have started turning.\n\nPack the 35mm lens, a spare battery, and the tripod.',
         pinned: false,
         deleted: false,
-        createdAt: SCENE_TIME + 5 * 60 * 1000,
-        updatedAt: SCENE_TIME + 35 * 60 * 1000,
+        createdAt: timeBase + 5 * 60 * 1000,
+        updatedAt: timeBase + 35 * 60 * 1000,
       },
       {
         id: 'note-3',
         text: 'Shopping list\nApples\nBread and cheese\nCoffee\nTrail mix\nMarshmallows\nMatches\n\nPick everything up on Thursday evening.',
         pinned: false,
         deleted: false,
-        createdAt: SCENE_TIME + 10 * 60 * 1000,
-        updatedAt: SCENE_TIME + 20 * 60 * 1000,
+        createdAt: timeBase + 10 * 60 * 1000,
+        updatedAt: timeBase + 20 * 60 * 1000,
       },
       {
         id: 'note-4',
         text: 'Old packing list\nRain jacket\nExtra socks\nWater bottles\n\nCopied these into the camping note.',
         pinned: false,
         deleted: true,
-        createdAt: SCENE_TIME + 2 * 60 * 1000,
-        updatedAt: SCENE_TIME + 30 * 60 * 1000,
+        createdAt: timeBase + 2 * 60 * 1000,
+        updatedAt: timeBase + 30 * 60 * 1000,
       },
     ],
     selectedId: 'note-1',
@@ -68,7 +69,7 @@ export function visibleNotes(state) {
 }
 
 function nextTimestamp(state) {
-  return state.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), SCENE_TIME) + 1;
+  return state.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), state.timeBase) + 1;
 }
 
 function reconcileSelection(state, fallbackIndex = 0) {

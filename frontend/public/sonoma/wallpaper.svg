@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2560 1600" width="2560" height="1600" role="img" aria-labelledby="title desc" preserveAspectRatio="xMidYMid slice">
+  <title id="title">Sonoma flowing hills — original reconstruction</title>
+  <desc id="desc">Independently drawn green and orange flowing hills with a blue-violet sky, using Apple's September 26, 2023 Sonoma desktop photograph as visual evidence. This is not the Apple wallpaper file, a screenshot, or a dynamic aerial wallpaper.</desc>
+  <metadata>SPDX-License-Identifier: CC0-1.0; original authored vector geometry only. Provenance and rights limitations: /sonoma/asset-provenance.json.</metadata>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2=".6"><stop stop-color="#ff685c"/><stop offset=".3" stop-color="#c777ac"/><stop offset=".63" stop-color="#807aec"/><stop offset="1" stop-color="#4e5ce0"/></linearGradient>
+    <linearGradient id="blueFar" x1=".35" y1="0" x2="1" y2="1"><stop stop-color="#a2a2ff"/><stop offset=".5" stop-color="#8285fd"/><stop offset="1" stop-color="#6561ed"/></linearGradient>
+    <linearGradient id="blueNear" x1=".35" y1="0" x2="1" y2="1"><stop stop-color="#c49ce5"/><stop offset=".5" stop-color="#8980fb"/><stop offset="1" stop-color="#6962e9"/></linearGradient>
+    <linearGradient id="coral" x1=".12" y1=".1" x2=".94" y2=".85"><stop stop-color="#ff704f"/><stop offset=".43" stop-color="#ff635c"/><stop offset=".72" stop-color="#e56c87"/><stop offset="1" stop-color="#9e6dc1"/></linearGradient>
+    <linearGradient id="orange" x1=".08" y1=".15" x2=".95" y2=".85"><stop stop-color="#ff8748"/><stop offset=".32" stop-color="#fa6948"/><stop offset=".56" stop-color="#d37840"/><stop offset=".84" stop-color="#85823f"/><stop offset="1" stop-color="#63912d"/></linearGradient>
+    <linearGradient id="backHill" x1=".8" y1="0" x2=".2" y2="1"><stop stop-color="#5a9626"/><stop offset=".23" stop-color="#26772c"/><stop offset=".55" stop-color="#005b2e"/><stop offset="1" stop-color="#478008"/></linearGradient>
+    <linearGradient id="rightHill" x1="1" y1="0" x2=".5" y2="1"><stop stop-color="#95bd1d"/><stop offset=".5" stop-color="#679d1d"/><stop offset="1" stop-color="#0c652d"/></linearGradient>
+    <linearGradient id="greenOne" x1="0" y1=".3" x2=".85" y2=".8"><stop stop-color="#5e9409"/><stop offset=".25" stop-color="#82b71a"/><stop offset=".55" stop-color="#387d17"/><stop offset="1" stop-color="#0b672f"/></linearGradient>
+    <linearGradient id="greenTwo" x1="0" y1=".3" x2="1" y2=".8"><stop stop-color="#91ba26"/><stop offset=".28" stop-color="#75ad14"/><stop offset=".53" stop-color="#489213"/><stop offset="1" stop-color="#1a7130"/></linearGradient>
+    <linearGradient id="greenThree" x1=".03" y1=".4" x2=".9" y2=".8"><stop stop-color="#b3d83e"/><stop offset=".25" stop-color="#82b91c"/><stop offset=".5" stop-color="#5ca119"/><stop offset="1" stop-color="#438d1e"/></linearGradient>
+    <linearGradient id="greenFour" x1=".05" y1=".3" x2=".9" y2="1"><stop stop-color="#c8e94a"/><stop offset=".28" stop-color="#94c71b"/><stop offset=".58" stop-color="#72b017"/><stop offset="1" stop-color="#76b916"/></linearGradient>
+    <linearGradient id="greenFive" x1=".1" y1=".15" x2=".85" y2="1"><stop stop-color="#d2ec58"/><stop offset=".24" stop-color="#a1d32b"/><stop offset=".57" stop-color="#83c21c"/><stop offset="1" stop-color="#a1d923"/></linearGradient>
+    <linearGradient id="greenFront" x1=".25" y1="0" x2=".7" y2="1"><stop stop-color="#c1e543"/><stop offset=".42" stop-color="#98d327"/><stop offset="1" stop-color="#85c51b"/></linearGradient>
+    <radialGradient id="sunlight" cx=".27" cy=".9" r=".65"><stop stop-color="#cff144" stop-opacity=".25"/><stop offset="1" stop-color="#9fca2f" stop-opacity="0"/></radialGradient>
+  </defs>
+  <path fill="url(#sky)" d="M0 0H2560V1600H0Z"/>
+  <path fill="url(#blueFar)" d="M1240 0C1550 130 1780 222 2070 335C2280 416 2450 575 2560 711V0Z"/>
+  <path fill="url(#blueNear)" d="M490 0C968 83 1330 264 1760 478C2110 652 2365 836 2560 819V709C2360 524 2140 405 1900 322C1430 161 1220 40 1020 0Z"/>
+  <path fill="url(#coral)" d="M0 29C424 58 672 137 951 286C1334 490 1498 695 1850 864C2140 1000 2364 927 2560 676V1100H0Z"/>
+  <path fill="url(#orange)" d="M0 326C325 360 550 423 830 504C1170 604 1510 794 1810 943C2100 1087 2310 976 2560 859V1300H0Z"/>
+  <path fill="url(#rightHill)" d="M2560 679C2396 860 2212 964 1980 927C1700 882 1380 710 1140 647C1550 894 1900 1080 2250 1088C2380 1090 2460 1037 2560 1017Z"/>
+  <path fill="url(#backHill)" d="M0 391C419 471 824 594 1230 808C1510 956 1700 1130 2030 1147C2270 1160 2440 1050 2560 951V1600H0Z"/>
+  <path fill="url(#greenOne)" d="M0 948C210 892 355 907 531 964C774 1043 918 1155 1142 1172C1430 1194 1617 1103 1874 1190C2070 1256 2340 1316 2560 1260V1600H0Z"/>
+  <path fill="url(#greenTwo)" d="M0 1076C158 940 401 970 594 1023C798 1080 875 1203 1120 1225C1420 1252 1680 1149 2010 1260C2210 1327 2430 1379 2560 1369V1600H0Z"/>
+  <path fill="url(#greenThree)" d="M0 1260C127 1026 362 1010 558 1082C768 1159 848 1269 1075 1294C1370 1327 1713 1256 1990 1332C2240 1400 2450 1440 2560 1442V1600H0Z"/>
+  <path fill="url(#greenFour)" d="M0 1428C169 1335 235 1096 480 1135C707 1171 784 1341 1046 1359C1330 1378 1577 1320 1875 1383C2130 1437 2320 1528 2560 1511V1600H0Z"/>
+  <path fill="url(#greenFive)" d="M176 1600C246 1400 330 1205 513 1219C705 1235 799 1396 1030 1407C1220 1417 1334 1397 1496 1415C1830 1452 2090 1600 2560 1570V1600Z"/>
+  <path fill="url(#greenFront)" d="M625 1600C674 1416 805 1337 943 1373C1100 1414 1160 1469 1338 1473C1610 1478 1980 1600 2300 1600Z"/>
+  <path fill="url(#sunlight)" d="M0 0H2560V1600H0Z"/>
+</svg>

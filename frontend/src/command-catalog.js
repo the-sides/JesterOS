@@ -1,7 +1,7 @@
 import { DEFAULT_PROFILE_ID } from './os-profiles.js';
 
 export const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
-const MOJAVE = DEFAULT_PROFILE_ID;
+const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
 const NONE = [];
 const EMPTY_PROPERTIES = {};
 const text = { type: 'string' };
@@ -44,7 +44,7 @@ function define(name, capability, target, payload, requires, presentation, data 
   };
   if (rules.length) requestSchema.allOf = rules;
   return [name, {
-    profiles: [MOJAVE], capability, requestSchema, requires,
+    profiles: MAC_PROFILES, capability, requestSchema, requires,
     effects: { data, presentation }, completion,
     resultSchema: {
       ...object({ status: { const: 'applied' }, requestId: identity, target: resultTarget }, ['status', 'target']),
@@ -54,6 +54,11 @@ function define(name, capability, target, payload, requires, presentation, data 
 }
 
 export const commandCatalog = Object.fromEntries([
+  define('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
+    ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],
+    ['A different profile disposes the old native scene and mounts a fresh native shell; the stable public API follows it.'],
+    ['A different profile resets fictional application records and all window/menu/focus/scroll state.'], NONE,
+    object({ profileId: identity })),
   define('app.open', 'shell.apps', object({ appId: identity }), object({ title: text }, NONE),
     ['appId is in targets.applications; workspace dimensions are available.'],
     ['Open/restore, activate and stack the window; optional contextual title; focus its root.'], NONE, NONE,
@@ -82,7 +87,7 @@ export const commandCatalog = Object.fromEntries([
   define('desktop.open', 'shell.apps', object({ fileId: identity }), empty,
     ['fileId is in targets.desktopFiles; app.open requirements also apply.'],
     ['Open the registered app with the file contextual title through app.open.'], NONE, NONE,
-    object({ appId: identity, windowId: identity })),
+    object({ appId: identity, windowId: identity, fileId: identity })),
   define('desktop.focus', 'shell.desktop', empty, empty, NONE,
     ['Clear selection and active window, dismiss menus, blur managed-window controls.']),
   define('desktop.focusControl', 'shell.desktop', { oneOf: [

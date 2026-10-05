@@ -1,0 +1,1152 @@
+{
+  "schemaVersion": 1,
+  "profile": {
+    "os": "macOS",
+    "release": "Sonoma",
+    "version": "14.0",
+    "releaseDate": "2023-09-26",
+    "appearance": "light",
+    "assetClass": "original-vector-reconstructions"
+  },
+  "researchDate": "2026-10-05",
+  "scope": "Only local artwork assets; no source files, screenshot-based app views, remote runtime fetches, Apple extracted binaries, third-party icon collections, or Apple fonts.",
+  "license": {
+    "spdx": "CC0-1.0",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "localNotice": "/sonoma/LICENSE.txt",
+    "appliesTo": "Newly authored SVG geometry and provenance text only, to the extent the contributors hold rights in that expression.",
+    "appleRights": "Apple retains all rights in Apple-owned reference imagery, icon identities, trademarks and trade dress. No Apple license or permission was obtained, and this dedication does not grant those rights.",
+    "legalUncertainty": "Independent SVG authorship is not a legal determination of non-infringement. A reconstruction can still implicate third-party rights. Do not describe these as official, Apple-licensed, or fully rights-cleared assets.",
+    "affiliation": "JesterOS is independent and has not been authorized, sponsored, or otherwise approved by Apple Inc."
+  },
+  "sourceAvailability": {
+    "actualWallpaper": "The green/orange abstract design is visible in Apple’s dated September 26, 2023 Newsroom desktop image. The article exposes press-image JPG/ZIP downloads, not a standalone original wallpaper HEIC or SVG.",
+    "standaloneAppleWallpaper": "No standalone Apple-hosted freely redistributable abstract Sonoma wallpaper file was established from the consulted Apple sources. This is a bounded research finding, not a claim that no such file exists.",
+    "icons": "Apple’s version-selected Sonoma 14 guide supplies individual icon PNG URLs and a Launchpad screenshot. Those URLs are reference evidence only, not packaged or fetched at runtime.",
+    "redistribution": "Public download availability is not permission to relicense or redistribute. Apple’s rights-and-permissions page invites requests; its copyright/trademark guidelines reserve rights. The Sonoma SLA sections 1A, 1C, 2J and 4B do not establish an independent asset redistribution grant.",
+    "decision": "Package original manually authored vector reconstructions, not downloaded or cropped Apple imagery."
+  },
+  "sources": [
+    {
+      "id": "release-newsroom",
+      "url": "https://www.apple.com/newsroom/2023/09/macos-sonoma-is-available-today/",
+      "publisher": "Apple",
+      "published": "2023-09-26",
+      "evidence": "Sonoma released on September 26, 2023; desktop and Dock imagery; separate aerial screen saver feature."
+    },
+    {
+      "id": "release-widgets-image",
+      "url": "https://www.apple.com/newsroom/images/2023/09/macos-sonoma-is-available-today/article/Apple-macOS-Sonoma-Widgets_big.jpg.large.jpg",
+      "parent": "https://www.apple.com/newsroom/2023/09/macos-sonoma-is-available-today/",
+      "published": "2023-09-26",
+      "visuallyInspected": true,
+      "evidence": "Blue-violet upper-right, orange/coral flowing middle, forest green backdrop, bright green nested foreground ridges; light translucent Dock and app identities."
+    },
+    {
+      "id": "announcement-newsroom",
+      "url": "https://www.apple.com/newsroom/2023/06/macos-sonoma-brings-new-capabilities-for-elevating-productivity-and-creativity/",
+      "publisher": "Apple",
+      "published": "2023-06-05",
+      "evidence": "Corroborating early Sonoma desktop art; preview evidence is secondary to release-date image."
+    },
+    {
+      "id": "sonoma-launchpad",
+      "url": "https://support.apple.com/guide/mac-help/open-apps-with-launchpad-mh35840/14.0/mac/14.0",
+      "publisher": "Apple Support",
+      "selectedVersion": "macOS Sonoma 14",
+      "published": null,
+      "evidence": "Launchpad screenshot and multicolor-grid Launchpad icon, rounded app icons.",
+      "uncertainty": "Version-selected page has no explicit original publication date. It is macOS 14 evidence, not proof every supplied icon pixel exactly matches 14.0 on release day."
+    },
+    {
+      "id": "sonoma-launchpad-image",
+      "url": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/e6a0736eab0c4d80207dc05edec9a3cd.png",
+      "parent": "https://support.apple.com/guide/mac-help/open-apps-with-launchpad-mh35840/14.0/mac/14.0",
+      "visuallyInspected": true,
+      "evidence": "Main application icon colors and silhouettes, system-settings gear, Dock Downloads and Trash; only viewed as research."
+    },
+    {
+      "id": "sonoma-bundled-apps",
+      "url": "https://support.apple.com/guide/mac-help/apps-on-your-mac-mchl110b00b7/14.0/mac/14.0",
+      "publisher": "Apple Support",
+      "selectedVersion": "macOS Sonoma 14",
+      "published": null,
+      "evidence": "Named built-in applications/utilities and linked individual icon images.",
+      "uncertainty": "No explicit dated September 2023 publication or exact 14.0 binary identity is asserted."
+    },
+    {
+      "id": "sonoma-open-apps",
+      "url": "https://support.apple.com/guide/mac-help/open-apps-mchlp1014/14.0/mac/14.0",
+      "publisher": "Apple Support",
+      "selectedVersion": "macOS Sonoma 14",
+      "evidence": "Finder and Launchpad icon reference URLs."
+    },
+    {
+      "id": "apple-permissions",
+      "url": "https://www.apple.com/legal/contact/rights-permissions.html",
+      "publisher": "Apple Legal",
+      "evidence": "Permission request process for Apple copyrighted material in third-party works."
+    },
+    {
+      "id": "apple-guidelines",
+      "url": "https://www.apple.com/legal/intellectual-property/guidelinesfor3rdparties.html",
+      "publisher": "Apple Legal",
+      "evidence": "Apple-owned icons and images are not granted a general reuse license; no implied grant beyond expressly allowed uses."
+    },
+    {
+      "id": "sonoma-sla",
+      "url": "https://www.apple.com/legal/sla/docs/macOSSonoma.pdf",
+      "publisher": "Apple Legal",
+      "version": "macOS Sonoma",
+      "evidence": "Sections 1A/1C reserve ownership/content rights; 2J restricts redistribution; 4B addresses separated components."
+    }
+  ],
+  "wallpaper": {
+    "path": "/sonoma/wallpaper.svg",
+    "mimeType": "image/svg+xml",
+    "viewBox": [
+      0,
+      0,
+      2560,
+      1600
+    ],
+    "kind": "original-svg-reconstruction",
+    "sourceIds": [
+      "release-widgets-image",
+      "sonoma-launchpad-image"
+    ],
+    "creation": "Manually authored Bézier hill shapes and gradients; no traced paths, embedded raster bytes, extracted system assets or screenshot crops.",
+    "fidelity": "Evidence-based color and silhouette reconstruction, not pixel-identical original Apple wallpaper.",
+    "limitations": [
+      "Static light-appearance abstract wallpaper only.",
+      "No aerial video, dynamic time-of-day HEIC layers, device bezel, widgets, Dock, menus or application screenshot content.",
+      "Exact hill geometry, gradient samples, crop and color-management are approximate."
+    ]
+  },
+  "icons": {
+    "finder": {
+      "path": "/sonoma/icons/finder.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Finder",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Two-tone blue smiling face; asymmetric split",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/058e4af8e726290f491044219d2eee73.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "launchpad": {
+      "path": "/sonoma/icons/launchpad.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Launchpad",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Nine multicolored tiles on silver-white rounded field",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/a1f94c9ca0de21571b88a8bf9aef36b8.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "safari": {
+      "path": "/sonoma/icons/safari.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Safari",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Blue compass dial, fine ticks, red and white diagonal needle",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/6846073fc6f766d1ad3f66ae757c5e24.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "messages": {
+      "path": "/sonoma/icons/messages.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Messages",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White conversation bubble on green",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/ae8d596d44d76eddfb1ea9eb4772e949.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "mail": {
+      "path": "/sonoma/icons/mail.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Mail",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Folded white envelope on blue",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/fcdf74cf8457ce188a2aaa7cf1293c83.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "facetime": {
+      "path": "/sonoma/icons/facetime.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "FaceTime",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White video camera on green",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/b656dd5c27c0cd7b9f23fe70c352f8b6.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "photos": {
+      "path": "/sonoma/icons/photos.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Photos",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Eight overlapping colored flower petals on white",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/f1e225cbd2d09efe77ff8d1f7aaecc6d.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "maps": {
+      "path": "/sonoma/icons/maps.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Maps",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Green map, yellow road, blue highway, navigation marker",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/f879e8fec1cd7c4dfe20ca5fe0572a12.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "calendar": {
+      "path": "/sonoma/icons/calendar.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Calendar",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Red month header above black day on white; SEP 26 is an authored release-date fixture",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/2162f7d3de310d2b3503c0bbebdc3d56.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels.",
+      "deviation": "SEP 26 is an authored release-date fixture. Apple’s reference screenshots show June 5 or September 12, not a fixed September 26 icon."
+    },
+    "contacts": {
+      "path": "/sonoma/icons/contacts.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Contacts",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Tan address book with person silhouette and colored tabs",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/a670c614e3fc9faf6630d318e516ea04.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "reminders": {
+      "path": "/sonoma/icons/reminders.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Reminders",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Three colored circular bullets and gray checklist lines",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/8ca5aebba48318eecc07e5a6b9641293.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "notes": {
+      "path": "/sonoma/icons/notes.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Notes",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Yellow header above ruled white notepad",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/c3bda5a343373a897a1b6c805a212dab.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "music": {
+      "path": "/sonoma/icons/music.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Music",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White paired musical notes on pink-red",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/644303d199b1bf61827a5854ae4867f8.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "podcasts": {
+      "path": "/sonoma/icons/podcasts.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Podcasts",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White broadcast rings and person on purple",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/3f055dd5ef78a798d0e127b1d69a2e68.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "tv": {
+      "path": "/sonoma/icons/tv.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "TV",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White tv lettering on charcoal; Apple silhouette deliberately omitted",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/0d1fdd38d3aed20932fbc868af8ccc2e.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels.",
+      "deviation": "No Apple logo shape; generic tv letters preserve category without copying the Apple silhouette."
+    },
+    "appstore": {
+      "path": "/sonoma/icons/appstore.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "App Store",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Three white rounded construction strokes forming an A on blue",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/5f24dec3b0c6420e53f224e84a5fee30.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "settings": {
+      "path": "/sonoma/icons/settings.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "System Settings",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Concentric metal gear on silver",
+      "sourceIds": [
+        "release-widgets-image",
+        "sonoma-launchpad-image"
+      ],
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "books": {
+      "path": "/sonoma/icons/books.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Books",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White open book on orange",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/94b5a3886b33ec6f8b7ad7efd07b56ae.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "preview": {
+      "path": "/sonoma/icons/preview.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Preview",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Mountain photograph with tilted loupe",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/530c85a3f10678e47ca4a56f0a580b22.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "textedit": {
+      "path": "/sonoma/icons/textedit.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "TextEdit",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Ruled paper with diagonal blue fountain pen",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/08b70e5eef958aa12cfe3ab768b67185.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "quicktime": {
+      "path": "/sonoma/icons/quicktime.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "QuickTime Player",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Cyan Q ring on deep charcoal",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/2aeda3c210fd8aaf1cab3736c9752a77.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "calculator": {
+      "path": "/sonoma/icons/calculator.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Calculator",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Silver case, black inset, gray keys and orange right column",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/8609f3881a3466dadc0e901c4a33adff.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "terminal": {
+      "path": "/sonoma/icons/terminal.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Terminal",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Black command window, white chevron and cursor",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/20f5edbfdfa0bd8ad4c4c6452e5b6761.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "activitymonitor": {
+      "path": "/sonoma/icons/activitymonitor.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Activity Monitor",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Dark graph grid with green heartbeat trace",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/da3aceff665ee54d1838628bf545507b.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "diskutility": {
+      "path": "/sonoma/icons/diskutility.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Disk Utility",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Stethoscope with silver disk mechanism",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/f77bef81794f5b467f75cbe202ec7a2c.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "fontbook": {
+      "path": "/sonoma/icons/fontbook.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Font Book",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Four varied black letterforms on pale silver",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/c919e2741b3563b2fbc6519a0615f1d4.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "shortcuts": {
+      "path": "/sonoma/icons/shortcuts.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Shortcuts",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Two interlocking gradient diamonds on indigo",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/e998428c17dc9602e61491f80f11ca40.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "weather": {
+      "path": "/sonoma/icons/weather.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Weather",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White cloud overlapping yellow sun on blue",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/08a5e66385ef6efa78dbe43115331918.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "clock": {
+      "path": "/sonoma/icons/clock.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Clock",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White analog face with black numerals and orange seconds hand",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/28245a95ab08d1dd691a32a3294f90b2.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "stocks": {
+      "path": "/sonoma/icons/stocks.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Stocks",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White market trace and vertical blue marker on dark grid",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/0bb7270754a9615f833d1630618135a8.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "home": {
+      "path": "/sonoma/icons/home.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Home",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Nested golden house with white inner house",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/0c2b91571d62462611a69a7fa04fef23.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "voice-memos": {
+      "path": "/sonoma/icons/voice-memos.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Voice Memos",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Red and white vertical waveform on charcoal",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/c27c65b1266d94bf2a93a29bfed0578a.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "chess": {
+      "path": "/sonoma/icons/chess.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Chess",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Black-and-white checkerboard with golden knight",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/6c0ab0300f48f433f13162c712e25e7a.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "imagecapture": {
+      "path": "/sonoma/icons/imagecapture.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Image Capture",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Contact sheet behind metallic camera and blue glass lens",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/c37a2cc7d8fed1e15cbd5ba72534b487.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "screenshot": {
+      "path": "/sonoma/icons/screenshot.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Screenshot",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Dark camera inside four rounded crop corners",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/89b79bf63f352658f42bc56695b5e0aa.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "stickies": {
+      "path": "/sonoma/icons/stickies.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Stickies",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Layered yellow note with folded corner and handwritten mark",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/b1a062da8db4825f16eff311d5b2cbe4.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "dictionary": {
+      "path": "/sonoma/icons/dictionary.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Dictionary",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Red-brown bound book with Aa serif letters",
+      "sourceIds": [
+        "sonoma-bundled-apps"
+      ],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/b700ca8e665fbec557cbe334dc3af127.png",
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "folder": {
+      "path": "/sonoma/icons/folder.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Folder",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Light-blue tabbed folder",
+      "sourceIds": [
+        "release-widgets-image",
+        "sonoma-launchpad-image"
+      ],
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "downloads": {
+      "path": "/sonoma/icons/downloads.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Downloads",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Light-blue folder with inset downward arrow",
+      "sourceIds": [
+        "release-widgets-image",
+        "sonoma-launchpad-image"
+      ],
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "trash": {
+      "path": "/sonoma/icons/trash.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Trash",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Tapered translucent wire-mesh wastebasket",
+      "sourceIds": [
+        "release-widgets-image",
+        "sonoma-launchpad-image"
+      ],
+      "fidelity": "Evidence-based identity and color reconstruction; independently chosen geometry and simplified material/shading, not original Apple pixels."
+    },
+    "document": {
+      "path": "/sonoma/icons/document.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Document",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White folded-corner sheet with text lines",
+      "sourceIds": [],
+      "fidelity": "Generic independently drawn file/disk illustration; not verified against a dated Apple 14.0 asset."
+    },
+    "pdf": {
+      "path": "/sonoma/icons/pdf.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "PDF document",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Folded-corner document with red PDF badge; generic file-type indicator",
+      "sourceIds": [],
+      "fidelity": "Generic independently drawn file/disk illustration; not verified against a dated Apple 14.0 asset."
+    },
+    "drive": {
+      "path": "/sonoma/icons/drive.svg",
+      "mimeType": "image/svg+xml",
+      "viewBox": [
+        0,
+        0,
+        128,
+        128
+      ],
+      "name": "Disk",
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Silver hard disk with circular platter and status light",
+      "sourceIds": [],
+      "fidelity": "Generic independently drawn file/disk illustration; not verified against a dated Apple 14.0 asset."
+    },
+    "automator": {
+      "path": "/sonoma/icons/automator.svg",
+      "name": "Automator",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Silver robot with cyan eye and diagonal metallic pipeline",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/6cf1a0082e31a3588783d2fb062dccdc.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "findmy": {
+      "path": "/sonoma/icons/findmy.svg",
+      "name": "Find My",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Green radar circle with blue search wedge and central location dot",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/ddc731cb860939a83b0e2dd2ae548257.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "freeform": {
+      "path": "/sonoma/icons/freeform.svg",
+      "name": "Freeform",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Cyan rectangle, orange circle and dark flowing hand-drawn stroke on white",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/6995e148c827c092658dff889beaddc6.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "news": {
+      "path": "/sonoma/icons/news.svg",
+      "name": "News",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Red-pink diagonal ribbon and corner shapes forming an N on white",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/8b2faf2896ddbe5a133b5a779db6f2bd.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "photobooth": {
+      "path": "/sonoma/icons/photobooth.svg",
+      "name": "Photo Booth",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Stacked portrait prints and large multicolor camera lens on red",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/196d2cc648205216e3c1ac1e63b7d92a.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "airport": {
+      "path": "/sonoma/icons/airport.svg",
+      "name": "AirPort Utility",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Blue Wi-Fi arcs inside white circular medallion on cyan-blue",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/cca4bb07eee771edd74f56b5770d1c25.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "audiomidi": {
+      "path": "/sonoma/icons/audiomidi.svg",
+      "name": "Audio MIDI Setup",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Black synthesizer case with white piano keys and inset controls",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/63bf47fd32c7a2193b961b3799740400.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "bluetooth-exchange": {
+      "path": "/sonoma/icons/bluetooth-exchange.svg",
+      "name": "Bluetooth File Exchange",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "White angular Bluetooth rune on bright blue",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/b47184a43de10600799ab7ccee113362.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels.",
+      "rightsNote": "Bluetooth symbol rights are not granted by the CC0 dedication of authored geometry."
+    },
+    "bootcamp": {
+      "path": "/sonoma/icons/bootcamp.svg",
+      "name": "Boot Camp Assistant",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Gray-blue tilted diamond panes behind silver hard drive",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/ef123bfd86912dfe8cc77bd7141fa9b5.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "colorsync": {
+      "path": "/sonoma/icons/colorsync.svg",
+      "name": "ColorSync Utility",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Crossed silver wrench and dark screwdriver behind circular color wheel on spectrum field",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/0c8ac6d3d68817be10a220c696e567d4.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "console": {
+      "path": "/sonoma/icons/console.svg",
+      "name": "Console",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Black monitor face with yellow monospaced warning and timestamp",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/b053419c571a9c91c43bd8e2f8b13b84.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "digitalcolor": {
+      "path": "/sonoma/icons/digitalcolor.svg",
+      "name": "Digital Color Meter",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Color sample ring with angled red-tipped eyedropper on red",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/29409d8b27bf54297f2329d6b1e94685.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "dvdplayer": {
+      "path": "/sonoma/icons/dvdplayer.svg",
+      "name": "DVD Player",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Iridescent optical disc overlapping silver rounded tile",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/5cc27e8782100e8ff7c5ecf10635185f.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "grapher": {
+      "path": "/sonoma/icons/grapher.svg",
+      "name": "Grapher",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Curving rainbow plot surface over pale three-dimensional graph grid",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/df49f4c52b8250ed4c538012b42b51d2.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "keychain": {
+      "path": "/sonoma/icons/keychain.svg",
+      "name": "Keychain Access",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Three metallic keys on oval keyring against dark charcoal",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/a7cf9b42a4eb346015f47a47546a61a2.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "migration": {
+      "path": "/sonoma/icons/migration.svg",
+      "name": "Migration Assistant",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Overlapping gray and blue smiling faces with blue transfer arrow",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/205687dafead954d8cf2877bdfd62997.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "printcenter": {
+      "path": "/sonoma/icons/printcenter.svg",
+      "name": "Print Center",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Dark printer with white output sheet and light status lamp on white",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/9c032c11c77b69bd4f4215058c40eaf9.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "screensharing": {
+      "path": "/sonoma/icons/screensharing.svg",
+      "name": "Screen Sharing",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Blue-violet monitor with dark person silhouette at lower right",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/75904e3ad0d3cd8073944829502f1000.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "scripteditor": {
+      "path": "/sonoma/icons/scripteditor.svg",
+      "name": "Script Editor",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Outlined curled script page behind diagonal dark fountain pen on white",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/38c73aa786484e6ecb62265ed0b27864.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "systeminformation": {
+      "path": "/sonoma/icons/systeminformation.svg",
+      "name": "System Information",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Silver measuring divider above dark integrated circuit on white",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/62dc564e68aa6ca52069601e2d0d8d0e.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    },
+    "voiceover": {
+      "path": "/sonoma/icons/voiceover.svg",
+      "name": "VoiceOver Utility",
+      "mimeType": "image/svg+xml",
+      "viewBox": [0, 0, 128, 128],
+      "kind": "original-svg-reconstruction",
+      "visualIdentity": "Dark accessibility person inside ring with overlapping speaker medallion on silver",
+      "sourceIds": ["sonoma-bundled-apps"],
+      "referenceImage": "https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/f42fd673142b8a42bce0ce0bf1da489d.png",
+      "referenceVisuallyInspected": true,
+      "fidelity": "Independently drawn geometry and simplified materials; Sonoma 14 identity evidence, not exact release-day Apple pixels."
+    }
+  },
+  "verification": {
+    "executed": [],
+    "note": "No builds, tests, linters, formatters, runtime networking, commits or rendered asset smoke checks were performed by this worker."
+  }
+}

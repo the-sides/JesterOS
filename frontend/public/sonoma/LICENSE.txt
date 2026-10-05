@@ -1,0 +1,11 @@
+Original JesterOS Sonoma SVG artwork and asset-provenance text
+SPDX-License-Identifier: CC0-1.0
+
+To the extent possible under law, the contributors who authored this original SVG geometry and provenance text waive copyright and related rights in their contributions under the CC0 1.0 Universal Public Domain Dedication.
+
+Dedication and terms: https://creativecommons.org/publicdomain/zero/1.0/
+Legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+This dedication applies only to rights the contributors hold. It does not license Apple reference screenshots, original wallpaper files, original icons, Apple-owned graphic identities, trademarks, trade dress, or any other third-party rights. No Apple asset bytes are included. Original reconstruction does not establish non-infringement or Apple permission. The work is provided without warranty.
+
+JesterOS is independent and has not been authorized, sponsored, or otherwise approved by Apple Inc. Apple, macOS, Sonoma, and the referenced Apple application names remain the property of their respective owners. See asset-provenance.json for exact reference sources, reconstruction deviations and uncertainty.

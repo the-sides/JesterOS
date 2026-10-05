@@ -1,0 +1,372 @@
+# Sonoma 14.0 profile: research, stock inventory, and implementation boundary
+
+## Target and evidence boundary
+
+Target: **macOS Sonoma 14.0, released September 26, 2023**, with a light-appearance fictional desktop. This document inventories the native product separately from the browser recreation. A native app appearing in the inventory, Dock, launcher, or a reconstructed window does **not** imply that its native workflows are implemented.
+
+The exact launch date and launch features are grounded in Apple's [September 26, 2023 announcement][release] and the explicitly labeled **macOS Sonoma 14.0** section of Apple's [Sonoma update history][updates]. The update-history page is maintained today (its retrieved publication date is August 6, 2026); its separately labeled release sections, not that publication date, establish version attribution. The [Sonoma macOS User Guide][mac] and the successfully pinned app-guide endpoints below establish Sonoma-era behavior and reference imagery, but are not immutable captures of the September 26 build. A guide selected as “macOS Sonoma 14” may incorporate a later 14.x change. Where the release history supplies a more precise boundary, it takes precedence.
+
+Evidence notation:
+
+- **Release-confirmed:** explicitly attributed to 14.0 by the 2023 announcement or the 14.0 release-history section.
+- **Sonoma-guide-confirmed:** retrieved from a successful `/14.0/mac/14.0` or equivalent app-version-plus-OS endpoint with Sonoma content. This establishes the Sonoma family, not necessarily the exact patch build.
+- **Visual observation:** the referenced Apple image was actually opened and inspected during this research. Image-pixel geometry is not a native-point measurement.
+- **[INFERENCE]:** a surface family or menu organization not individually verified against a September 2023 native installation or version-specific instructions. It is an inventory/reconstruction guide, never an exact-menu claim.
+- **Implementation contract:** the task's declared browser capability boundary; this researcher did not exercise the implementation.
+
+No macOS Tahoe 26 or macOS 27 guide is used as evidence for Sonoma UI. A consequential source trap was observed: `/guide/safari/welcome/mac/14.0` displayed a Sonoma selector but supplied **Safari 26** topic links and images. Successful Safari references below pin **`/17.0/mac/14.0`**. Notes `toc/4.11` generated links ending in `/mac/15.0`, and Messages `toc/14.0` generated `/mac/26` links during research. Those dynamically generated destinations were not accepted as Sonoma evidence; topics were fetched with an explicit `/mac/14.0` suffix. Bare canonical URLs can silently update. Record and reuse the full version-specific URLs.
+
+## What is implemented today
+
+This is the capability contract supplied for the profile, **not a runtime-verification report**:
+
+| Area | Browser capability boundary | Native features that must not be implied |
+| --- | --- | --- |
+| Profile and shell | Select the supported profile through the shared scene/profile mechanism; launch represented apps; manage reconstructed windows, focus/activation, close/minimize/reopen, movement/zoom, Window-menu actions, and the desktop. | Host login, native processes, actual app installation, iCloud, device discovery, hardware settings, network services, and native macOS window-server semantics. |
+| Notes | Existing local plain-text create/edit/search, selectable folders/collections, pin/unpin, trash/restore, keyboard focus, context menu, and list/editor scroll behavior. Reuse the shared Notes model/commands rather than inventing a Sonoma-only state model. | Rich-text formatting, tables, real checklists, attachments/PDF rendering, note links, locked notes, gallery, Quick Note integration, collaboration, tags/Smart Folders, accounts, and synchronization. |
+| Messages | A fixed fictional sample conversation, reconstructed in Sonoma-era styling; shell/window lifecycle still works. | Sending, receiving, searching real conversations, attachments, replies, stickers, calls, sharing, account sign-in, or message history access. |
+| Other represented apps and utilities | **Launch-only** empty native-shaped windows: opening/closing/focusing the local view is real; the application interior is not implemented. | All native editing, purchasing, playback, network, diagnostic, disk, credential, automation, account, and hardware operations unless separately implemented and explicitly declared. |
+| Desktop features | Local shell/desktop presentation only within the declared shell scope. | A functioning WidgetKit gallery, iPhone Continuity, real widget actions, aerial video downloads/playback, screen locking/authentication, Presenter Overlay/Reactions, or Game Mode. |
+
+**No enabled unsupported fake actions:** omit unsupported controls or expose them as unmistakably unavailable, non-actionable information. An enabled-looking Add Account, Send, Run, First Aid, Erase, Install, Connect, Play, sticker picker, formatting toolbar, or setting switch must not silently do nothing or report fabricated success. Static sample values are samples, not measured system status. Window commands may remain functional independently of the app interior. A represented native menu is not permission to wire a host-affecting action.
+
+### Implementation handoff, not exercised verification
+
+The implementation owner reports the profile files as `sonoma-profile.js`, `sonoma-adapter.js`, `SonomaDesktop.svelte`, `SonomaWindow.svelte`, `SonomaNotesWindow.svelte`, `SonomaMessagesWindow.svelte`, `SonomaSymbol.svelte`, `SonomaIcon.svelte`, `sonoma.css`, and `sonoma-notes-view.js`. This is an owner-provided implementation record, not this researcher's independent source audit or runtime observation. Styling is scoped to Sonoma; the default profile is intentionally unchanged.
+
+The reported registry includes stock apps and utilities, with launch-only interiors except functional plain-text Notes and the fixed Messages presentation. It intentionally excludes the optionally downloadable iWork apps, GarageBand and iMovie; those still appear in the broader Apple native ecosystem inventory below. The registry source defines actual launch coverage; no independently verified registry count is asserted here. Launchable registry coverage and the full native inventory are distinct scopes.
+
+The reported startup view is fixed Messages, retaining the existing sample text/photos rather than claiming that fixture itself was captured in 2023. Its modern presentation has a gray sidebar, rounded blue selected conversation, white header with video/Info presentation, rounded bubbles, and a capsule iMessage field with app-icon presentation. Unsupported messaging controls do not acquire capabilities by being drawn.
+
+The retained Messages fixture's original image/content provenance remains in [the existing fidelity notes](mojave-fidelity.md). The new Sonoma research screenshots cited below are references only and are not shipped as runtime views.
+
+The reported Notes view uses 180px/245px/flexible panes, a 52px pane-split toolbar, 12px traffic lights, gray folders/counts, yellow icons, rounded folder selection, yellow note rows and white editor. These are chosen CSS dimensions, **not measurements extracted from the Apple image**. It reuses semantic Notes execution and the canonical `registerView` interfaces for focus, `anchorContext`, scroll and `scrollPosition`. Formatting/gallery/table/checklist/attachment/lock/share presentations are disabled, not implemented.
+
+Reported shell dimensions are a 28px menu bar, floating Dock with 7px bottom gap (5px compact), Notes 1120×720 and Messages 1024×740 preferred logical window geometry with a 0.9 logical-to-physical scale cap. `measureWorkspace` reserves the Dock's top minus a 7px gap. These are local geometry choices rather than exact AppKit point metrics; resizing and viewport fit still require integration verification.
+
+The owner reports that `prepareDocument` selects native `-apple-system`/`BlinkMacSystemFont` on Apple platforms; elsewhere Sonoma uses the existing local `InterVariable.woff2` through its own UI font face. No San Francisco font file is redistributed by this profile, and Inter/browser rasterization is not claimed to match exact native SF pixels.
+
+### Native adapter and view contract
+
+`sonoma-profile.js` exports `sonomaProfile` (`macos-sonoma-14.0`, renderer `sonoma`); the shared profile registry deeply freezes the installed profile. `sonoma-adapter.js` exports `sonomaAdapter`, containing `Desktop`, `Window`, `MessagesWindow`, `NotesWindow`, `prepareDocument()`, `createSceneData()`, `initialBounds(app, area, windowCount, viewportHeight)`, and `fitNormalBounds(bounds, app, area)`.
+
+| View | Supplied props and semantic helpers |
+| --- | --- |
+| `SonomaDesktop` | `profile`, `children`, `windows`, `activeWindowId`, `activeApp`, `viewState`, `execute`, `registerView`, `onlayout`. Registers `prepareWindowMenu`, `enabledMenuItemIds`, `focusMenuItem`, `focusControl`, `windowMenuScrollTop`, `scrollWindowMenu`, and `measureWorkspace`; existing desktop/menu commands own state. |
+| `SonomaWindow` | `window`, `active`, `zIndex`, `onfocus`, `onclose`, `onminimize`, `onzoom`, `onmove`, `children`. Captures pointer movement and sends raw physical deltas through the shared movement handler; it does not duplicate boundary/clamping decisions. |
+| `SonomaNotesWindow` | `state`, `viewState`, `execute`, `registerView`, `active`, `zoomed`, `onclose`, `onminimize`, `onzoom`. Its new `sonoma-notes-view.js` contains DOM-only mechanics and invokes the existing shared `notes.*` handlers; semantic control identities are unchanged. Registers `anchorContext`, `focus`, `scroll`, and `scrollPosition`. Native actor focus/scroll observations and keyboard/context navigation use those same commands. |
+| `SonomaMessagesWindow` | `assets`, `active`, `zoomed`, `onclose`, `onminimize`, `onzoom`. Modern fixed-sample presentation, with only shared window lifecycle actions enabled. |
+
+The profile advertises only `shell.apps`, `shell.windows`, `shell.macos-window-zoom`, `shell.desktop`, `shell.window-menu`, `scene.profile-selection`, `notes.plain-text`, `notes.presentation`, and `messages.sample`. The parent integration owns registry imports, adapter selection, profile selection/fresh-scene mounting, supported-profile command descriptors, and verification. No Mojave component, stylesheet, asset, or default value was changed by this native slice.
+
+
+### Notes deviations carried forward
+
+The existing Notes implementation is the behavioral reference, as documented in [the Mojave Notes working notes](notes-mojave.md), while Sonoma changes the presentation. The intended local scene has session-local fictional notes, not a host Notes database. Plain-text first-line titles follow native title semantics; title/body filtering is simpler than native account/attachment/natural-language search. Fixed local collection selection is not arbitrary folder creation or account management. Pinning and trash/restore via the existing context/toolbar commands are usable local adaptations, not promises of native swipe gestures or drag restoration. Native Recently Deleted supports **On My Mac as well as upgraded iCloud notes** and has account-specific retention; the local collection does not enact iCloud's 30-/40-day rules. See [writing][notes-write], [search][notes-search], [sort/pin][notes-pin], and [deletion][notes-delete].
+
+The adapter's Notes epoch is **September 26, 2023, 17:00 UTC**; fixture offsets put the latest initial note at **17:42**, matching the menu's fictional clock. Creation/modification advances the profile-local model clock rather than reading host time. An empty collection also uses this fictional epoch, never Mojave's 2018 floor. Profile switching/fresh-scene behavior belongs to the shared shell contract. No permanent disk or cloud persistence claim is made.
+
+## Release-confirmed Sonoma 14.0 distinctions
+
+| Feature | Exact 2023 / 14.0 evidence and native surface | Browser boundary |
+| --- | --- | --- |
+| Desktop widgets | Widgets can be placed on the desktop, adapt to wallpaper while working in apps, and perform actions such as pausing media or running a shortcut. iPhone widgets require a nearby iPhone or the same Wi-Fi network. [2023 release][release], [14.0 section][updates]. The [Sonoma widget guide][widgets] documents a searchable gallery, categories, placement/dragging, sizes, editing/removal, Notification Center, and `Desktop & Dock > Widgets`. It specifies iOS 17+, the same **Apple ID**, and nearby/same-network requirements. | Static scene styling is not working interactive widgets or Continuity. |
+| Screen savers and wallpaper | New slow-motion scenery screen savers transition into wallpaper after login. Themes include Landscape, Cityscape, Underwater, Earth, and shuffle settings. [2023 release][release], [14.0 section][updates]. The [Sonoma guide][screensaver] separates Screen Saver selection from Lock Screen timing/security; categories also include macOS and Other. | Original static wallpaper artwork is not Apple's aerial footage or an implemented screen-saver/login transition. |
+| Video conferencing | Presenter Overlay keeps the presenter over shared content; Reactions add gesture-triggered hearts, balloons, confetti, and other 3D effects. [2023 release][release]. The [14.0 section][updates] limits Presenter Overlay to Apple silicon and identifies Apple-silicon/Continuity Camera iPhone 12+ requirements for Reactions. | No camera capture, video conferencing, overlay compositing, gesture recognition, or pretend hardware permission flow. |
+| Safari profiles | Profiles separate history, cookies, extensions, Tab Groups, and favorites for work/personal contexts. [14.0 section][updates]. [Safari 17 profile creation][safari-profile] documents `Safari > Settings > Profiles`, first-use Start Using Profiles, name/icon/color, favorite-bookmarks folder, Create Profile, and per-profile Extensions. iCloud Keychain passwords remain available across profiles; this is not wholly separate credential storage. | A displayed profile selector/sample is not an implemented browser profile or network session. |
+| Safari web apps | Any website can become an app with a Dock icon and simplified toolbar. [2023 release][release], [14.0 section][updates]. [Safari 17 web-app instructions][safari-webapp] document Share > Add to Dock, an Add confirmation, Dock/Launchpad presence, notification support, and separate General/Privacy settings topics. | Launch-only Safari does not navigate, install web apps, ask for real website notifications, or fetch websites at runtime. |
+| Locked Private Browsing | Private windows lock while unused, block known trackers, and remove identifying tracking from URLs. [2023 release][release], [14.0 section][updates]. [Safari 17 locking guide][safari-lock] documents Privacy's password/Touch ID requirement and `Window > Lock All Private Windows`, plus screen-lock, sleep, and inactivity triggers. [Private browsing guide][safari-private] documents dark Smart Search chrome, isolated tabs, and advanced tracking/fingerprinting protection. | A dark sample window or lock illustration is not security, private browsing, or credential authentication. |
+| Notes PDFs and scans | Inline PDFs and document scans are presented full-width. [14.0 section][updates]; the [2023 release][release] explicitly advertises viewing PDFs/scans in Notes. [Sonoma PDF guide][notes-pdf] documents attachment menus, Quick Look/Open/Markup, thumbnails, cropping, rotation, scan filters, and rename. | Plain-text Notes does not render/edit PDFs or scans. |
+| Notes note links | Links can connect related notes. [2023 release][release]. [Sonoma link guide][notes-links] explicitly says “In macOS Sonoma” and documents `Edit > Add Link`, matching-title results, Use Note Title, and `>>` as a shortcut. | Plain text that resembles a link is not a navigable note link graph. |
+| Messages search and reply | Search filters for people, keywords, photos/links; swipe to reply inline on an iMessage bubble. [14.0 section][updates] and [2023 release][release]. [Sonoma search guide][messages-search] documents combinable terms/filters and categorized results opening at the matching transcript location. | Fixed sample Messages does not search, change conversations, reply, or send. |
+| Messages Live Stickers | The precise 14.0 release-history wording is **Live Stickers sync from iOS/iPadOS to macOS**, giving access to stickers created on iPhone/iPad. The Newsroom says stickers can be created and synced across the platforms, but does not establish Mac-side creation. Use the more precise 14.0 wording. [Sources][updates]. | No sticker creation, picker, placement, synchronization, or pretend cross-device support. |
+| Reminders | Grocery Lists automatically group related items; new sections/column view are advertised in the [2023 release][release]. The [Sonoma Reminders guide][reminders] depicts grocery categories, Smart Lists/pinned lists, columns, subtasks, and multiple accounts. | Launch-only sample list; no working completion, categorization, reminders, or notifications. |
+| Other stock changes | Game Mode prioritizes CPU/GPU on Apple silicon; improved autocorrect, inline predictions, and Dictation; password/passkey group sharing; Mail verification-code AutoFill; high-performance Screen Sharing on Apple silicon. [14.0 section][updates], [2023 release][release]. Also recorded in 14.0: Photos pets and Visual Look Up improvements, Find My item sharing, Home Activity History, Sensitive Content Warnings/Communication Safety, Live Speech/Personal Voice and compatible hearing-device support. | No host acceleration, OS keyboard engine, password access, remote desktop, location tracking, home control, or accessibility voice enrollment. |
+
+### Later Sonoma features explicitly excluded from a 14.0 claim
+
+The [release-history sections][updates] distinguish:
+
+- **14.1:** expanded Music favorites and warranty status for Mac/AirPods/Beats in System Settings.
+- **14.2:** enhanced PDF AutoFill from Contacts, Messages catch-up arrow, **Add Sticker directly to a bubble through the context menu**, Contact Key Verification, new Weather widgets, Clock multiple timers/presets/recents, Shazam Music Recognition, and Favorite Songs Playlist.
+- **14.3:** Music collaborative playlists/emoji reactions and AppleCare & Warranty coverage across devices.
+- **14.4:** Podcasts episode transcripts and Safari favorites-bar icons-only option.
+- **14.5:** News+ Quartiles.
+
+Consequently, do not copy a Sonoma-family guide's catch-up arrow or newer sticker context menu into a **14.0** fidelity claim. Do not depict a standalone **Passwords app** as stock Sonoma; the cited Sonoma Safari settings guide puts Passwords in settings. Do not import Sequoia iPhone Mirroring, Math Notes/audio transcription, later Messages scheduling, or Tahoe styling from drifting documentation.
+
+## Native stock application inventory
+
+### Inventory method and completeness
+
+Apple's [Apps included on your Mac, selected for Sonoma 14][apps] is the authoritative basis for **every app and utility row in the next two tables**. Its categories are preserved even where an app might conventionally be thought of as a utility. Finder and System Settings are documented separately because that particular Apple app table does not enumerate them. Apple explicitly warns that availability varies by region, and explicitly qualifies GarageBand, iMovie, Keynote, Numbers, and Pages with “If … isn't installed … download it from the App Store.” These five belong to Apple's included-app ecosystem, **not a guarantee of presence on every clean Sonoma installation**. Boot Camp Assistant is Intel-specific. App updates distributed independently of macOS are another reason not to assume every native surface is frozen at OS 14.0.
+
+This is a complete transcription of Apple's **published user-facing Apps/Utilities inventory**, plus separately evidenced system surfaces. It is not a claim to enumerate every `.app` bundle, background agent, private framework helper, installer/recovery executable, localization, or hardware-specific pane on a Sonoma disk image; no native installation or filesystem manifest was available in this task.
+
+In the tables, **Core purpose** is supported by [Apple's Sonoma inventory][apps]. **Additional surface map** names major native subinterfaces and menu responsibilities to keep them distinct from launch-only views. A linked Sonoma guide supports the named documented areas. Any extra menu grouping, tab, dialog, or surface in that column not covered by the linked source is **[INFERENCE]**, with exact wording/order/enablement unverified. Those inference entries must not be used as pixel-exact or command-exact acceptance evidence.
+
+### Applications
+
+| Stock app | Core purpose / documented Sonoma areas | Additional native surface map, not browser capability |
+| --- | --- | --- |
+| App Store | Discover, buy, install, update, review Mac apps. | Discovery/categories/search, app-detail pages, screenshots/reviews, account/purchases/updates, sign-in and purchase confirmation; store/account menu responsibilities [INFERENCE]. No simulated download or payment success. |
+| Automator | Build task automation without complicated programming. | Document-type chooser, action library, workflow editor, variables/results/log, Run/Stop, workflow/application/Quick Action save surfaces; File/Edit/View/Workflow responsibilities [INFERENCE]. |
+| Books | Read books/textbooks and listen to audiobooks. | Library/collections/store, book reader, table of contents, bookmarks/highlights/notes, audiobook player, reading appearance and account settings [INFERENCE]. |
+| Calculator | Basic, advanced, and programmer calculations. | Basic/scientific/programmer presentation, conversion, paper-tape/history-style auxiliary display; View/Convert responsibilities and exact history nomenclature [INFERENCE], not imported from modern Calculator. |
+| Calendar | Events/appointments. [Sonoma guide][calendar] confirms accounts, color-coded calendars, invitations, event Info/location/map/travel time. | Day/Week/Month/Year views, calendar sidebar, quick-event entry, event editing/popover, calendar subscription/sharing and settings; File/Edit/View/calendar-event responsibilities [INFERENCE where not confirmed by guide]. |
+| Chess | Play against the Mac or another player. | Board, new-game/player choices, game moves, promotion choice, speech/accessibility and board/piece settings [INFERENCE]. |
+| Clock | World clock, alarms, stopwatch, timers. | Mode selection, city chooser, alarm edit, timer/stopwatch displays [INFERENCE]. **Multiple timers** are 14.2, not a launch feature. |
+| Contacts | Contact information. [Sonoma guide][contacts] confirms internet-account setup, Smart Lists and address-to-map action. | Contact list/card/editing, lists, duplicate resolution/import/export/print and card-template settings; File/Edit/View/Card responsibilities [INFERENCE where not documented]. |
+| Dictionary | Look up words in dictionaries and other sources. | Search/results, source tabs, definition navigation, pronunciation and source-order settings [INFERENCE]. |
+| FaceTime | Audio/video calls. 14.0 video enhancements are [release-confirmed][updates]. | Recents, call entry, active-call controls, links/invitations, device/audio/video options and SharePlay/screen sharing [INFERENCE]; Presenter Overlay/Reactions are system/call-context controls, not ordinary static window content. |
+| Find My | Locate friends, devices, items. Item sharing is [14.0-confirmed][updates]. | People/Devices/Items map/detail cards, directions/sound/lost-mode/share-item sheets, notifications and account prerequisites [INFERENCE]. |
+| Font Book | Install/manage/preview fonts. | Collection/family/style sidebar, sample/repertoire previews, validation/duplicates, import and settings [INFERENCE]. |
+| Freeform | Collaborative boards. [Sonoma guide][freeform] confirms flexible canvas with photos/shapes/sticky notes and collaboration pop-up. | Board browser/editor, text/shape/note/media insertion, inspector/arrangement/alignment, zoom and sharing; File/Edit/Insert/Format/Arrange responsibilities [INFERENCE where not directly confirmed]. |
+| GarageBand (conditional install) | Music creation studio. | Project chooser, tracks/editor/library, instruments/loops/mixer, recording and export/share, sound-library download and audio/MIDI settings [INFERENCE]. The independently updated app version is not established here. |
+| Home | HomeKit accessory control/automation. Activity History is [14.0-confirmed][updates]. | Home/room/accessory cards, accessory detail, scenes/automations, home/user settings and activity history [INFERENCE except release-confirmed history]. |
+| iMovie (conditional install) | Browse clips and create movies/trailers. | Projects/media/theater-style historical surface uncertainty, import, viewer, timeline, audio/titles/transitions and export/share [INFERENCE]. Do not assert a specific app-version tab set. |
+| Keynote (conditional install) | Presentations with images/media/charts/animations. | Theme chooser, slide navigator/canvas, format/animate/document inspectors, presenter/playback, collaboration, export and print [INFERENCE]. |
+| Mail | Multiple email accounts. [Sonoma guide][mail] confirms account setup, blocked-sender settings, Smart Mailboxes, and Remind Me dialog. | Mailbox/message list/reading panes, compose and attachments, address completion, send-later/undo-send, search/filters, account/server/signature/rule settings; File/Edit/View/Mailbox/Message/Format responsibilities [INFERENCE where not directly confirmed]. Mail-code Safari AutoFill is [14.0-confirmed][updates]. |
+| Maps | Directions, traffic, transit. | Map/search/place card, route modes/options, favorites/guides, Look Around and sharing/print/settings [INFERENCE]. No actual map/network/geolocation capability in the browser view. |
+| Messages | Text/audio messages. [Sonoma guide][messages] confirms conversations, iMessage/SMS via iPhone, Info view with call/video/screen sharing, collaboration, Shared with You. | Conversation sidebar/pins/search, transcript/composer, Apps/Photos picker, inline reply, Tapback/effects and Info detail, account/blocked/recovery surfaces. Precise search/settings/release boundaries are documented below. |
+| Music | Library and music discovery. | Sidebar, library categories/playlists/store/service discovery, playback/queue/lyrics/mini-player/equalizer, import/burn and account/playback/file settings [INFERENCE]. Later Sonoma favorites/collaborative-playlist changes excluded above. |
+| News (region-dependent) | Curated/personalized news. | Today/following/saved/history, article reader, News+ subscription and puzzles where available, channel management/settings [INFERENCE]. Quartiles is not 14.0. |
+| Notes | Text, photo/video/URL/table notes. Detailed [Sonoma sources][notes] below. | Folders/tags/Smart Folders, list/gallery/editor/standalone note, Quick Note, attachment browser, PDF/scan menus, rich text/checklists/tables, locks/accounts/share/collaboration and settings. Browser implements only the declared plain-text subset. |
+| Numbers (conditional install) | Spreadsheets, formulas/functions/charts. | Template chooser, sheets/tables/cells, formula editor/function browser, format/organize inspectors, charts, collaboration and export/print [INFERENCE]. |
+| Pages (conditional install) | Word-processing and page-layout documents. | Template chooser, document canvas/thumbnails, format/document inspectors, text/styles/media/tables/charts, comments/change tracking/collaboration and export/print [INFERENCE]. |
+| Photo Booth | Take photos/videos. | Camera preview, effect chooser, still/multiple-frame/movie modes, capture and thumbnail strip/export [INFERENCE]. |
+| Photos | Import/view/organize photos/video. [Sonoma guide][photos] confirms Library, memories, iCloud/Shared Library, edit Adjust/Filters/Crop, import/export, storage and deleted-photo recovery. | Albums/media types/search/People & Pets, photo/video detail, editing extensions, Info/keywords, slideshows, share/export/print and library settings [INFERENCE where not directly documented]. Pets and paused-video/recipe Visual Look Up are [14.0-confirmed][updates]. |
+| Podcasts | Discover/subscribe to audio stories. | Browse/search/library/shows/episodes, playback/queue, download/follow/account settings [INFERENCE]. Episode transcripts are 14.4, not 14.0. |
+| Preview | PDFs/images. [Sonoma guide][preview] confirms forms/signatures, password protection, combining pages and image export conversion. | Thumbnail/contact-sheet/navigation, PDF/text search, Markup/annotation/signature, crop/color/size tools, inspector, export/password and print dialogs; File/Edit/View/Tools responsibilities [INFERENCE where not confirmed]. Enhanced contact-data PDF AutoFill is 14.2. |
+| Reminders | To-do/project/grocery lists. [Sonoma guide][reminders] confirms grocery categories, list/column views, Smart/pinned lists, subtasks/accounts. | Reminder detail, dates/locations/flags/priority/tags, list templates/sharing and settings [INFERENCE where not directly documented]. |
+| Safari | Secure web browsing/shopping. Successful [Safari 17 settings][safari-settings], [profile][safari-profile], [private][safari-private], [lock][safari-lock], [web-app][safari-webapp] sources. | Toolbar/Smart Search, tabs/Tab Groups/sidebar/start page/bookmarks/history/reading list/downloads, Reader/site settings/privacy report, Profiles, private lock and Add to Dock; unsupported here. |
+| Screenshot | Capture stills/recordings of the Mac screen. | Capture entire screen/window/selection, record screen/selection, Options/save destination/timer, floating thumbnail/Markup [INFERENCE]. Not a screenshot of the host from this recreation. |
+| Shortcuts | Ready-made/custom automation. | Gallery/library, shortcut editor/actions/variables, run/details/import/security/share and settings [INFERENCE]. No host automation. |
+| Stickies | Desktop notes/lists/pictures. | Individual note windows, color/font/floating/translucency, import/export [INFERENCE]. Distinct from Notes. |
+| Stocks | Markets/news/watchlist. | Watchlist/symbol search/detail, charts/time ranges, business news and settings [INFERENCE]. Values in a launch view are fictional, not live quotes. |
+| TextEdit | Plain/rich text, HTML and document conversion. [Sonoma guide][textedit] confirms format-aware Save, HTML code mode and image Markup. | Document editor/ruler, rich/plain format conversion, fonts/colors, find/replace, substitutions/spelling, attachments, page layout/print and open/save settings; File/Edit/Format/View responsibilities [INFERENCE where not confirmed]. |
+| TV | Movies/shows/discovery. | Service/store/library, title detail/watch list/playback, account/purchases/download and settings [INFERENCE]. No streaming or purchase. |
+| Voice Memos | Record/play/edit/share audio. | Recording list/waveform, transport, edit/trim/replace, recording folders and settings [INFERENCE]. No microphone recording. |
+| Weather | Local/world conditions. | Location list/search, forecast cards, maps/detail sheets and units/settings [INFERENCE]. Later 14.2 widgets excluded; no runtime weather fetch. |
+
+### Utilities
+
+All entries in this table are explicitly included in Apple's [Sonoma Utilities table][apps]. Apart from individually linked Sonoma guides, detailed control names, tab sets and menu order remain **[INFERENCE]**, not verified screenshot claims.
+
+| Utility | Core purpose | Major native auxiliary surfaces / menu responsibilities |
+| --- | --- | --- |
+| Activity Monitor | CPU/apps/disks/memory/network information. [Sonoma guide][activity] confirms process force quit, Energy view, and Dock status graphs. | CPU/Memory/Energy/Disk/Network categories, process filters/search/columns, process inspector/sample/quit confirmations, update frequency and Dock icon choices [INFERENCE where not directly documented]. |
+| AirPort Utility | Configure/manage Wi-Fi and AirPort base stations. | Network topology/base-station detail, edit/manual setup, Internet/wireless/network/device choices, firmware/restart/reset and credential sheets [INFERENCE]. |
+| Audio MIDI Setup | Connected audio/MIDI devices. | Audio Devices and MIDI Studio, device formats/channels, speaker configuration, aggregate/multi-output creation and MIDI configuration/test [INFERENCE]. |
+| Bluetooth File Exchange | Short-range Bluetooth connections. | File chooser, device chooser/pairing and transfer progress/error [INFERENCE]. |
+| Boot Camp Assistant (Intel only) | Windows on Intel Mac. | Assistant introduction, Windows installation media/support software, partition/install/remove Windows confirmations [INFERENCE]. Never advertise it as supported on Apple silicon. |
+| ColorSync Utility | Color profiles. | Profile/device/filter/calculator/image inspection, profile verification/repair and conversion settings [INFERENCE]. |
+| Console | Log messages/problem details. | Device/log sources, streaming/search/filter, crash/diagnostic reports, detail and save/share [INFERENCE]. Not fabricated live logs. |
+| Digital Color Meter | Display color values. | Pointer sample/aperture, color-space/value format, location/color lock/copy [INFERENCE]. Not reading pixels outside the browser. |
+| Disk Utility | Disks/images/RAID. [Sonoma guide][disk] confirms APFS volumes, encrypted erase dialog and First Aid confirmation. | Sidebar all-devices/volumes choices, mount/unmount/info, First Aid, partition/erase/restore, APFS volume add/delete, disk-image creation/conversion and RAID Assistant [INFERENCE where not directly confirmed]. |
+| DVD Player | DVDs/DVD movie files. | Video/controller, DVD menus/navigation, open media, audio/subtitle/angle, playback/bookmark settings [INFERENCE]. |
+| Grapher | Implicit/explicit equation visualization/analysis. | 2D/3D template/document, equation list/editor, graph inspector, animation and export [INFERENCE]. |
+| Image Capture | Transfer/scan images/take pictures. | Device list, import destination/items, scan overview/detail/document feeder/options and import progress [INFERENCE]. |
+| Keychain Access | Passwords/account information. | Keychain/category/items, search, item attributes/access control, certificate/key operations, password prompts and certificate trust [INFERENCE]. Not the later standalone Passwords app. |
+| Migration Assistant | Transfer data from Mac/PC/disk. [Sonoma Transfer or Reset guide][transfer] confirms its launch path. | Source/destination discovery, authentication, transfer-category selection/progress and completion [INFERENCE]. |
+| Print Center | Manage print jobs. Explicitly listed and linked by [Apple's Sonoma inventory][apps]. | Printers/queues, individual job details, pause/resume/cancel and printer management [INFERENCE]. No actual printing. |
+| QuickTime Player | Play audio/video files. | Player/transport, movie/audio/screen recording, trim/split/edit, export, inspector and open/record settings [INFERENCE]. |
+| Screen Sharing | View/control another networked Mac. High-performance mode is [14.0-confirmed][updates]. | Connections/new connection/authentication, remote display/control versus observation, scaling/clipboard and connection settings [INFERENCE]. No actual remote connection. |
+| Script Editor | Scripts/tools/apps. | Script/library editor, compile/run/stop, results/event log, dictionaries, open/save/export and language settings [INFERENCE]. |
+| System Information | Mac details/warranty/storage. | Hardware/network/software report tree, report save/print and storage/support information [INFERENCE]. Warranty presentation can vary with later 14.x updates. |
+| Terminal | UNIX command line. [Sonoma guide][terminal] confirms window profiles, marks/bookmarks and process inspector. | Shell windows/tabs, new-window/profile menus, search, inspector, profile/text/window/shell/keyboard settings and secure keyboard entry [INFERENCE where not documented]. No real shell backend. |
+| VoiceOver Utility | Configure the built-in screen reader. | General/speech/verbosity/navigation/sound/visuals/commanders/braille/web categories, activities and custom commands [INFERENCE]. Do not confuse browser accessibility support with host VoiceOver configuration. |
+
+### Shell apps, helpers, and installation-dependent inventory edges
+
+- **Finder:** separately confirmed by the [Sonoma Finder guide][finder]; desktop/files/sidebar, icon/list/column/gallery views, preview, tags, search, AirDrop, iCloud Drive/Shared and connected-device synchronization. [Finder Settings][finder-settings] explicitly has **General, Tags, Sidebar, Advanced**, including desktop hardware visibility, default window location, filename-extension/Trash warnings, 30-day Trash option, folder sorting and default search scope.
+- **System Settings:** separately confirmed by the [Sonoma settings overview][settings]; searchable sidebar-driven settings, not Mojave's System Preferences icon grid.
+- **Launchpad, Dock, Spotlight, Control Center, Notification Center, Mission Control/Spaces, Stage Manager, Quick Look, Siri, login/Lock Screen, and menu-bar status menus:** shell/system surfaces, not ordinary document apps. [Sonoma menu-bar guide][menubar], [window guide][windows], [Control Center][control], [widgets][widgets], and [screen saver][screensaver] establish the relevant native families. A local launcher or shell presentation is not full implementation of all these services.
+- **Directory Utility:** a separately [Sonoma-versioned guide][directory] confirms directory-service/Active Directory configuration. Keep directory binding, search policy and record editing separate from the standard app table; finer tabs/menu details are [INFERENCE].
+- **Wireless Diagnostics:** [Sonoma guide][wireless] confirms Option-click Wi-Fi > Open Wireless Diagnostics, analysis, Summary/info, and diagnostic archive creation. It explicitly says the utility does not change network settings. This is a system auxiliary app, not an implemented diagnostic in the browser.
+- **Erase Assistant:** [Sonoma Transfer or Reset][transfer] confirms its entry from General > Transfer or Reset. This is a real destructive native assistant and must not be enabled in the recreation.
+- **Archive Utility, Installer, Feedback Assistant, Bluetooth Setup/assistant-style helpers, Accessibility Keyboard, Character Viewer and Font/Color panels** are inventory edges rather than a fabricated claim of complete app-bundle discovery. Their exact 14.0 installation paths, visible launch surfaces and configuration-dependent presence were not established by a disk-image inspection here. Archive compression/package installation and feedback submission are not browser capabilities. **Feedback Assistant's visibility can depend on beta enrollment** [INFERENCE]; do not promote it to guaranteed retail stock without native/primary version-specific evidence.
+- **Network Utility, Dashboard, iTunes, and System Preferences** must not be copied from the older profile as Sonoma stock identities. The confirmed Sonoma list instead includes Music/TV/Podcasts and the separately evidenced System Settings. Exact removal dates are outside this evidence set.
+- **Tips** is not in the retrieved Sonoma Apps/Utilities table; newer guides containing Tips are not evidence of its presence in the September 2023 stock application roster.
+
+## Menus, subinterfaces, and dialogs
+
+### Common native menu and window layer
+
+The [Sonoma menu-bar guide][menubar] confirms an Apple menu, the active app name in bold, app menus commonly named File/Edit/Format/Window, per-app Help, and right-side status menus/Spotlight/Control Center/Notification Center. It does **not** establish that every app has every standard menu or the exact item order. Standard-looking menu headings in reconstructed views must not be described as a transcribed complete native menu bar unless backed by a successful version-specific source or native capture.
+
+The [Sonoma window guide][windows] documents titlebar dragging, edge resizing, red Close, yellow Minimize/Command-M, Option-green maximize, full-screen/Split View families, `Window > Merge All Windows`, `Window > Move Tab to New Window`, app switching and Command-H/Command-Q. It explicitly distinguishes **closing windows from quitting the app**. Green-button full screen is not interchangeable with the recreation's bounded zoom; describe such a browser action as zoom when that is what it does. The shell's working Window menu is a local window manager, not a promise of native tab merging, Spaces, Split View, or all app-specific Window entries.
+
+Shared native surface families to inventory separately from each app interior:
+
+- Document Open/Save/Export sheets, filename/location/tags/format controls, overwrite and unsaved-change prompts; [TextEdit's Sonoma guide][textedit] directly shows a Save dialog with file formats, [Preview][preview] shows export options, and [Finder Settings][finder-settings] links sidebar choices to Open/Save dialogs. Exact universal layout/button order remains unverified.
+- Print/Page Setup/PDF output, font/color/character panels, spelling/substitution/find, contextual/share menus, Quick Look and Markup. Individual app support and context-dependent enablement vary; global availability and exact 14.0 menu spelling are [INFERENCE] except the particular cited Notes/Preview/TextEdit instructions.
+- Authentication, account/provider sign-in, permission consent, system privacy controls, file access and destructive confirmations. The browser must not collect real Apple/password/device credentials or pretend consent configures the host. [System Settings][settings], [Internet Accounts][accounts], [Users & Groups][users], [Disk Utility][disk] and [Safari locking][safari-lock] confirm specific native examples.
+- Modeless auxiliary windows versus attached sheets versus popovers: do not flatten every panel into an ordinary app window or infer a modal from an instructional crop. Native titlebar/shadow/vibrancy varies by active state, appearance and app.
+
+### Notes: native menu and settings inventory
+
+Sonoma-guide-confirmed exact paths include:
+
+- `Notes > Settings` with **Sort notes by, New notes start with, Default account, Group notes by date, Always resume to last Quick Note, Automatically sort checked items, Allow mention notifications, Enable the On My Mac account, Default text size**, and **Locked notes / Change password / Reset password / Use Touch ID**. [Settings][notes-settings].
+- `File > Pin Note`, pin-by-swipe, and dragging between Notes/Pinned sections; no pin in Recently Deleted. [Sort/pin][notes-pin].
+- `File > Duplicate Note`; `View > Show Folders`; text `Edit > Paste`, Paste and Match Style/Paste and Retain Style; `Format > Text`; contextual `Font > Show Fonts`. [Writing][notes-write].
+- `Edit > Add Link`, the matching-note dialog, Use Note Title and `>>`; `Edit > Substitutions > Smart Links`. [Links][notes-links].
+- `Edit > Find > Find`; Current Account/All Accounts search, suggested searches, Top Hits, natural-language/attachment/OCR searches, and `View > Show Attachments Browser`. [Search][notes-search].
+- Attachment browser **Scans/Documents**, `View > Show in Note`; attachment down-arrow menu **Quick Look Attachment / Open Attachment / Markup**; thumbnail **Crop Page / Filters / Rotate Left / Rotate Right**; `Edit > Rename Attachment`; Continuity `File > Insert from iPhone or iPad > Scan Documents`. [PDF/scans][notes-pdf].
+- Delete toolbar/Delete key/swipe; Recently Deleted review and drag recovery, account-specific deletion/retention and locked-note authentication. [Deletion][notes-delete].
+
+Native formatting, checklist/table/media/lock/share/collaboration buttons visible in the screenshots are evidence of native capability, **not permission to display enabled dead replicas** in the plain-text recreation. The exact complete File/Edit/Format/View/Window/Help item ordering, all shortcuts and all context menus have not been verified on a native 14.0 installation. Context pin/trash/restore in this project is a declared adaptation.
+
+### Messages: native menu and settings inventory
+
+- Main native areas: pinned and ordinary conversations, compose, search, transcript, attachments/media, Apps picker, audio, emoji/stickers/effects, inline replies, Info, FaceTime/screen-sharing entry points, collaboration and Shared with You. [Welcome][messages], [search][messages-search], [Sonoma Photos picker][messages-photos].
+- `Messages > Settings` exposes **General, iMessage, Shared with You**. General covers text size/received sound; iMessage covers enablement/reachable addresses/read receipts; Shared with You covers per-app participation. [Settings][messages-settings].
+- The [Sonoma search guide][messages-search] confirms filters can be combined; results include conversations/collaborations/links/photos/locations/documents and navigate to the matching transcript location. A decorative search field in the fixed sample cannot pretend to implement that search.
+- The [Sonoma Photos picker guide][messages-photos] confirms Apps button left of the composer > Photos, library search, drag/copy/paste and Return-to-send. It does not establish the exact sticker picker or creation workflow for launch 14.0. Live Stickers access from iPhone/iPad is release-confirmed; 14.2 bubble Add Sticker is excluded.
+- Send/edit/unsend/delete/recovery/pin/group management/blocking and notifications are additional native surface families; their complete 14.0 command ordering, timing limits, dialog wording and enablement are **[INFERENCE]** in this inventory unless a linked source states them. None is implemented by a fixed fictional transcript.
+
+### Safari: native menu and settings inventory
+
+The successfully pinned [Safari 17 settings overview][safari-settings] explicitly lists **General, Tabs, AutoFill, Passwords, Search, Security, Privacy, Websites, Profiles, Extensions, Advanced**. These are Safari settings panes, not a standalone system-app lineup.
+
+Version-specific documented paths include `Safari > Settings > Profiles`, Create Profile, per-profile Extensions, `File > New Private Window`, `Window > Lock All Private Windows`, Privacy's Require password/Touch ID to view locked tabs, `View > Reload Reducing Privacy Protections`, and toolbar Share > Add to Dock. [Profiles][safari-profile], [private browsing][safari-private], [locking][safari-lock], [web apps][safari-webapp]. Profile-related toolbar menu entries observed in Apple's image are Start Page, New School Window, New Empty Tab Group, Switch to Home Window and Switch to Work Window; these labels depend on the sample's named profiles and are not universal fixed entries.
+
+Bookmarks/history/reading list/downloads/Reader/site permissions/tab-group editing, print/export and developer tools remain part of the native surface inventory; exact complete File/Edit/View/History/Bookmarks/Window/Help ordering and Develop-menu enablement were not transcribed here. Launch-only Safari must not perform runtime networking or advertise browsing/privacy functionality.
+
+## Modern System Settings inventory
+
+The Sonoma [settings overview][settings] establishes a **searchable left sidebar and right-hand settings**, varying with the Mac and installed apps. The [Appearance image](https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/5d3b04e849823be4d39e231cbd0a501f.png) and [Screen Saver image](https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/adb7ca76bc6915b407a3f3bd410acb27.png) were visually inspected. Their directly visible sidebar sections are **Apple ID, Wi-Fi, Bluetooth, Network, VPN, Notifications, Sound, Focus, Screen Time, General, Appearance, Accessibility, Control Center, Siri & Spotlight, Privacy & Security, Desktop & Dock, Displays, Wallpaper, Screen Saver, Battery, Lock Screen**. [Users & Groups][users] and [Internet Accounts][accounts] are separately confirmed Sonoma sections. The table below adds other stock settings families but explicitly marks the sections/subcontrols not independently inspected here.
+
+| Section / native family | Major settings and nested surfaces | Evidence / precision |
+| --- | --- | --- |
+| Apple ID and Family | Profile, iCloud features/storage, password/security, media/purchases/payment and family management. | Apple ID is visibly labeled in Sonoma screenshots; use period **Apple ID**, not current Apple Account wording. Family subpages/exact labels are [INFERENCE]. |
+| Wi-Fi / Bluetooth / Network / VPN | Network lists/connections/details, device pairing, services/interfaces, DNS/proxy/TCP-IP and VPN authentication/configuration. | Section names observed; exact subordinate settings and hardware-dependent order [INFERENCE]. |
+| Notifications / Sound / Focus / Screen Time | Per-app alert permissions/style; output/input/effects; Focus choices/schedules/filters; activity/downtime/app limits/content/privacy/Communication Safety. | Sidebar observed; 14.0 Communication Safety/Sensitive Content changes [updates]. Exact nested labels [INFERENCE]. |
+| General | About, Software Update, Storage, AirDrop & Handoff, Login Items, Language & Region, Date & Time, Sharing, Time Machine, Transfer or Reset, Startup Disk. | General observed; **Transfer or Reset** is directly [Sonoma-confirmed][transfer]. Other subpage lineup/order [INFERENCE], not a native 14.0 capture. Later AppleCare & Warranty expansion must not be treated as a 14.0 pane. |
+| Appearance | Light/Dark/Auto, accent/highlight colors, sidebar icon size, wallpaper tinting, scrollbar visibility and scrollbar-click behavior. | All visually observed in the Sonoma Appearance screenshot. |
+| Accessibility | Vision/hearing/motor/speech categories, VoiceOver/Zoom/display/spoken content/captions/audio/keyboard/pointer/switch/voice-control families; Live Speech and Personal Voice. | Sidebar observed; Live Speech/Personal Voice and compatible hearing-device support [14.0-confirmed][updates]; detailed nested hierarchy [INFERENCE]. |
+| Control Center | Control Center Modules, Other Modules, Menu Bar Only; status/menu-bar visibility and clock-related options. | Exact families confirmed in [Sonoma Control Center][control]. Privacy indicators and app-usage Privacy window are documented; a static sample must not imply actual camera/microphone usage. |
+| Siri & Spotlight | Siri enablement/language/voice/activation; search categories/privacy exclusions. | Sidebar observed, 14.0 “Siri” activation constraints [updates]; exact controls [INFERENCE]. |
+| Privacy & Security | Location/data-device permissions, camera/microphone/screen recording, security/FileVault and sensitive-content permissions. | Sidebar observed; 14.0 privacy changes [updates]; comprehensive pane order and exact permission list [INFERENCE]. |
+| Desktop & Dock | Dock size/magnification/position/minimize effect/titlebar action, recent apps/running indicators; desktop reveal/Stage Manager; widgets; browser default; document/window behavior; Mission Control/Spaces/hot corners. | Exact option families and values confirmed by [Sonoma Desktop & Dock][dock-settings]. Widget style is **Automatic / Monochrome / Full-color**. |
+| Displays | Display arrangements/resolution/scaling/brightness/color/refresh, Night Shift and connected-display options. | Sidebar observed; hardware-specific options and exact dialogs [INFERENCE]. |
+| Wallpaper / Screen Saver | Wallpaper selection; macOS/aerial/Other screen-saver categories; shuffle, wallpaper/Spaces toggles and downloads. | Sidebar and Screen Saver grid/toggles observed; categories/Lock Screen timing links confirmed by [Sonoma screen-saver guide][screensaver]. Not all thumbnails or counts are fixed launch inventory. |
+| Battery / Energy Saver | Power/usage/health and sleep/wake options. | Battery observed on the example laptop. Desktop Energy Saver alternative and hardware-specific exact controls [INFERENCE]. |
+| Lock Screen | Idle screen saver/display timing, password requirement and login presentation. | Sidebar observed; screen-saver guide explicitly links timing to this section. Exact complete control set [INFERENCE]. |
+| Touch ID & Password / Login Password | Fingerprint enrollment/password/login credentials and supported-device choices. | Hardware-dependent section names/contents [INFERENCE] here; Safari's native Touch ID/password alternatives are directly confirmed, not browser authentication. |
+| Users & Groups | User/group list and Info, Guest, Add User/Add Group, account types, auto login and network-account server. | Directly confirmed by [Sonoma guide][users]; administrator/password requirements are not simulated host privileges. |
+| Passwords | Saved site credentials/passkeys, groups/sharing and authentication. | Sonoma [Safari settings][safari-settings] and [14.0 release history][updates] confirm password management/sharing families. System Settings exact pane capture unverified here; **not** a Sonoma standalone Passwords app. |
+| Internet Accounts | Account list/details/features, Add Account/provider/Other Account and Delete Account. | Exact families confirmed by [Sonoma guide][accounts]. |
+| Game Center / Wallet & Apple Pay | Game/social identity and supported payment configuration. | Stock-settings family inclusion and hardware/region-dependent details [INFERENCE]; no local payment or account functionality. |
+| Keyboard / Mouse / Trackpad / Game Controllers | Text input/layouts/shortcuts/Dictation; tracking/buttons/gestures and controller configuration. | Device-dependent sections/subcontrols [INFERENCE]; 14.0 keyboard engine features confirmed separately by [release history][updates]. |
+| Printers & Scanners / Extensions / Profiles | Device/add-printer/options/queues/scanning; installed integrations; managed configuration profiles when present. | App table confirms Print Center and Image Capture. Exact section placement and visibility of Extensions/Profiles are **[INFERENCE]** and configuration-dependent, not universal persistent sidebar rows. |
+
+System Settings search suggestions and matching results are separately depicted in the [Sonoma settings-search guide][settings-search]. The local launch-only Settings view must not advertise host configuration merely because it visually reproduces rows, toggles or a searchable sidebar. A settings family in this research inventory is not an enabled local action.
+
+## Primary-source visual references
+
+All observations in the first table came from images actually opened during research. No screenshot is embedded as the running application. Annotation leaders and external instructional whitespace are not native UI.
+
+| View | Successful pinned source / exact original image URL | Observations and limits |
+| --- | --- | --- |
+| Notes main three-pane window | [Sort/pin, Notes 4.11 / Sonoma 14.0][notes-pin]; [image](https://help.apple.com/assets/656FB92B5073D2DECA0862BB/656FB92CF0F7AD2F770901D2/en_US/613d80fca3646c992e8125803b3072c3.png). | Main window roughly x=0–930, y=159–715 in the displayed instructional image; sidebar divider around x=150, list/editor divider around x=344. Gray sidebar/yellow icons/counts; rounded gray selected folder; white list/editor; pale-yellow selected note; orange **revealed swipe Pin action**, not normal selection. Pinned and date-group headings; compact line toolbar icons split across pane chrome; centered editor date. Drawing/attachment content is native rich content outside plain-text scope. Image geometry is observational, not measured logical points. |
+| Notes gallery and search suggestions | [Notes welcome, Sonoma 14.0][notes]; [image](https://help.apple.com/assets/656FB92B5073D2DECA0862BB/656FB92CF0F7AD2F770901D2/en_US/cabe94dd83a3cc447a54b94c8163a35d.png). | Gray account/folder sidebar with icons/counts; white gallery cards grouped Today/Yesterday; compact toolbar; focused warm-accent search and rounded Suggested Searches popover. This is **not** main-window three-pane proportion evidence. |
+| Messages main | [Messages welcome, Sonoma 14.0][messages]; [image](https://help.apple.com/assets/65A999AC13B61AFE4806A611/65A999AE157993C0D60EEF70/en_US/c5f4137a69cdcd6c37fdb25188e05576.png). | Gray left sidebar with integrated traffic lights/compose/search, pinned circular avatar grid, rounded blue conversation selection, white transcript, outgoing blue/incoming gray bubbles, thin header divider, video/Info controls and bottom composer. Large balloon effect overlaps content; do not reuse it as a required static layer. Native sample people/media are reference content, not the project's fictional conversations. |
+| System Settings Appearance | [Settings overview, Sonoma 14.0][settings]; [image](https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/5d3b04e849823be4d39e231cbd0a501f.png). | Tall gray sidebar with search/profile and colored square section icons; right light-gray grouped cards, back/forward chevrons/title, Light/Dark/Auto previews, colored swatches/radios/switches and Help. Selected Appearance is gray in this annotated capture; do not assume every sidebar selection is saturated blue. |
+| System Settings Screen Saver | [Screen saver, Sonoma 14.0][screensaver]; [image](https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/adb7ca76bc6915b407a3f3bd410acb27.png). | Blue rounded selected section, Sonoma Light preview, Show as wallpaper/Show on all Spaces toggles, Lock Screen timing warning/link, macOS and aerial thumbnail groups with play/download markers. Thumbnail counts/options belong to this guide capture, not a complete September 2023 content manifest. |
+| Safari profile toolbar/menu | [Profile creation, Safari 17 / Sonoma 14.0][safari-profile]; [image](https://help.apple.com/assets/65A1EE686941F773B70429B4/65A1EE691C8D00FB3607FFD7/en_US/ebe5a90a4108b39401cfe923293ab4b9.png). | Overlapping Home/Work/School windows show colored profile badges with icons and a rounded toolbar popover. Inactive traffic lights are gray. Image is an instructional **crop**, not a full Safari content-window reference. |
+| Finder | [Finder, Sonoma 14.0][finder]; [image](https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/1ddbaba8542ea4ee6fb7647e95545a36.png). | Gray sidebar Favorites/iCloud/Tags; icon-view white canvas with blue filename selection; compact title/toolbar with four view controls, grouping/share/tag/more/search. Annotation leaders are external. No file editing capability follows from reproducing the canvas. |
+| Widget gallery/desktop | [Widgets, Sonoma 14.0][widgets]; [image](https://help.apple.com/assets/65A8106E7C69B635140E606E/65A81072C0272B1FFA02DE51/en_US/c7b3fad208078c240a4c5c27bec380a3.png). | Sonoma layered orange/purple/green wallpaper, narrow translucent menu bar, lower-left translucent gallery with category sidebar, search, varied widget previews and Done. Instructional overlay points at desktop versus Notification Center placement. Gallery screenshot is not the running shell. |
+
+Further **primary visual URLs extracted from successfully pinned pages, not individually visually inspected in this task**:
+
+- [Messages search/results](https://help.apple.com/assets/65A999AC13B61AFE4806A611/65A999AE157993C0D60EEF70/en_US/b234a2b7435d86c9a4656b3a4affa820.png), [Messages Info](https://help.apple.com/assets/65A999AC13B61AFE4806A611/65A999AE157993C0D60EEF70/en_US/810b3e931ec93239f740e87da46ee7a5.png), [Photos picker](https://help.apple.com/assets/65A999AC13B61AFE4806A611/65A999AE157993C0D60EEF70/en_US/252d73d39ddb2c14a31986cc779a7ea6.png).
+- [Safari private-versus-normal Smart Search](https://help.apple.com/assets/65A1EE686941F773B70429B4/65A1EE691C8D00FB3607FFD7/en_US/382a8aa5b618a48b8f4629464e489ed7.png), [locked private window](https://help.apple.com/assets/65A1EE686941F773B70429B4/65A1EE691C8D00FB3607FFD7/en_US/ac510162c71acfcf414dd8763a3333ed.png), [web app and Dock](https://help.apple.com/assets/65A1EE686941F773B70429B4/65A1EE691C8D00FB3607FFD7/en_US/6ae48c63a39af992207e0a2bb8a0180e.png).
+- [Mail Remind Me](https://help.apple.com/assets/65A8108F6524DBD548085484/65A81090303713255A088515/en_US/0577eb94df077c82a01f5957a5a550a6.png), [Calendar Month](https://help.apple.com/assets/63FD4ABA55651420C46CF4A1/63FD4ABB55651420C46CF4AB/en_US/52db99708c913ccb24d59c50d30d2016.png), [Reminders columns](https://help.apple.com/assets/63FE309F7DC6CD48D329E336/63FE309F7DC6CD48D329E33D/en_US/9b81fb557d6387c612c166c1b7cb85a0.png).
+- [Photos Library](https://help.apple.com/assets/65382CE37BB3E2BCF80ADABA/65382CE57BB3E2BCF80ADAC0/en_US/67f13442bbf3a4768e92ad1a2e0e414f.png), [Photos editing](https://help.apple.com/assets/65382CE37BB3E2BCF80ADABA/65382CE57BB3E2BCF80ADAC0/en_US/d5463f57e1b561736d2a7e3121321816.png), [Freeform](https://help.apple.com/assets/65A1EA6EF8E43889BE0BB5F2/65A1EA71F8E43889BE0BB5F8/en_US/646188bc90548907d503730e706ce304.png).
+- [Disk Utility volume view](https://help.apple.com/assets/63FD50B6B945CD5D3F3A2AD3/63FD50B7B945CD5D3F3A2ADA/en_US/e737110d677bda7f52481f541352c17f.png), [Disk Utility encrypted erase sheet](https://help.apple.com/assets/63FD50B6B945CD5D3F3A2AD3/63FD50B7B945CD5D3F3A2ADA/en_US/e50a8b1ebf13782ad888254e3b8b56ac.png), [Activity Monitor Energy](https://help.apple.com/assets/63FD404271C3B6058F265722/63FD404A71C3B6058F265732/en_US/6d88707130ad40710519992b262a58d1.png), [Terminal profiles](https://help.apple.com/assets/63FFD63D71728623E706DB4F/63FFD63E71728623E706DB56/en_US/7f288e73064fb1012bfa617b6b707e2c.png).
+
+Dated **2023 Newsroom media** are stronger temporal evidence than a guide asset's opaque identifier; the announcement supplies these exact references (article read, individual media not all opened):
+
+- [Desktop/widgets and Dock on MacBook Pro](https://www.apple.com/newsroom/images/2023/09/macos-sonoma-is-available-today/article/Apple-macOS-Sonoma-Widgets_big.jpg.large.jpg).
+- [Safari School/Home profiles](https://www.apple.com/newsroom/images/2023/09/macos-sonoma-is-available-today/article/Apple-macOS-Sonoma-profiles_big.jpg.large.jpg).
+- [Presenter Overlay](https://www.apple.com/newsroom/images/2023/09/macos-sonoma-is-available-today/article/Apple-macOS-Sonoma-Zoom-Presenter-Overlay_big.jpg.large.jpg), [Reactions](https://www.apple.com/newsroom/images/2023/09/macos-sonoma-is-available-today/article/Apple-macOS-Sonoma-Zoom-Reactions_big.jpg.large.jpg).
+- [Apple's screen-saver demonstration video](https://www.apple.com/newsroom/videos/apple-macos-sonoma-screen-saver/large_2x.mp4). This is a demonstration/reference URL, not a runtime video dependency or inspected frame sequence here.
+
+The machine bezels, photographed perspective, instructional labels, illustrative content, and screenshot scaling must not be mistaken for application layout. No calibrated color sampling, automated image comparison, registered screenshots, SF font measurements, or pixel-identity claim was performed.
+
+## Assets, provenance, and licensing distinctions
+
+The asset worker's handoff identifies new local files exclusively under **`frontend/public/sonoma/`**: `wallpaper.svg`, individual `icons/{id}.svg`, `LICENSE.txt`, and `asset-provenance.json`. It reports individually authored original SVG icons for the registered stock apps and utility inventory, including `voice-memos` and document/drive imagery; Calendar's **SEP 26** is a fictional period fixture, not the June 5/September 12 dates visible in some Apple guide/press imagery. These are original locally reconstructed geometric assets, **not downloaded Apple app-icon bytes, a screenshot-backed application, or Apple's original wallpaper/video**. The research worker changed no assets and did not independently audit the final asset manifest or count.
+
+The asset worker cites the September 26, 2023 Newsroom Widgets image as wallpaper/Dock visual reference and Sonoma's Apps/Launchpad guides for app-icon appearance. Its authored geometry is designated **CC0-1.0**. That designation applies to the worker's original contributions only: it is **not** an Apple intellectual-property/trademark license, permission to redistribute Apple source assets, or a guarantee that an independently reconstructed likeness clears all third-party rights. Refer to the local provenance manifest for per-file authorship/source distinctions.
+
+Apple's [Sonoma Notes copyright page][copyright] explicitly says **Copyright © 2023 Apple Inc. All rights reserved** and identifies Apple product names/logos as trademarks/service marks. Public image URLs, a Newsroom media-download link, and access to a support screenshot are not by themselves a repository redistribution license. Sources in this document are citation/research references; do not copy their screenshot or icon binaries into runtime assets on the assumption they are public domain. Likewise, a local source-code license does not grant rights to Apple names, logos, screenshot content, photographed people, third-party app logos or original Apple artwork.
+
+The [Sonoma-specific software license agreement](https://www.apple.com/legal/sla/docs/macOSSonoma.pdf), English sections **1A/1C**, reserves ownership/content rights; **2J** restricts redistribution except where expressly permitted; **4B** says bundled components may not be separated and distributed as standalone applications. These provisions do not establish a freely redistributable Apple wallpaper/icon license. The Newsroom's JPEG/ZIP press downloads are source media, not proof of permission to bundle an extracted wallpaper. This is a provenance distinction, not legal advice or a claim that the software agreement independently determines every screenshot-use question.
+
+Runtime rendering must be independently constructed local DOM/CSS/SVG using local assets; **no runtime networking to Apple or other source sites**. Source research requests are not application network dependencies. Browser fonts/rasterization, approximate original artwork, fictional content, and unsupported native workflows preclude claiming native or pixel-identical Sonoma.
+
+## Research and verification record
+
+Research performed: read the existing Mojave documentation convention; read the dated 2023 Apple release and the 14.0/later release-history sections; read successful explicit Sonoma and Safari 17 topic endpoints; inspect dynamic TOC destinations to detect version drift; visually open the eight references in the inspected-image table; read the English Sonoma license's relevant ownership/redistribution sections; record the implementation and asset workers' handoffs. The browser used for reading Apple documentation was not the running project application.
+
+This task edited **only this research document**. No source-code or asset edits, build, test, lint, formatter, commit, local application smoke run, screenshot comparison, network audit, native macOS verification, or menu-exhaustiveness verification was performed. The implemented-capability table is the assignment contract, not an observed pass report. Integration verification belongs to the main agent. Useful integration checks are profile selection/fresh-scene isolation; no default-profile regression; launch/window/Window-menu/desktop commands; plain-text Notes create/edit/search/folders/pin/trash/restore/focus/context/scroll including empty states and 2023 timestamps; fixed Messages preservation; truthful disabled/omitted unsupported actions; local-only resources; and image loading/provenance. Those checks are recommendations, not claims of execution.
+
+## Primary references
+
+All UI sources below are Apple-owned. Preserve version suffixes rather than substituting current canonical URLs.
+
+[release]: https://www.apple.com/newsroom/2023/09/macos-sonoma-is-available-today/
+[updates]: https://support.apple.com/en-us/109035
+[mac]: https://support.apple.com/guide/mac-help/welcome/mac/14.0
+[apps]: https://support.apple.com/guide/mac-help/apps-on-your-mac-mchl110b00b7/14.0/mac/14.0
+[settings]: https://support.apple.com/guide/mac-help/change-system-settings-mh15217/14.0/mac/14.0
+[settings-search]: https://support.apple.com/guide/mac-help/find-system-settings-mchl8d10839d/14.0/mac/14.0
+[dock-settings]: https://support.apple.com/guide/mac-help/change-desktop-dock-settings-mchlp1119/14.0/mac/14.0
+[widgets]: https://support.apple.com/guide/mac-help/add-and-customize-widgets-mchl52be5da5/14.0/mac/14.0
+[screensaver]: https://support.apple.com/guide/mac-help/use-a-screen-saver-mchl4b68853d/14.0/mac/14.0
+[windows]: https://support.apple.com/guide/mac-help/work-with-app-windows-mchlp2469/14.0/mac/14.0
+[menubar]: https://support.apple.com/guide/mac-help/whats-in-the-menu-bar-mchlp1446/14.0/mac/14.0
+[control]: https://support.apple.com/guide/mac-help/quickly-change-settings-mchl50f94f8f/14.0/mac/14.0
+[finder]: https://support.apple.com/guide/mac-help/organize-your-files-in-the-finder-mchlp2605/14.0/mac/14.0
+[finder-settings]: https://support.apple.com/guide/mac-help/change-finder-settings-on-mac-mchlp2803/14.0/mac/14.0
+[users]: https://support.apple.com/guide/mac-help/change-users-groups-settings-mtusr001/14.0/mac/14.0
+[accounts]: https://support.apple.com/guide/mac-help/change-internet-accounts-settings-on-mac-mh35705/14.0/mac/14.0
+[transfer]: https://support.apple.com/guide/mac-help/use-transfer-or-reset-settings-on-mac-mchla14c784b/14.0/mac/14.0
+[wireless]: https://support.apple.com/guide/mac-help/use-wireless-diagnostics-mchlf4de377f/14.0/mac/14.0
+[directory]: https://support.apple.com/guide/directory-utility/welcome/mac/14.0
+[notes]: https://support.apple.com/guide/notes/welcome/mac/14.0
+[notes-write]: https://support.apple.com/guide/notes/write-and-format-notes-not9474646a9/4.11/mac/14.0
+[notes-search]: https://support.apple.com/guide/notes/search-your-notes-not18ab658ed/4.11/mac/14.0
+[notes-pin]: https://support.apple.com/guide/notes/sort-and-pin-notes-apdb54e469b6/4.11/mac/14.0
+[notes-delete]: https://support.apple.com/guide/notes/delete-a-note-not5585d71a8/4.11/mac/14.0
+[notes-links]: https://support.apple.com/guide/notes/add-links-apde615d29c2/4.11/mac/14.0
+[notes-pdf]: https://support.apple.com/guide/notes/manage-pdfs-and-scanned-documents-apdd655f4242/4.11/mac/14.0
+[notes-settings]: https://support.apple.com/guide/notes/change-notes-settings-apd97da26aed/4.11/mac/14.0
+[messages]: https://support.apple.com/guide/messages/welcome/mac/14.0
+[messages-search]: https://support.apple.com/guide/messages/search-for-a-conversation-icht6d66aae3/14.0/mac/14.0
+[messages-settings]: https://support.apple.com/guide/messages/change-settings-ichtcd5737fa/14.0/mac/14.0
+[messages-photos]: https://support.apple.com/guide/messages/send-photos-and-videos-ichtb967d30b/14.0/mac/14.0
+[safari-profile]: https://support.apple.com/guide/safari/create-a-profile-ibrwf3a9e7d6/17.0/mac/14.0
+[safari-private]: https://support.apple.com/guide/safari/browse-privately-ibrw1069/17.0/mac/14.0
+[safari-lock]: https://support.apple.com/guide/safari/lock-private-browsing-windows-safari-mac-ibrw84e82d72/17.0/mac/14.0
+[safari-webapp]: https://support.apple.com/guide/safari/add-to-dock-ibrw9e991864/17.0/mac/14.0
+[safari-settings]: https://support.apple.com/guide/safari/change-safari-settings-ibrwcd8bc28e/17.0/mac/14.0
+[mail]: https://support.apple.com/guide/mail/welcome/mac/14.0
+[calendar]: https://support.apple.com/guide/calendar/welcome/mac/14.0
+[contacts]: https://support.apple.com/guide/contacts/welcome/mac/14.0
+[reminders]: https://support.apple.com/guide/reminders/welcome/mac/14.0
+[photos]: https://support.apple.com/guide/photos/welcome/mac/14.0
+[freeform]: https://support.apple.com/guide/freeform/welcome/mac/14.0
+[preview]: https://support.apple.com/guide/preview/welcome/mac/14.0
+[textedit]: https://support.apple.com/guide/textedit/welcome/mac/14.0
+[disk]: https://support.apple.com/guide/disk-utility/welcome/mac/14.0
+[activity]: https://support.apple.com/guide/activity-monitor/welcome/mac/14.0
+[terminal]: https://support.apple.com/guide/terminal/welcome/mac/14.0
+[copyright]: https://support.apple.com/guide/notes/copyright-apd2185d6ee5/4.11/mac/14.0
+
+## Integrated browser verification
+
+CORE-05 integration exercised all 32 supported commands (43 applied invocations with strict typed request/result validation), 2023 actor creation/editing, keyboard Find/context pin and Window-menu activation, native Messages/Notes presentation, retained records/editor scroll, and 390×844 refit/restore. Actual title-bar dragging moved (225.6,122) to (285.6,135), clamped at the workspace edge. Actor minimize/Dock restore/zoom filled the resized native workspace without crossing the Dock. Initial latest Notes timestamp was 2023-09-26T17:42:00Z, matching the fictional menu clock; the model uses a 2023 baseline, never host time or Mojave's 2018 floor. All registered local image/font URLs were valid. Cached command callers followed fresh profile remounts; same-ID selection retained state and unavailable/unknown/readonly paths preserved records. Modern desktop/Notes and narrow-viewport screenshots were visually inspected. Original reconstructed assets and cross-platform fonts remain disclosed approximations, not a native-pixel or rights-clearance claim.

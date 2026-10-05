@@ -1,4 +1,6 @@
 import { applications, desktopFiles } from './mojave-applications.js';
+import { highSierraProfile } from './high-sierra-profile.js';
+import { sonomaProfile } from './sonoma-profile.js';
 
 export const DEFAULT_PROFILE_ID = 'macos-mojave-10.14';
 
@@ -21,6 +23,7 @@ const profiles = freezeTree({
     capabilities: [
       'shell.apps', 'shell.windows', 'shell.macos-window-zoom',
       'shell.desktop', 'shell.window-menu',
+      'scene.profile-selection',
       'notes.plain-text', 'notes.presentation', 'messages.sample',
     ],
     applications,
@@ -33,6 +36,8 @@ const profiles = freezeTree({
     },
     defaults: { startupAppId: 'messages', desktopAppId: 'finder', clockLabel: 'Mon 5:42 PM', batteryPercent: 87 },
   },
+  [highSierraProfile.id]: highSierraProfile,
+  [sonomaProfile.id]: sonomaProfile,
 });
 
 export function getOSProfile(id) {

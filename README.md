@@ -1,21 +1,30 @@
 # JesterOS
 
-A simulated desktop and applications for actors to use as screen props during film and television scenes. The current screen is inspired by macOS Mojave (2018); it is not a real operating system or an iMessage client.
+A simulated desktop and applications for actors to use as screen props during film and television scenes. The default screen is inspired by macOS Mojave (2018); it is not a real operating system or an iMessage client.
 
-JesterOS will eventually support **multiple OS profiles**: different macOS releases across years, **Windows 11**, and possibly **Linux** later. Mojave is the first profile, not a permanent platform limit. Each profile must reproduce its own version-specific shell, apps, menus, and behavior rather than serve as a cosmetic theme.
+Installed profiles span **macOS High Sierra 10.13 (2017), Mojave 10.14 (2018), and Sonoma 14.0 (2023)**. **Windows 11** is next; **Linux** remains conditional. Each profile has separately researched native shell/app presentation, assets, and inventories, not a cosmetic theme.
 
 ## Current implementation
 
 - Rust/Axum backend serves the built frontend and `GET /api/health`.
 - Svelte 5 + Vite frontend renders an interactive desktop with a menu bar, desktop files, Dock, and managed application windows.
-- Notes supports creating/editing plain-text notes, search, pinning, trash, and recovery in a researched Mojave-style UI. Other applications except Messages still have empty interiors.
+- Notes supports creating/editing plain-text notes, search, pinning, trash, and recovery in each profile's native presentation. Other applications except Messages still have empty interiors; registered stock membership does not claim functional coverage.
 - Messages retains its sample conversation. Clock, battery level, conversation selection, and message history remain fixed scene content. Messages search and editing are disabled.
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
-- Browser-local `jesteros.execute()` supports 31 shared app/window/desktop/Window-menu/Notes commands; `jesteros.inspect()` exposes detached state and `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics, and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Other app/menu features remain queued.
+- Browser-local `jesteros.execute()` supports 32 shared scene/app/window/desktop/Window-menu/Notes commands; `jesteros.inspect()` exposes detached state and `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics, and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Other app/menu features remain queued.
 
 ## OS profile setup
 
-The installed profile is **macOS Mojave 10.14**, ID `macos-mojave-10.14`. Open the normal desktop URL, or select it explicitly with `?profile=macos-mojave-10.14`. Unsupported/empty/inherited profile IDs show a setup error instead of silently relabeling Mojave. Profile metadata, implemented capabilities, local assets/defaults and stock-app coverage are inspectable through the browser-local interface. A profile is not a theme; additional macOS/Windows/Linux profiles and live switching remain queued. See [profile boundaries](docs/pseudo-os-architecture.md#implemented-mojave-boundary).
+Open the normal desktop URL for **Mojave**. Select an installed native scene with `?profile=macos-high-sierra-10.13`, `?profile=macos-mojave-10.14`, or `?profile=macos-sonoma-14.0`. Unsupported/empty/inherited IDs show a setup error rather than a substitute desktop. Profile metadata, capabilities, local assets/defaults, stock-app coverage, and installed profile targets are inspectable through the browser-local interface.
+
+```js
+await jesteros.execute({
+  command: 'scene.selectProfile',
+  target: { profileId: 'macos-sonoma-14.0' },
+});
+```
+
+A different profile starts a **fresh native scene**, resetting fictional records, windows, menus, focus and scroll; selecting the current ID retains state. The stable `jesteros` object follows the new scene, including cached controller references. Await selection before issuing dependent commands. Notes uses a profile-local fictional clock, never host time. See [profile boundaries](docs/pseudo-os-architecture.md#implemented-profile-boundaries), [High Sierra research](docs/high-sierra-profile.md), and [Sonoma research](docs/sonoma-profile.md). Additional app interiors, Windows and Linux remain queued.
 
 ## Desktop interactions
 
@@ -121,6 +130,10 @@ frontend/
   src/os-profiles.js        Immutable profile identity, capabilities, inventory/assets
   src/profile-adapters.js  Explicit native renderer selection
   src/mojave-adapter.js     Mojave views, font preference, fixture/placement policy
+  src/high-sierra-*         2017 profile, native adapter, sample data and scoped styling
+  src/HighSierra*.svelte    High Sierra native desktop/icons/Messages views
+  src/sonoma-*             2023 profile, native adapter, view mechanics and scoped styling
+  src/Sonoma*.svelte        Sonoma native shell/window/Notes/Messages views
   src/Desktop.svelte       Mojave menu bar, desktop selection, Dock, Window menu
   src/mojave-applications.js Mojave stock app and desktop-file registry
   src/feature-commands.js   Profile/capability-gated execution and detached queries

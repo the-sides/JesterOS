@@ -7,8 +7,9 @@
   import { commandCatalog } from './command-catalog.js';
   import { visibleNotes } from './notes-state.js';
   import { clampPosition, zoomBounds } from './window-state.js';
+  import { getOSProfile, listOSProfiles } from './os-profiles.js';
 
-  let { profile: profileInput, adapter: adapterInput } = $props();
+  let { profile: profileInput, adapter: adapterInput, registerCommands, selectProfile } = $props();
   // One immutable profile per scene instance. A profile change mounts a fresh
   // instance instead of relabeling incompatible application/view state.
   const profile = untrack(() => profileInput);
@@ -29,6 +30,17 @@
   const activeApp = $derived(applications[windows.find((window) => window.id === activeWindowId)?.appId] ?? applications[profile.defaults.desktopAppId]);
 
   const handlers = {
+    'scene.selectProfile': async (target, payload) => {
+      if (Object.keys(target).some((key) => key !== 'profileId')
+        || typeof target.profileId !== 'string' || !target.profileId
+        || Object.keys(payload).length) {
+        return rejected('invalid_arguments', 'scene.selectProfile requires target.profileId and no payload fields.');
+      }
+      const nextProfile = getOSProfile(target.profileId);
+      if (!nextProfile) return rejected('unsupported_profile', 'The requested OS profile is not installed.');
+      if (nextProfile.id !== profile.id) await selectProfile(nextProfile);
+      return { status: 'applied', target: { profileId: nextProfile.id } };
+    },
     'app.open': async (target, payload) => {
       if (Object.keys(target).some((key) => key !== 'appId')
         || typeof target.appId !== 'string'
@@ -73,6 +85,7 @@
   const commands = createFeatureCommands(handlers,
     () => $state.snapshot({ profile, windows, activeWindowId, area, notes: notesState, desktop: desktopState, notesView: notesViewState }),
     settleCommands, commandCatalog, () => ({
+      profiles: listOSProfiles().map(({ id, name, family, version }) => ({ profileId: id, name, family, version })),
       applications: Object.values(applications).map(({ id, name, dock, coverage }) => ({ appId: id, name, dock: dock ?? null, coverage })),
       desktopFiles: desktopFiles.map(({ id, name, appId }) => ({ fileId: id, name, appId })),
       windows: windows.map(({ id, appId, minimized, zoomed }) => ({ windowId: id, appId, minimized, zoomed })),
@@ -131,12 +144,7 @@
     return windowCommand('window.setZoomed', id, { zoomed: !window?.zoomed });
   }
 
-  onMount(() => {
-    globalThis.jesteros = commands;
-    return () => {
-      if (globalThis.jesteros === commands) delete globalThis.jesteros;
-    };
-  });
+  onMount(() => registerCommands(commands));
 
 
   function focusWindow(id) {
