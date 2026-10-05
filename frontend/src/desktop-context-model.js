@@ -1,4 +1,5 @@
 import { isTrashed } from './windows11-app-helpers.js';
+import { STACK_GROUPS, STACK_SORTS, STACK_LABELS } from './desktop-stacks-model.js';
 
 const encoder = new TextEncoder();
 const compareNames = (a, b) => a.name.localeCompare(b.name, 'en-US', { numeric: true, sensitivity: 'base' });
@@ -31,11 +32,13 @@ const branch = (id, label, children) => ({ id, label, enabled: children.some(ite
 export function desktopContextItems(state, items, family) {
   if (!state.context) return [];
   const windows = family === 'windows';
+  const stacksEnabled = Boolean(!windows && state.stacks?.enabled);
   const selected = items.filter(item => state.selectedFileIds.includes(item.id));
   const fileTarget = state.context.fileId !== null;
   const movable = selected.length > 0 && selected.every(item => item.movable);
-  const sorts = DESKTOP_SORTS.filter(by => !windows || by !== 'none').map(by => leaf(`sort-${by}`,
-    by === 'none' ? 'None' : windows && by === 'kind' ? 'Item type' : by[0].toUpperCase() + by.slice(1), true, state.sortBy === by));
+  const sorts = (stacksEnabled ? STACK_SORTS : DESKTOP_SORTS.filter(by => !windows || by !== 'none')).map(by => leaf(`sort-${by}`,
+    by === 'none' ? 'None' : windows && by === 'kind' ? 'Item type' : STACK_LABELS[by],
+    true, (stacksEnabled ? state.stacks.sortBy : state.sortBy) === by));
   if (fileTarget) {
     return [
       ...(!windows ? [leaf('new-folder-selection', `New Folder with Selection (${selected.length} ${selected.length === 1 ? 'Item' : 'Items'})`, movable)] : []),
@@ -43,7 +46,7 @@ export function desktopContextItems(state, items, family) {
       leaf(windows ? 'properties' : 'info', windows ? 'Properties' : 'Get Info', windows ? selected.length === 1 : selected.length > 0),
       leaf('rename', 'Rename', selected.length === 1 && selected[0].renameable),
       leaf('trash', windows ? 'Delete' : 'Move to Trash', movable),
-      ...(!windows ? [leaf('clean-up', 'Clean Up Selection', state.sortBy === 'none' && selected.length > 0)] : []),
+      ...(!windows ? [leaf('clean-up', 'Clean Up Selection', !stacksEnabled && state.sortBy === 'none' && selected.length > 0)] : []),
     ];
   }
   if (windows) {
@@ -61,9 +64,13 @@ export function desktopContextItems(state, items, family) {
       branch('new', 'New', [leaf('new-folder', 'Folder')]), leaf('personalize', 'Personalize'),
     ];
   }
-  return [leaf('new-folder', 'New Folder'), branch('sort', 'Sort By', sorts),
-    leaf('clean-up', 'Clean Up', state.sortBy === 'none'),
-    branch('clean-up-by', 'Clean Up By', ['name', 'kind', 'size'].map(by => leaf(`clean-up-${by}`, by[0].toUpperCase() + by.slice(1), state.sortBy === 'none'))),
+  return [leaf('new-folder', 'New Folder'),
+    ...(state.stacks ? [leaf('use-stacks', 'Use Stacks', true, state.stacks.enabled)] : []),
+    ...(stacksEnabled ? [branch('group-stacks', 'Group Stacks By', STACK_GROUPS.map(by =>
+      leaf(`stack-group-${by}`, STACK_LABELS[by], true, state.stacks.groupBy === by)))] : []),
+    branch('sort', 'Sort By', sorts),
+    ...(!stacksEnabled ? [leaf('clean-up', 'Clean Up', state.sortBy === 'none'),
+      branch('clean-up-by', 'Clean Up By', ['name', 'kind', 'size'].map(by => leaf(`clean-up-${by}`, STACK_LABELS[by], state.sortBy === 'none')))] : []),
     leaf('view-options', 'Show View Options')];
 }
 

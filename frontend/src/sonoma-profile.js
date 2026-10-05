@@ -15,7 +15,7 @@ export const sonomaProfile = {
   capabilities: [
     'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
     'shell.window-create', 'app.lifecycle',
-    'shell.desktop', 'shell.window-menu', 'scene.profile-selection',
+    'shell.desktop', 'shell.desktop-stacks', 'shell.window-menu', 'scene.profile-selection',
     'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {

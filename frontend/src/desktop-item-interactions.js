@@ -1,4 +1,4 @@
-// Scroll only the icon pane, never the workspace or the containing document.
+// Scroll only the supplied desktop pane, never the workspace or document.
 export function revealDesktopItem(element, panel) {
   if (!element || !panel) return;
   const rect = element.getBoundingClientRect(), bounds = panel.getBoundingClientRect();
@@ -63,7 +63,8 @@ export function createDesktopItemInteractions({ getWorkspace, getArea, getItems,
       if (selected.length !== 1) return; // Batch rename is not an inline single-item operation.
       await send('rename.begin', { fileId: selected[0] }); return;
     }
-    if ((family === 'windows' && key === 'Enter') || (family !== 'windows' && modifier && key.toLowerCase() === 'o')) {
+    if ((family === 'windows' && key === 'Enter')
+      || (family !== 'windows' && modifier && (key.toLowerCase() === 'o' || key === 'ArrowDown'))) {
       event.preventDefault(); event.stopPropagation();
       for (const id of selected.length ? [...selected] : [current]) await execute({ command: openCommand, target: { fileId: id }, payload: {} });
       return;

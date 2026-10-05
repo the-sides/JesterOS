@@ -72,7 +72,7 @@
 </script>
 
 {#snippet entry(item)}
-  <button type="button" role={item.checked !== undefined ? 'menuitemradio' : 'menuitem'} aria-checked={item.checked} disabled={!item.enabled}
+  <button type="button" role={item.checked !== undefined ? item.id === 'use-stacks' ? 'menuitemcheckbox' : 'menuitemradio' : 'menuitem'} aria-checked={item.checked} disabled={!item.enabled}
     data-desktop-context-item={item.id} tabindex={context.itemId === item.id ? 0 : -1} class:highlighted={context.itemId === item.id || branch?.id === item.id}
     aria-haspopup={item.children ? 'menu' : undefined} aria-expanded={item.children ? branch?.id === item.id : undefined}
     onpointerenter={() => select(item)} onclick={() => activate(item)}>

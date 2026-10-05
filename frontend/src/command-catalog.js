@@ -4,6 +4,7 @@ import { windows11ShellCatalog } from './windows11-shell-catalog.js';
 import { windows11AppCatalog } from './windows11-app-commands.js';
 import { desktopItemContracts } from './desktop-item-catalog.js';
 import { desktopContextContracts } from './desktop-context-catalog.js';
+import { desktopStacksCatalog } from './desktop-stacks-catalog.js';
 
 const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -176,6 +177,7 @@ export const commandCatalog = {
   }, [visibleView, 'Editor additionally requires a selected current record; coordinates are finite nonnegative pixels.'],
     ['Apply offsets, or observe native scrolling without moving it; retain actual clamped offsets; editor means body textarea.']),
   ]),
+  ...desktopStacksCatalog,
   ...windows11ShellCatalog,
   ...windows11AppCatalog,
 };

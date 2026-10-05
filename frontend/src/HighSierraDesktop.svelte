@@ -50,8 +50,8 @@
   const options = $derived(viewState.viewOptions);
   const customView = $derived(options.iconSize !== 64 || options.gridSpacing !== 23 || options.textSize !== 12 || options.labelPosition !== 'bottom');
   const dockApps = $derived(Object.values(applications).filter((app) => app.dock === 'main'));
-  let workspace;
-  let dock;
+  let workspace = $state();
+  let dock = $state();
   let windowMenuContainer;
   let windowMenuButton;
   let windowMenuPanel = $state(null);
@@ -170,8 +170,10 @@
   }
   async function focusContextItem(itemId) {
     await tick();
-    [...(workspace?.querySelectorAll('[data-desktop-context-item]') ?? [])]
-      .find((item) => item.dataset.desktopContextItem === itemId && !item.disabled)?.focus({ preventScroll: true });
+    const item = [...(workspace?.querySelectorAll('[data-desktop-context-item]') ?? [])]
+      .find((item) => item.dataset.desktopContextItem === itemId && !item.disabled);
+    revealDesktopItem(item, item?.closest('[data-desktop-context-menu]'));
+    item?.focus({ preventScroll: true });
   }
   async function focusContextReturn(fileId) {
     await tick();
@@ -519,7 +521,7 @@
       <div class="mac-desktop-marquee" aria-hidden="true" style:left={`${viewState.marquee.x}px`} style:top={`${viewState.marquee.y}px`}
         style:width={`${viewState.marquee.width}px`} style:height={`${viewState.marquee.height}px`}></div>
     {/if}
-    {#if viewState.context}<MacDesktopContextMenu {profile} context={viewState.context} items={contextItems} area={contextArea()} {execute}/>{/if}
+    {#if viewState.context && workspace?.isConnected && dock?.isConnected}<MacDesktopContextMenu {profile} context={viewState.context} items={contextItems} area={contextArea()} {execute}/>{/if}
     {@render children()}
   </main>
 

@@ -34,6 +34,7 @@ export function createDesktopContextCommands(state, context, prefix = 'desktop',
   const selectedIds = () => items().filter(entry => state.selectedFileIds.includes(entry.id)).map(entry => entry.id);
   async function cleanup(fileIds, by) {
     if (!view().itemsAvailable()) return unavailable();
+    if (state.stacks?.enabled) return rejected('disabled', 'Stacks controls icon placement; turn off Use Stacks before cleanup.');
     if (family === 'macos' && state.sortBy !== 'none') return rejected('disabled', 'Set Sort By to None before one-shot cleanup.');
     if (!fileIds.every(fileId => item(fileId))) return rejected('not_found', 'A cleanup item no longer exists.');
     const rects = view().itemRects(), metrics = view().gridMetrics(), area = view().measureWorkspace();
@@ -100,7 +101,9 @@ export function createDesktopContextCommands(state, context, prefix = 'desktop',
       if (!entry.enabled || entry.children) return rejected('disabled', 'Choose an enabled leaf action.');
       const fileId = state.context.fileId, fileIds = selectedIds(), options = state.viewOptions;
       let command, commandTarget = {}, commandPayload = {};
-      if (entry.id.startsWith('sort-')) { command = `${prefix}.sort`; commandPayload.by = entry.id.slice(5); }
+      if (entry.id === 'use-stacks') { command = 'desktop.stacks.set'; commandPayload.enabled = !state.stacks.enabled; }
+      else if (entry.id.startsWith('stack-group-')) { command = 'desktop.stacks.group'; commandPayload.by = entry.id.slice(12); }
+      else if (entry.id.startsWith('sort-')) { command = state.stacks?.enabled ? 'desktop.stacks.sort' : `${prefix}.sort`; commandPayload.by = entry.id.slice(5); }
       else if (entry.id.startsWith('clean-up-')) { command = `${prefix}.cleanup`; commandPayload.by = entry.id.slice(9); }
       else if (entry.id.startsWith('icons-')) { command = `${prefix}.view.set`; commandPayload = { option: 'iconSize', value: { small: 32, medium: 44, large: 64 }[entry.id.slice(6)] }; }
       else if (['auto-arrange', 'align-grid', 'show-icons'].includes(entry.id)) {
@@ -157,6 +160,7 @@ export function createDesktopContextCommands(state, context, prefix = 'desktop',
     sort: (target, payload) => {
       if (!fields(target, []) || !fields(payload, ['by']) || !DESKTOP_SORTS.includes(payload.by)) return invalid();
       if (!available()) return unavailable();
+      if (state.stacks?.enabled) return rejected('disabled', 'Use desktop.stacks.sort for member ordering while Stacks is enabled.');
       state.sortBy = payload.by; state.positions = {};
       return applied({ by: payload.by });
     },

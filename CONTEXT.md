@@ -51,3 +51,9 @@ The native menu for a clicked desktop item or background, with canonical enabled
 
 **Finder utility window**:
 A managed Get Info or Desktop view-option window associated with Finder, not a folder-browser location. Its live metadata/disclosures/options and lifecycle are scene state; opening a real folder must not reuse it as a browser.
+
+**Desktop Stack**:
+A derived presentation group of real desktop document IDs, not a folder or synthetic filesystem record. Its expanded members, browsed cover and context selection continue to refer to the original files; folders remain individual.
+
+**Fictional file time**:
+A monotonic scene timestamp in the selected OS era, advanced by actual simulated file events rather than host time. Null metadata is unknown, not Unix epoch zero.

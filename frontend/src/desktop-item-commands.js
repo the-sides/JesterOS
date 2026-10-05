@@ -31,6 +31,7 @@ export function createDesktopItemCommands(state, context, prefix = 'desktop') {
       return result;
     }
     if (state.rename?.fileId === fileId) state.rename = null;
+    context.revealItem?.(fileId);
     await context.getView()?.focusItem(fileId);
     return applied({ fileId });
   }
@@ -40,6 +41,7 @@ export function createDesktopItemCommands(state, context, prefix = 'desktop') {
       if (!available()) return unavailable();
       if (target.fileId !== null && !item(target.fileId)) return rejected('not_found', 'Desktop item no longer exists.');
       if (target.fileId !== null) context.focusDesktop();
+      if (target.fileId !== null) context.revealItem?.(target.fileId);
       select(target.fileId === null ? [] : [target.fileId]);
       return applied({ fileId: target.fileId });
     },
@@ -48,6 +50,7 @@ export function createDesktopItemCommands(state, context, prefix = 'desktop') {
       if (!available()) return unavailable();
       if (!item(target.fileId)) return rejected('not_found', 'Desktop item no longer exists.');
       context.focusDesktop();
+      context.revealItem?.(target.fileId);
       select(state.selectedFileIds.includes(target.fileId)
         ? state.selectedFileIds.filter(fileId => fileId !== target.fileId)
         : [...state.selectedFileIds, target.fileId], target.fileId);
@@ -56,9 +59,10 @@ export function createDesktopItemCommands(state, context, prefix = 'desktop') {
     'select.range': (target, payload) => {
       if (!fields(target, ['from', 'to']) || !id(target.from) || !id(target.to) || !fields(payload, [])) return invalid();
       if (!available()) return unavailable();
-      const ordered = items(), from = ordered.findIndex(entry => entry.id === target.from), to = ordered.findIndex(entry => entry.id === target.to);
+      const ordered = context.getRangeItems?.() ?? items(), from = ordered.findIndex(entry => entry.id === target.from), to = ordered.findIndex(entry => entry.id === target.to);
       if (from < 0 || to < 0) return rejected('not_found', 'Desktop range endpoint no longer exists.');
       context.focusDesktop();
+      context.revealItem?.(target.from); context.revealItem?.(target.to);
       select(ordered.slice(Math.min(from, to), Math.max(from, to) + 1).map(entry => entry.id), target.from);
       return response();
     },
@@ -81,7 +85,8 @@ export function createDesktopItemCommands(state, context, prefix = 'desktop') {
       const x = Math.max(0, Math.min(rectangle.x, area.width)), y = Math.max(0, Math.min(rectangle.y, area.height));
       const width = Math.max(0, Math.min(rectangle.x + rectangle.width, area.width) - x);
       const height = Math.max(0, Math.min(rectangle.y + rectangle.height, area.height) - y);
-      const matches = width && height ? context.getView().itemRects().filter(rect => x < rect.x + rect.width && x + width > rect.x && y < rect.y + rect.height && y + height > rect.y).map(rect => rect.fileId) : [];
+      const matches = width && height ? (context.getSelectionRects?.() ?? context.getView().itemRects())
+        .filter(rect => x < rect.x + rect.width && x + width > rect.x && y < rect.y + rect.height && y + height > rect.y).map(rect => rect.fileId) : [];
       context.focusDesktop();
       select([...new Set([...(payload.baseFileIds ?? []), ...matches])]);
       state.marquee = { x, y, width, height };
@@ -92,7 +97,7 @@ export function createDesktopItemCommands(state, context, prefix = 'desktop') {
         || !payload.positions.length || !payload.positions.every(entry => fields(entry, ['fileId', 'x', 'y']) && id(entry.fileId) && finite(entry.x) && finite(entry.y))
         || !ids(payload.positions.map(entry => entry.fileId))) return invalid();
       if (!available()) return unavailable();
-      if (state.viewOptions?.autoArrange || (prefix === 'desktop' && state.sortBy && state.sortBy !== 'none'))
+      if (state.stacks?.enabled || state.viewOptions?.autoArrange || (prefix === 'desktop' && state.sortBy && state.sortBy !== 'none'))
         return rejected('disabled', 'Automatic arrangement controls icon positions; choose free placement first.');
       const view = context.getView(), rects = view.itemRects(), area = view.measureWorkspace();
       let desiredPositions = payload.positions;
@@ -129,6 +134,7 @@ export function createDesktopItemCommands(state, context, prefix = 'desktop') {
       const entry = item(target.fileId);
       if (!entry) return rejected('not_found', 'Desktop item no longer exists.');
       if (!entry.renameable) return rejected('disabled', 'This desktop item cannot be renamed.');
+      context.revealItem?.(entry.id);
       context.focusDesktop(); select([entry.id]); state.rename = { fileId: entry.id, name: entry.name };
       await context.getView().focusRename();
       return applied({ fileId: entry.id });

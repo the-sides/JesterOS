@@ -1,11 +1,13 @@
 <script>
-  let { profile, options, sortBy, execute } = $props();
+  import { STACK_GROUPS, STACK_SORTS, STACK_LABELS } from './desktop-stacks-model.js';
+  let { profile, options, sortBy, stacks, execute } = $props();
   function set(option, value) { return execute({ command: 'desktop.view.set', target: {}, payload: { option, value } }); }
-  function sort(event) { return execute({ command: 'desktop.sort', target: {}, payload: { by: event.currentTarget.value } }); }
+  function sort(event) { return execute({ command: stacks?.enabled ? 'desktop.stacks.sort' : 'desktop.sort', target: {}, payload: { by: event.currentTarget.value } }); }
 </script>
 <div class="view-inspector" class:modern={profile.renderer === 'sonoma'}>
   <h2>Desktop</h2>
-  <label class="row"><span>Sort By:</span><select aria-label="Sort By" value={sortBy} onchange={sort}><option value="none">None</option><option value="name">Name</option><option value="kind">Kind</option><option value="size">Size</option></select></label>
+  {#if stacks?.enabled}<label class="row"><span>Group By:</span><select aria-label="Group Stacks By" value={stacks.groupBy} onchange={(event) => execute({ command: 'desktop.stacks.group', target: {}, payload: { by: event.currentTarget.value } })}>{#each STACK_GROUPS as by}<option value={by}>{STACK_LABELS[by]}</option>{/each}</select></label>{/if}
+  <label class="row"><span>Sort By:</span><select aria-label="Sort By" value={stacks?.enabled ? stacks.sortBy : sortBy} onchange={sort}>{#each stacks?.enabled ? STACK_SORTS : ['none', 'name', 'kind', 'size'] as by}<option value={by}>{by === 'none' ? 'None' : STACK_LABELS[by]}</option>{/each}</select></label>
   <label class="slider"><span>Icon Size: <output>{options.iconSize} × {options.iconSize}</output></span><input aria-label="Icon Size" type="range" min="16" max="128" step="1" value={options.iconSize} oninput={(event) => set('iconSize', Number(event.currentTarget.value))}/><small><span>16 × 16</span><span>128 × 128</span></small></label>
   <label class="slider"><span>Grid Spacing:</span><input aria-label="Grid Spacing" type="range" min="8" max="64" step="1" value={options.gridSpacing} oninput={(event) => set('gridSpacing', Number(event.currentTarget.value))}/><small><span>Less</span><span>More</span></small></label>
   <label class="row"><span>Text Size:</span><select aria-label="Text Size" value={options.textSize} onchange={(event) => set('textSize', Number(event.currentTarget.value))}>{#each [10, 11, 12, 13, 14, 15, 16] as size}<option value={size}>{size}</option>{/each}</select></label>
