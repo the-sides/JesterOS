@@ -2,8 +2,8 @@
   --messages-background: #f5f6f6;
   --messages-incoming: #dfdde3;
   position: relative;
-  width: 928px;
-  height: 710px;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   border-radius: 10px;
   background: var(--messages-background);
@@ -12,9 +12,6 @@
   font-size: 18px;
   font-weight: 400;
   line-height: 22px;
-  transform: scale(var(--window-scale, 0.75));
-  transform-origin: top left;
-  box-shadow: 0 23px 52px rgb(0 0 0 / 30%), 0 4px 13px rgb(0 0 0 / 19%);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -71,33 +68,11 @@
   box-shadow: inset 0 2px 0 rgb(255 255 255 / 40%);
 }
 
-.messages-traffic-lights {
-  position: absolute;
-  top: 8px;
-  left: 12px;
-  display: flex;
-  gap: 12px;
+.messages-window.inactive .messages-toolbar-sidebar,
+.messages-window.inactive .messages-recipient-toolbar {
+  background: linear-gradient(#e2e2e2, #dcdcdc);
 }
 
-.messages-window .traffic-light {
-  width: 16px;
-  height: 17px;
-  border: 1px solid rgb(0 0 0 / 7%);
-  border-radius: 50%;
-  box-shadow: 0 1px 0 rgb(255 255 255 / 15%);
-}
-
-.messages-window .traffic-light.close {
-  background: #ff6058;
-}
-
-.messages-window .traffic-light.minimize {
-  background: #ffbe2f;
-}
-
-.messages-window .traffic-light.zoom {
-  background: #29c840;
-}
 
 .messages-search {
   position: absolute;

@@ -1,0 +1,106 @@
+.managed-window {
+  position: absolute;
+  outline: none;
+}
+
+.window-surface {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  transform-origin: top left;
+  box-shadow: 0 23px 52px rgb(0 0 0 / 30%), 0 4px 13px rgb(0 0 0 / 19%);
+}
+
+.managed-window.inactive .window-surface {
+  box-shadow: 0 15px 35px rgb(0 0 0 / 23%), 0 3px 9px rgb(0 0 0 / 14%);
+}
+
+[data-window-drag] {
+  touch-action: none;
+  user-select: none;
+}
+
+.window-traffic-lights {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  display: flex;
+  gap: 12px;
+}
+
+.window-traffic-lights .traffic-light {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 17px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgb(0 0 0 / 7%);
+  border-radius: 50%;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 15%);
+  appearance: none;
+  cursor: default;
+}
+
+.window-traffic-lights .close { background: #ff6058; color: #820d08; }
+.window-traffic-lights .minimize { background: #ffbe2f; color: #995700; }
+.window-traffic-lights .zoom { background: #29c840; color: #006b11; }
+.window-traffic-lights.inactive .traffic-light { background: #b8b8b8; border-color: rgb(0 0 0 / 10%); }
+.window-traffic-lights.inactive:hover .close { background: #ff6058; }
+.window-traffic-lights.inactive:hover .minimize { background: #ffbe2f; }
+.window-traffic-lights.inactive:hover .zoom { background: #29c840; }
+
+.window-traffic-lights .traffic-light svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+.window-traffic-lights .zoom-symbol { fill: currentColor; stroke: none; }
+.window-traffic-lights:hover svg,
+.window-traffic-lights .traffic-light:focus-visible svg { opacity: 1; }
+.window-traffic-lights .traffic-light:active { filter: brightness(0.84); }
+.window-traffic-lights .traffic-light:focus-visible {
+  outline: 3px solid #397ac9;
+  outline-offset: 3px;
+}
+
+.application-window {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgb(130 130 130 / 68%);
+  border-radius: inherit;
+  background: #f5f5f5;
+  font-family: var(--system-font);
+}
+
+.application-titlebar {
+  position: relative;
+  flex: 0 0 38px;
+  border-bottom: 1px solid #bcbcbc;
+  background: linear-gradient(#e7e7e7, #d4d4d4);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 60%);
+}
+
+.application-title {
+  display: block;
+  overflow: hidden;
+  margin: 0 106px;
+  color: #333;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 37px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.managed-window.inactive .application-titlebar { background: linear-gradient(#ededed, #e4e4e4); }
+.managed-window.inactive .application-title { color: #888; }
+.application-content { flex: 1; min-height: 0; }

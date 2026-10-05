@@ -1,6 +1,9 @@
 <script>
   import { conversations } from './messages-scene.js';
+  import WindowControls from './WindowControls.svelte';
   import './messages.css';
+
+  let { onclose, onminimize, onzoom, active = true, zoomed = false } = $props();
 </script>
 
 {#snippet bubbleTail(direction, color)}
@@ -14,14 +17,10 @@
   </svg>
 {/snippet}
 
-<section class="messages-window" aria-label="Messages">
-  <header class="messages-toolbar">
+<section class="messages-window" class:inactive={!active} aria-label="Messages">
+  <header class="messages-toolbar" data-window-drag>
     <div class="messages-toolbar-sidebar">
-      <div class="messages-traffic-lights" aria-label="Window controls">
-        <button class="traffic-light close" aria-label="Close window" disabled></button>
-        <button class="traffic-light minimize" aria-label="Minimize window" disabled></button>
-        <button class="traffic-light zoom" aria-label="Zoom window" disabled></button>
-      </div>
+      <WindowControls class="messages-traffic-lights" {onclose} {onminimize} {onzoom} {active} {zoomed} />
 
       <div class="messages-search">
         <svg viewBox="0 0 20 20" aria-hidden="true">

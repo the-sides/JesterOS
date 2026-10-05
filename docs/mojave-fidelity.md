@@ -156,6 +156,15 @@ Evidence files:
 
 The final production surface was exercised at 1440×900, **1920×1080**, 1280×800, 1024×768, and 390×844. Window, Dock, and desktop files stayed inside each viewport, with no window/Dock overlap, document overflow, broken images, external-origin resource requests, or page errors. The health endpoint returned `status: ok`. The final Vite build completed without component warnings.
 
+## Interactive window-management checkpoint
+
+The desktop now launches one window per application, with focus/stacking, title-bar dragging, close, minimize/restore, workspace zoom, and a keyboard-accessible Window menu. Desktop files select and open Finder/Preview windows. Only Messages has application content; other interiors are deliberately empty. See the README interaction contract.
+
+The rebuilt Rust-served surface was exercised in Chromium at 1440×900, 390×844, and 800×350, including restoring a zoomed/minimized Messages window after resizing. All ten Dock applications launched, deduplicated, and closed. Desktop file launch, Dock keyboard activation, drag boundaries, preserved restore geometry, Window menu commands, disabled commands without an active window, menu dismissal, and reload reset were exercised. No page errors, broken images, external-origin resources, or document overflow were observed.
+
+A fresh active-Messages capture using the recipe below is 928×710 at DPR 1. Its normalized RGB RMSE is **6.853846%**, matching the earlier checkpoint's opaque-reference regional measurements; this is not a claim of pixel identity. The existing localhost:3001 viewer still serves the earlier static checkpoint. New comparison output is under ignored `artifacts/mojave/interactive-comparison/`; live interaction proof is `artifacts/interaction-windows.png`, and the new capture is `artifacts/interaction-capture-recipe.png`.
+
+
 ## Reproducing the comparison
 
 Comparison tooling requires Bun and ImageMagick; these are not extra runtime requirements for the served puppet screen.
@@ -168,17 +177,20 @@ Comparison tooling requires Bun and ImageMagick; these are not extra runtime req
    magick artifacts/mojave/messages-light.png -crop 928x710+0+0 +repage artifacts/mojave/reference.png
    ```
 
-2. Build/start the app using the README commands. In Chromium, set the device viewport to 1440×900 and DPR to **1**. In DevTools Console, pose the window without changing its skin:
+2. Build/start the app using the README commands. Reload to restore the initial active Messages window. In Chromium, set the device viewport to 1440×900 and DPR to **1**. In DevTools Console, pose the managed window without changing its skin:
 
    ```js
-   const slot = document.querySelector('.window-position');
-   slot.style.setProperty('--window-scale', '1');
-   slot.style.left = '20px';
-   slot.style.top = '20px';
+   const slot = document.querySelector('[data-window-id="messages"]');
+   Object.assign(slot.style, {
+     left: '20px', top: '20px', width: '928px', height: '710px',
+   });
+   Object.assign(slot.querySelector('.window-surface').style, {
+     width: '928px', height: '710px', transform: 'scale(1)',
+   });
    await document.fonts.ready;
    ```
 
-   Use Elements → `.messages-window` → Capture node screenshot. Save the resulting **928×710** PNG as `artifacts/mojave/reconstruction-final.png`. Reload afterward to restore ordinary desktop placement. Mac/native-font captures may produce different measurements from the verified Linux/open-font run.
+   Move the pointer off the window controls so hover glyphs do not enter the capture. Use Elements → `.messages-window` → Capture node screenshot. Save the resulting **928×710** PNG as `artifacts/mojave/reconstruction-final.png`. Do not drag or resize after applying this temporary pose; reload afterward to restore managed placement. Mac/native-font captures may produce different measurements from the verified Linux/open-font run.
 
 3. Generate and serve the evidence:
 

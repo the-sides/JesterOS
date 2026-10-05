@@ -5,9 +5,19 @@ A simulated desktop and applications for actors to use as screen props during fi
 ## Current implementation
 
 - Rust/Axum backend serves the built frontend and `GET /api/health`.
-- Svelte 5 + Vite frontend renders a static desktop with a menu bar, desktop files, dock, and sample Messages conversation.
-- Clock, battery level, conversation selection, and message history are fixed scene content. Search is disabled and the composer is read-only. Window and dock controls are decorative.
+- Svelte 5 + Vite frontend renders an interactive desktop with a menu bar, desktop files, Dock, and managed application windows.
+- Messages retains its sample conversation. Other applications open empty window interiors; their application UIs are not implemented. Clock, battery level, conversation selection, and message history remain fixed scene content. Search and message editing are disabled.
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
+
+## Desktop interactions
+
+- Click a Dock icon, or focus it and press Enter/Space, to open, raise, or restore its application's single window. Repeated activation does not create duplicates.
+- Click a desktop icon to select it; double-click or press Enter to open it. Macintosh HD, Personal, Downloads, and Trash open the same Finder window with the corresponding title. Itinerary.pdf opens Preview. These are simulated locations, not host files.
+- Click a window to raise and activate it. Drag its title bar to move it within the space below the menu bar and above the Dock. Windows refit when the viewport changes.
+- Red closes the window. Yellow minimizes it while retaining its title, position, and zoom state; the Dock or Window menu restores it. Green toggles workspace-sized zoom and the prior normal bounds, without entering browser fullscreen.
+- The Window menu closes, minimizes, zooms, or switches to any open/minimized window, including Preview. Arrow keys, Home/End, Enter, and Escape work in the menu. Escape also clears desktop selection; clicking the background focuses the desktop.
+- Dock running dots include minimized applications. Finder's dot remains because the desktop is always running. Window state is client-side and resets on reload to the initial Messages scene; it is not persisted or synchronized through Rust.
+- Other menus and status items remain static scene dressing.
 
 ## Requirements
 
@@ -80,8 +90,13 @@ backend/
   Cargo.toml         Rust dependencies
   src/main.rs        HTTP server, CLI, health endpoint, static files
 frontend/
-  src/App.svelte            Composes the desktop and Messages scene
-  src/Desktop.svelte        Menu bar, desktop files, Dock, window placement
+  src/App.svelte            Window lifecycle, active application, stacking, layout
+  src/Desktop.svelte        Menu bar, desktop selection, Dock, Window menu
+  src/applications.js       Application and desktop-file registry
+  src/Window.svelte         Window frame, focus, pointer dragging, content hosting
+  src/WindowControls.svelte Shared close/minimize/zoom buttons
+  src/window-state.js       Work-area bounds, responsive fitting, zoom geometry
+  src/windows.css          Shared window chrome and active/inactive appearance
   src/MessagesWindow.svelte Measured Mojave Messages chrome and conversation
   src/messages-scene.js     Fixed Apple reference scene for visual comparison
   src/AppIcon.svelte        Offline application and desktop icon loader
@@ -107,7 +122,7 @@ The desktop uses Apple's Mojave Day photograph and detailed pre-Big-Sur applicat
 
 ## Verification
 
-The final production build and Rust-served desktop were exercised in Chromium at 1440×900, 1920×1080, 1280×800, 1024×768, and 390×844. Window, Dock, and desktop files stayed inside every viewport without window/Dock overlap or document overflow. All images/fonts loaded locally; there were no broken images, external-origin resources, or browser page errors.
+The interactive production build was exercised through Rust at localhost:3000 in Chromium at 1440×900, 390×844, and 800×350. Every Dock application launched, deduplicated, and closed. Live checks covered desktop selection/double-click/Enter, Dock Enter/Space, window stacking and drag boundaries, minimize/restore, zoom/restore, minimized-window resizing, Window menu commands/navigation/dismissal, and reload reset. Managed windows stayed above the Dock, including in the short viewport. No broken images, external-origin resources, document overflow, or browser page errors were observed. The Vite build completed without component warnings.
 
 Earlier backend smoke checks covered the health response, unknown API routes, unsupported health methods, root HTML, missing assets, and the missing-frontend startup diagnostic. The combined development command and Vite API proxy were also exercised. The latest health check returned `status: ok`. There is no application UI test suite; `bun test tools/compare-mojave.test.mjs` passes a real-ImageMagick regression for RGB errors, transparent padding, and visible difference maps.
 
@@ -115,6 +130,6 @@ Earlier backend smoke checks covered the health response, unknown API routes, un
 
 The current desktop is at **http://localhost:3000**. The separately served evidence viewer is at **http://localhost:3001**, with a reference-opacity slider and a 4× difference map. It does not add operator/developer UI to the actor-facing screen.
 
-Against Apple's Mojave Messages guide, the final exact-size 928×710/DPR-1 browser capture measures **6.854% normalized RGB RMSE**. That is nonzero, not pixel identity. SF/open-font glyphs, native/browser rasterization, and some original desktop-icon illustrations remain different. Full evidence, asset/rights caveats, comparison commands, and capture instructions are in [Mojave fidelity research](docs/mojave-fidelity.md).
+Against Apple's Mojave Messages guide, the exact-size 928×710/DPR-1 browser capture measures **6.854% normalized RGB RMSE**, remeasured after adding window management and matching the prior static checkpoint's score. That is nonzero, not pixel identity. SF/open-font glyphs, native/browser rasterization, and some original desktop-icon illustrations remain different. Full evidence, asset/rights caveats, comparison commands, and capture instructions are in [Mojave fidelity research](docs/mojave-fidelity.md).
 
 Generated evidence lives under ignored `artifacts/mojave/`; reproduce it after a fresh checkout rather than treating reference screenshots as application UI.
