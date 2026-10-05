@@ -1,12 +1,16 @@
 <script>
   import { onMount, tick } from 'svelte';
   import Windows11Icon from './Windows11Icon.svelte';
-  import { createDesktopItemInteractions } from './desktop-item-interactions.js';
+  import Windows11DesktopContextMenu from './Windows11DesktopContextMenu.svelte';
+  import { desktopContextItems } from './desktop-context-model.js';
+  import { createDesktopItemInteractions, revealDesktopItem } from './desktop-item-interactions.js';
   import './windows11.css';
-  let { profile, desktopItems = [], children, windows = [], runningAppIds = [], activeWindowId = null, activeApp, viewState, native, execute, registerView, onlayout } = $props();
+  let { profile, desktopItems = [], desktopDetails = {}, children, windows = [], runningAppIds = [], activeWindowId = null, activeApp, viewState, native, execute, registerView, onlayout } = $props();
   const shell = $derived(native.shell);
   const apps = $derived(Object.values(profile.applications));
   const files = $derived(desktopItems);
+  const contextItems = $derived(desktopContextItems(shell, files, 'windows'));
+  const propertyInfo = $derived(shell.dialog ? desktopDetails[shell.dialog.fileId] : null);
   const taskbarApps = $derived(apps.filter((app) => app.taskbar === 'pinned' || runningAppIds.includes(app.id)));
   const results = $derived(apps.filter((app) => app.name.toLowerCase().includes(shell.query.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name)));
   const fileResults = $derived(shell.query ? files.filter((file) => file.name.toLowerCase().includes(shell.query.toLowerCase())) : []);
@@ -28,7 +32,7 @@
     execute: (command) => execute(command), family: 'windows',
     openCommand: 'win11.desktop.open', available: () => itemsAvailable(),
   });
-  function itemsAvailable() { return Boolean(desktopSurface?.isConnected && shell.showDesktopIcons && !shell.dialog && !desktopSurface.closest('[inert]')); }
+  function itemsAvailable() { return Boolean(desktopSurface?.isConnected && shell.viewOptions.showIcons && !shell.dialog && !desktopSurface.closest('[inert]')); }
   function itemElements() { return itemsAvailable() ? [...desktopSurface.querySelectorAll('button.win11-desktop-file[data-file-id]')] : []; }
   function itemRects() {
     const area = workspace.getBoundingClientRect();
@@ -39,13 +43,16 @@
   }
   async function focusItem(fileId) {
     await tick();
-    itemElements().find((element) => element.dataset.fileId === fileId)?.focus({ preventScroll: true });
+    const element = itemElements().find((button) => button.dataset.fileId === fileId);
+    revealDesktopItem(element, desktopSurface);
+    element?.focus({ preventScroll: true });
   }
   async function focusRename() {
     await tick();
     if (!itemsAvailable()) return;
     const input = desktopSurface.querySelector('[data-desktop-rename]');
     if (!input) return;
+    revealDesktopItem(input.parentElement, desktopSurface);
     input.focus({ preventScroll: true });
     const entry = files.find((file) => file.id === shell.rename?.fileId);
     const dot = entry?.folderId ? -1 : input.value.lastIndexOf('.');
@@ -76,6 +83,34 @@
     interactions.keydown(event, fileId);
   }
   function measureWorkspace() { return { width: workspace?.clientWidth ?? 0, height: workspace?.clientHeight ?? 0 }; }
+  function contextArea() {
+    const rect = workspace.getBoundingClientRect();
+    return { left: rect.left, top: rect.top, ...measureWorkspace() };
+  }
+  async function focusContextReturn(fileId) {
+    await tick();
+    if (fileId && itemElements().some(element => element.dataset.fileId === fileId)) await focusItem(fileId);
+    else workspace?.focus({ preventScroll: true });
+  }
+  async function focusContextItem(itemId) {
+    await tick();
+    const element = [...(contextMenu?.querySelectorAll('[data-desktop-context-item]') ?? [])].find((item) => item.dataset.desktopContextItem === itemId && !item.disabled);
+    element?.focus({ preventScroll: true });
+    element?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  function contextBounds() {
+    const panel = contextMenu?.querySelector('[data-context-main]');
+    return { width: panel?.offsetWidth ?? 0, height: panel?.offsetHeight ?? 0 };
+  }
+  function gridMetrics() {
+    const area = workspace.getBoundingClientRect();
+    const surface = desktopSurface?.getBoundingClientRect();
+    const rectangles = itemRects();
+    const style = desktopSurface ? getComputedStyle(desktopSurface) : null;
+    const itemWidth = Math.max(0, ...rectangles.map(rect => rect.width));
+    const itemHeight = Math.max(0, ...rectangles.map(rect => rect.height));
+    return { startX: surface ? surface.left - area.left : 4, startY: surface ? surface.top - area.top : 10, stepX: itemWidth + (parseFloat(style?.columnGap) || 0), stepY: itemHeight + (parseFloat(style?.rowGap) || 8), itemWidth, itemHeight, reverseX: false };
+  }
   function controls() { return [...(root?.querySelectorAll('[data-shell-control]') ?? [])].filter((element) => !element.disabled && !element.closest('[inert]') && (!shell.dialog || element.dataset.shellControl === 'properties-close')); }
   async function focusControl(controlId) {
     await tick();
@@ -101,6 +136,7 @@
   function controlKey(event) {
     if (!(event.target instanceof Element)) return;
     if (event.target.closest('.win11-desktop-files')) return;
+    if (event.target.closest('[data-desktop-context-item]')) return;
     const container = event.target.closest('[data-keyboard-group]');
     if (!container || !['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || event.target.matches('input,textarea,select')) return;
     const items = [...container.querySelectorAll('[data-shell-control]')].filter((element) => !element.disabled);
@@ -113,12 +149,11 @@
   function desktopContext(event, fileId = null) {
     event.preventDefault(); event.stopPropagation();
     if (shell.dialog) return;
-    const bounds = workspace.getBoundingClientRect();
-    request('win11.desktop.context', { fileId }, { x: Math.max(0, event.clientX - bounds.left), y: Math.max(0, event.clientY - bounds.top) });
+    request('win11.desktop.context.open', { fileId }, { x: Math.max(0, event.clientX), y: Math.max(0, event.clientY) });
   }
   function dateId(day) { return `${shell.calendar.year}-${String(shell.calendar.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`; }
   onMount(() => {
-    const cleanup = registerView({ measureWorkspace, focusControl, itemRects, focusItem, focusRename, reportRenameError, itemsAvailable, controlIds: () => controls().map((element) => element.dataset.shellControl), scrollPanel, scrollAreas, scrollSnapshot });
+    const cleanup = registerView({ measureWorkspace, contextArea, focusControl, focusContextReturn, focusContextItem, contextBounds, gridMetrics, itemRects, focusItem, focusRename, reportRenameError, itemsAvailable, controlIds: () => controls().map((element) => element.dataset.shellControl), scrollPanel, scrollAreas, scrollSnapshot });
     let previous = '';
     function reportLayout() {
       const area = measureWorkspace(), key = `${area.width}:${area.height}`;
@@ -128,7 +163,8 @@
     function outside(event) {
       if (!(event.target instanceof Element)) return;
       if (shell.dialog && !properties?.contains(event.target)) return;
-      if ((shell.context && !contextMenu?.contains(event.target)) || (shell.panel && !panel?.contains(event.target) && !event.target.closest('[data-shell-trigger]'))) request('win11.shell.dismiss');
+      if (shell.context && !contextMenu?.contains(event.target)) request('win11.desktop.context.close', {}, { restoreFocus: true });
+      if (shell.panel && !panel?.contains(event.target) && !event.target.closest('[data-shell-trigger]')) request('win11.panel.close', {}, { restoreFocus: false });
     }
     function focus(event) {
       const controlId = event.target instanceof Element && event.target.hasAttribute('data-shell-control') ? event.target.dataset.shellControl : null;
@@ -139,18 +175,18 @@
     }
     function keyboard(event) {
       if (!root.contains(document.activeElement)) return;
-      if (event.defaultPrevented || event.target.closest?.('[data-desktop-rename]')) return;
+      if (event.defaultPrevented || event.target.closest?.('[data-desktop-rename], [data-desktop-context-item]')) return;
       if ((event.target === workspace || event.target === desktopSurface) && !(event.ctrlKey && event.key === 'Escape')) interactions.keydown(event);
       if (event.defaultPrevented) return;
       controlKey(event);
       if (event.target === workspace && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
-        event.preventDefault(); request('win11.desktop.context', { fileId: null }, { x: 24, y: 24 });
+        event.preventDefault(); request('win11.desktop.context.open', { fileId: null }, { x: 24, y: 24 });
       }
       if (event.key === 'Escape' && (shell.panel || shell.context || shell.dialog)) {
         event.preventDefault();
         if (shell.dialog) request('win11.dialog.close', { dialogId: 'properties' });
         else if (shell.panel) request('win11.panel.close');
-        else request('win11.shell.dismiss', {}, { restoreFocus: true });
+        else request('win11.desktop.context.close', {}, { restoreFocus: true });
       }
       else if ((event.ctrlKey && event.key === 'Escape') || (event.metaKey && event.key.toLowerCase() === 's')) {
         event.preventDefault(); togglePanel(event.ctrlKey ? 'start' : 'search');
@@ -170,12 +206,12 @@
 </script>
 <div bind:this={root} class="win11-desktop" class:win11-dark={native.apps.settings.theme === 'dark'} class:win11-glow={native.apps.settings.wallpaper === 'glow'} class:win11-flow={native.apps.settings.wallpaper === 'flow'} style:--win11-accent={native.apps.settings.accent}>
   <div bind:this={workspace} class="win11-workspace" data-shell-control="desktop" tabindex="-1" role="group" aria-label="Windows desktop" onpointerdown={workspacePointer}>
-    {#if shell.showDesktopIcons}
-      <div bind:this={desktopSurface} class="win11-desktop-files" data-shell-scroll="desktop" onscroll={(event) => observeScroll(event, 'desktop')} inert={Boolean(shell.dialog)} style:overflow={Object.keys(shell.positions).length ? 'visible' : undefined}>
+    {#if shell.viewOptions.showIcons}
+      <div bind:this={desktopSurface} class="win11-desktop-files" data-shell-scroll="desktop" onscroll={(event) => observeScroll(event, 'desktop')} inert={Boolean(shell.dialog)} style:--desktop-icon-size="{shell.viewOptions.iconSize}px">
         {#each files as file (file.id)}
           <div class="win11-desktop-entry" style:transform={shell.positions[file.id] ? `translate(${shell.positions[file.id].x}px, ${shell.positions[file.id].y}px)` : undefined}>
             <button class="win11-desktop-file" class:selected={shell.selectedFileIds.includes(file.id)} aria-pressed={shell.selectedFileIds.includes(file.id)} data-file-id={file.id} data-folder-id={file.folderId} data-shell-control="file:{file.id}" onclick={(event) => interactions.click(event, file.id)} onpointerdown={(event) => interactions.pointerdown(event, file.id)} ondblclick={() => request('win11.desktop.open', { fileId: file.id })} oncontextmenu={(event) => desktopContext(event, file.id)} onkeydown={(event) => desktopKey(event, file.id)}>
-              <Windows11Icon name={file.icon} size={44}/><span style:visibility={shell.rename?.fileId === file.id ? 'hidden' : undefined}>{file.name}</span>
+              <Windows11Icon name={file.icon} size={shell.viewOptions.iconSize}/><span style:visibility={shell.rename?.fileId === file.id ? 'hidden' : undefined}>{file.name}</span>
             </button>
             {#if shell.rename?.fileId === file.id}
               <input class="win11-desktop-rename" data-desktop-rename aria-label="Rename {file.name}" value={shell.rename.name} onpointerdown={(event) => event.stopPropagation()} onclick={(event) => event.stopPropagation()} oncontextmenu={(event) => event.stopPropagation()} onkeydown={renameKey} oninput={(event) => { event.currentTarget.setCustomValidity(''); request('win11.desktop.rename.change', {}, { name: event.currentTarget.value }); }} onblur={() => { if (shell.rename?.fileId === file.id && itemsAvailable()) request('win11.desktop.rename.commit'); }}/>
@@ -184,24 +220,26 @@
         {/each}
       </div>
     {/if}
-    {#if shell.marquee && shell.showDesktopIcons && !shell.dialog}
+    {#if shell.marquee && shell.viewOptions.showIcons && !shell.dialog}
       <div class="win11-desktop-marquee" aria-hidden="true" style:left="{shell.marquee.x}px" style:top="{shell.marquee.y}px" style:width="{shell.marquee.width}px" style:height="{shell.marquee.height}px"></div>
     {/if}
     <div class="win11-window-layer" inert={Boolean(shell.dialog)}>{@render children()}</div>
     {#if shell.context}
-      <div bind:this={contextMenu} class="win11-context-menu win11-flyout" role="menu" aria-label="Desktop context menu" data-keyboard-group style:left="{shell.context.x}px" style:top="{shell.context.y}px">
-        {#each (shell.context.fileId ? [['open','Open'],['properties','Properties']] : [['toggle-icons',shell.showDesktopIcons ? '✓ Show desktop icons' : 'Show desktop icons'],['sort-name','Sort by name'],['refresh','Refresh'],['personalize','Personalize']]) as item, i}
-          <button role="menuitem" data-shell-control={i === 0 ? 'context-first' : `context:${item[0]}`} onclick={() => request('win11.desktop.action', { action: item[0] })}>{item[1]}</button>
-        {/each}
+      <div bind:this={contextMenu}>
+        <Windows11DesktopContextMenu context={shell.context} items={contextItems} {execute} {measureWorkspace} {contextArea}/>
       </div>
     {/if}
     {#if shell.dialog}
-      {@const entry = files.find((file) => file.id === shell.dialog.fileId)}
       <div class="win11-dialog-backdrop"><div bind:this={properties} class="win11-properties win11-flyout" role="dialog" aria-modal="true" aria-label="Properties" data-shell-scroll="properties" onscroll={(event) => observeScroll(event, 'properties')}>
-        {#if entry}
-          <h2>{entry.name} Properties</h2><Windows11Icon name={entry.icon} size={48}/>
-          <dl><dt>Type</dt><dd>{entry.folderId ? 'Virtual system folder' : entry.appId === 'photos' ? 'Image document' : 'Text document'}</dd><dt>Location</dt><dd>Local scene desktop</dd><dt>Opens with</dt><dd>{profile.applications[entry.appId].name}</dd></dl><p>This item belongs to the fictional scene, not your computer.</p>
-        {:else}<h2>Properties</h2><p>This desktop entry is no longer available.</p>{/if}
+        {#if propertyInfo}
+          <h2>{propertyInfo.name} Properties</h2><Windows11Icon name={propertyInfo.icon} size={48}/>
+          <dl><dt>Type</dt><dd>{propertyInfo.kind}</dd><dt>Location</dt><dd>{propertyInfo.parentName}</dd><dt>Path</dt><dd>{propertyInfo.path}</dd>
+            {#if propertyInfo.itemCount !== null && propertyInfo.itemCount !== undefined}<dt>Contains</dt><dd>{propertyInfo.itemCount} items</dd>{/if}
+            {#if propertyInfo.size !== null && propertyInfo.size !== undefined}<dt>Size</dt><dd>{propertyInfo.size} bytes</dd>{/if}
+            {#if propertyInfo.revision !== null && propertyInfo.revision !== undefined}<dt>Revision</dt><dd>{propertyInfo.revision}</dd>{/if}
+            {#if propertyInfo.deleted}<dt>Status</dt><dd>In Recycle Bin</dd>{/if}
+          </dl><p>This item belongs to the fictional scene, not your computer.</p>
+        {:else}<h2>Properties</h2><p>This item is no longer available.</p>{/if}
         <button data-shell-control="properties-close" onclick={() => request('win11.dialog.close', { dialogId: 'properties' })}>OK</button>
       </div></div>
     {/if}
@@ -254,6 +292,9 @@
 <style>
   .win11-workspace { touch-action: none; }
   .win11-desktop-entry { position: relative; width: 86px; flex-shrink: 0; touch-action: none; user-select: none; }
-  .win11-desktop-rename { position: absolute; top: 55px; left: 2px; width: 82px; padding: 1px 2px; border: 1px solid #1565c0; background: white; color: #111 !important; text-align: center; font-size: 12px !important; z-index: 2; }
+  .win11-desktop-files { right: 4px; height: calc(100% - 20px); max-height: none; display: flex; flex-direction: column; flex-wrap: wrap; gap: 8px; align-content: flex-start; overflow: auto; }
+  .win11-desktop-file { min-height: calc(var(--desktop-icon-size) + 40px); }
+  .win11-desktop-rename { position: absolute; top: calc(var(--desktop-icon-size) + 11px); left: 2px; width: 82px; padding: 1px 2px; border: 1px solid #1565c0; background: white; color: #111 !important; text-align: center; font-size: 12px !important; z-index: 2; }
+  .win11-properties dd { overflow-wrap: anywhere; }
   .win11-desktop-marquee { position: absolute; border: 1px solid #78b6ee; background: #4b9fe536; pointer-events: none; z-index: 1; }
 </style>

@@ -45,3 +45,9 @@ A scene-visible entry backed by a fictional file/folder record or a declared nat
 
 **Desktop selection**:
 An ordered collection of live desktop item IDs with an independent range anchor. It is not keyboard focus, the active application, or the active managed window.
+
+**Desktop context tree**:
+The native menu for a clicked desktop item or background, with canonical enabled/checked actions, focused item and expanded submenu IDs. Its file target is distinct from the preserved multi-item selection; it never performs host desktop actions.
+
+**Finder utility window**:
+A managed Get Info or Desktop view-option window associated with Finder, not a folder-browser location. Its live metadata/disclosures/options and lifecycle are scene state; opening a real folder must not reuse it as a browser.

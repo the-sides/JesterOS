@@ -1,6 +1,7 @@
 import { isRecord, rejected } from './feature-commands.js';
-import { shellPanels, quickControls, desktopActions, shellScrollAreas } from './windows11-shell-state.js';
+import { shellPanels, quickControls, shellScrollAreas } from './windows11-shell-state.js';
 import { createDesktopItemCommands } from './desktop-item-commands.js';
+import { createDesktopContextCommands } from './desktop-context-commands.js';
 export { windows11ShellCatalog } from './windows11-shell-catalog.js';
 export { readWindows11ShellTargets } from './windows11-shell-state.js';
 const fields = (value, names, required = names) => isRecord(value) && Object.keys(value).every((key) => names.includes(key)) && required.every((key) => Object.hasOwn(value, key));
@@ -49,6 +50,22 @@ export function createWindows11ShellCommands(shell, context) {
     rename: (fileId, name) => context.renameDesktopItem(fileId, name),
     move: (fileIds, folderId) => context.moveDesktopItems(fileIds, folderId),
   }, 'win11.desktop');
+  const contextCommands = createDesktopContextCommands(shell, {
+    getItems: files, getView: view,
+    available: () => Boolean(view() && context.windowInteractionsAvailable() && !shell.dialog),
+    focusDesktop: () => { shell.panel = null; context.focusDesktop(); },
+    invoke: (command, target, payload) => context.invoke(command, target, payload),
+    createFolder: (name, fileIds) => context.createDesktopFolder(name, fileIds),
+    trash: (fileIds) => context.trashDesktopItems(fileIds),
+    openInfo: async (fileId) => {
+      if (!context.getDesktopFileInfo(fileId)) return rejected('not_found', 'The file no longer exists.');
+      shell.panel = null; shell.context = null; shell.dialog = { fileId };
+      shell.focusedControl = { controlId: 'properties-close' };
+      await view().focusControl('properties-close');
+      return applied({ fileId });
+    },
+    family: 'windows',
+  }, 'win11.desktop', 'windows');
   return {
     'win11.panel.open': handler(['panelId'], [], async ({ panelId }) => {
       if (!shellPanels.includes(panelId)) return invalid();
@@ -105,43 +122,13 @@ export function createWindows11ShellCommands(shell, context) {
       return applied({ control });
     }),
     ...desktopCommands,
+    ...contextCommands,
     'win11.desktop.open': desktopHandler(['fileId'], [], ({ fileId }) => {
       if (typeof fileId !== 'string') return invalid();
       const entry = file(fileId);
       return entry ? openFile(entry) : rejected('not_found', 'Desktop entry does not exist.');
     }),
-    'win11.desktop.context': handler(['fileId'], ['x', 'y'], async ({ fileId }, { x, y }) => {
-      if ((fileId !== null && typeof fileId !== 'string') || !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) return invalid();
-      if (fileId !== null && !file(fileId)) return rejected('not_found', 'Desktop entry does not exist.');
-      const area = view().measureWorkspace();
-      dismiss(); context.focusDesktop();
-      if (fileId === null || !shell.selectedFileIds.includes(fileId)) {
-        shell.selectedFileIds = fileId === null ? [] : [fileId]; shell.selectionAnchorId = fileId;
-      }
-      shell.context = { fileId, x: Math.max(0, Math.min(x, area.width - 250)), y: Math.max(0, Math.min(y, area.height - 240)) };
-      shell.focusedControl = { controlId: 'context-first' };
-      await view().focusControl('context-first'); return applied({ menuId: 'desktop-context', fileId });
-    }),
-    'win11.desktop.action': handler(['action'], [], async ({ action }) => {
-      if (!desktopActions.includes(action)) return invalid();
-      if (!shell.context) return rejected('unavailable', 'The desktop context menu is closed.');
-      const fileId = shell.context.fileId;
-      if (fileId !== null && !file(fileId)) return rejected('not_found', 'The desktop entry is no longer available.');
-      const supported = fileId ? ['open', 'properties'] : ['refresh', 'sort-name', 'toggle-icons', 'personalize'];
-      if (!supported.includes(action)) return rejected('disabled', 'This action does not apply to the current desktop target.');
-      if (action === 'open') return openFile(file(fileId));
-      if (action === 'personalize') return closeAfter('win11.settings.navigate', { page: 'personalization' });
-      if (action === 'refresh') return closeAfter('desktop.refreshLayout', {});
-      if (action === 'properties') {
-        shell.dialog = { fileId }; shell.context = null;
-        shell.focusedControl = { controlId: 'properties-close' };
-        await view().focusControl('properties-close');
-      } else {
-        if (action === 'sort-name') { shell.sortByName = true; shell.positions = {}; }
-        if (action === 'toggle-icons') shell.showDesktopIcons = !shell.showDesktopIcons;
-      }
-      return applied({ action, fileId });
-    }),
+    'win11.desktop.personalize': emptyHandler(() => closeAfter('win11.settings.navigate', { page: 'personalization' })),
     'win11.desktop.show': emptyHandler(async () => {
       for (const window of context.getWindows().filter((entry) => !entry.minimized)) {
         const result = await context.invoke('window.setMinimized', { windowId: window.id }, { minimized: true });
@@ -153,7 +140,7 @@ export function createWindows11ShellCommands(shell, context) {
       if (dialogId !== 'properties') return invalid();
       if (!shell.dialog) return rejected('unavailable', 'The properties dialog is closed.');
       const fileId = shell.dialog.fileId; shell.dialog = null;
-      const controlId = `file:${fileId}`; shell.focusedControl = { controlId };
+      const controlId = file(fileId) && shell.viewOptions.showIcons ? `file:${fileId}` : 'desktop'; shell.focusedControl = { controlId };
       await view().focusControl(controlId); return applied({ dialogId });
     }, [], true),
     'win11.notification.dismiss': handler(['notificationId'], [], ({ notificationId }) => {

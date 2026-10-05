@@ -92,9 +92,27 @@ export function createDesktopItemCommands(state, context, prefix = 'desktop') {
         || !payload.positions.length || !payload.positions.every(entry => fields(entry, ['fileId', 'x', 'y']) && id(entry.fileId) && finite(entry.x) && finite(entry.y))
         || !ids(payload.positions.map(entry => entry.fileId))) return invalid();
       if (!available()) return unavailable();
+      if (state.viewOptions?.autoArrange || (prefix === 'desktop' && state.sortBy && state.sortBy !== 'none'))
+        return rejected('disabled', 'Automatic arrangement controls icon positions; choose free placement first.');
       const view = context.getView(), rects = view.itemRects(), area = view.measureWorkspace();
+      let desiredPositions = payload.positions;
+      if (state.viewOptions?.alignToGrid) {
+        const metrics = view.gridMetrics(), anchor = desiredPositions[0];
+        let x = metrics.startX + Math.round((anchor.x - metrics.startX) / metrics.stepX) * metrics.stepX - anchor.x;
+        let y = metrics.startY + Math.round((anchor.y - metrics.startY) / metrics.stepY) * metrics.stepY - anchor.y;
+        let minX = -Infinity, maxX = Infinity, minY = -Infinity, maxY = Infinity;
+        for (const desired of desiredPositions) {
+          const rect = rects.find(entry => entry.fileId === desired.fileId);
+          if (!item(desired.fileId) || !rect) return rejected('not_found', 'A positioned desktop item no longer exists.');
+          minX = Math.max(minX, -desired.x); maxX = Math.min(maxX, area.width - rect.width - desired.x);
+          minY = Math.max(minY, -desired.y); maxY = Math.min(maxY, area.height - rect.height - desired.y);
+        }
+        if (minX > maxX || minY > maxY) return rejected('invalid_arguments', 'The aligned group does not fit this workspace.');
+        x = Math.max(minX, Math.min(x, maxX)); y = Math.max(minY, Math.min(y, maxY));
+        desiredPositions = desiredPositions.map(desired => ({ fileId: desired.fileId, x: desired.x + x, y: desired.y + y }));
+      }
       const changes = [];
-      for (const desired of payload.positions) {
+      for (const desired of desiredPositions) {
         const rect = rects.find(entry => entry.fileId === desired.fileId);
         if (!item(desired.fileId) || !rect) return rejected('not_found', 'A positioned desktop item no longer exists.');
         const previous = state.positions[desired.fileId] ?? { x: 0, y: 0 };

@@ -236,7 +236,7 @@ Primary screenshot references do not establish a blanket redistribution license 
 | --- | --- |
 | `notes` | Working reduced plain-text editor, note collection/search, pin/unpin, delete/restore, sidebar and presentation/focus/context/scroll operations. Shared classic Notes mechanics; High Sierra-scoped appearance and independent 2017 fixture. |
 | `messages` | Independent **Euna Kwon fixed sample** reconstructed from the High Sierra Messages Help image. Search/compose/Details/composer/emoji/audio controls are disabled; portrait rows and the displayed Tapback are static. Only shell/window operations act on this app. |
-| `finder` | Bounded **Desktop/location contents** backed by actual simulated name/parent records. Independent Finder locations, folder navigation/counts and desktop selection/rename/drop work. Full native Finder views, sidebar/tags/search and filesystem lifecycle remain queued. |
+| `finder` | Bounded **Desktop/location contents** backed by actual simulated name/parent records, plus live managed Get Info and Desktop view-option utilities. Independent folder locations/counts, context creation/Trash, native selection/rename/drop/sort/cleanup and actual view controls work. Full Finder views/sidebar/tags/search, rich inspectors and filesystem/Trash lifecycle remain queued. |
 | `launchpad`, `safari`, `mail`, `contacts`, `calendar`, `photos`, `settings`, `preview` | **Launch-only window shells.** `settings` is the stable command ID for **System Preferences**, not the later System Settings application. Launchpad is not a functional native full-screen launcher. No interior preferences, dialogs, browsing, mail, photo editing, account setup, or PDF functionality is supplied. |
 | All other native apps/utilities inventoried above | Not registered in this browser slice. The native inventory is not a hidden set of implemented launchers. |
 
@@ -256,7 +256,7 @@ The account heading remains **On My Mac** as the existing local-data abstraction
 
 The adapter's `Desktop`, `Window`, `MessagesWindow`, and `NotesWindow` accept the existing canonical props and semantic view-helper interfaces. It exports `prepareDocument`, `createSceneData`, `initialBounds(app, area, windowCount, viewportHeight)`, and `fitNormalBounds(bounds, app, area)`. No per-profile command aliases or direct private component mutations are introduced.
 
-The table below records the original **31-name CORE-05 handoff**, not today's complete inventory. The current profile exposes **47 contracts**, including later profile selection, window.resize/window.create/app.quit and desktop selection/rename/drop/location operations; [feature-commands.md](feature-commands.md) is the current canonical inventory.
+The table below records the original **31-name CORE-05 handoff**, not today's complete inventory. The current profile exposes **59 contracts**, including later profile selection, window.resize/window.create/app.quit, desktop selection/rename/drop/location and context/create/Trash/sort/cleanup/view/Info operations; [feature-commands.md](feature-commands.md) is the current canonical inventory.
 
 | Group | Compatible names |
 | --- | --- |
@@ -267,6 +267,9 @@ The table below records the original **31-name CORE-05 handoff**, not today's co
 | Notes presentation | `notes.context.open`, `notes.context.close`, `notes.context.select`, `notes.context.execute`, `notes.focus`, `notes.scroll` |
 
 The original table establishes source/contract compatibility. Subsequent production integration is exercised: OS-07 native Command selection, Shift/keyboard/all selection, marquee, Return inline rename/cancellation and group drag/drop passed, with actual visible destination records, stable physical positions and 390×844 bounds. Independent Finder locations/Downloads and real contextual titles passed. Fresh diagnostics were empty; broader native Find/search/account, swipe, Trash lifecycle and rich-app scopes remain outside this slice. Messages gains no send/receive/edit/search commands. Fresh profile selection never carries documents/windows into a different era.
+
+OS-08 production proof covered native context New Folder, grouping selected real records, independent/live Get Info utilities, retained disclosures, inline rename and actual Trash contents. Name/Kind/Size sorting, selected collision-free/one-shot cleanup and every native view inspector control—including generic document art when preview is off—passed. Shift-F10/Control-click/branch navigation/direct reopen and bounded 390×844 popups passed; dense 320×200 thirteen-icon creation revealed and correctly anchored the actual editor. High Sierra still has no Stacks feature. Strict 59-contract discovery, clean build/14 tests/99 assertions and empty fresh browser diagnostics were exercised.
+
 
 Parent integration is exactly:
 

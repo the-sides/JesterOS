@@ -3,6 +3,7 @@ import { defineCommand, NONE, text, identity, flag, number, offset, choice, obje
 import { windows11ShellCatalog } from './windows11-shell-catalog.js';
 import { windows11AppCatalog } from './windows11-app-commands.js';
 import { desktopItemContracts } from './desktop-item-catalog.js';
+import { desktopContextContracts } from './desktop-context-catalog.js';
 
 const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -75,6 +76,11 @@ export const commandCatalog = {
     ['Mounted desktop view; actual native workspace dimensions are positive.'],
     ['Measure real browser workspace above native Dock/taskbar; refit normal/expanded windows, including minimized restore geometry; clamp manually positioned desktop items to the actual workspace.']),
   ...desktopItemContracts(MAC_PROFILES, 'desktop', 'desktop', 'files', 'shell.desktop'),
+  ...desktopContextContracts(MAC_PROFILES, 'desktop', 'desktop', 'files', 'shell.desktop'),
+  define('desktop.info.section', 'shell.desktop', object({ windowId: identity, sectionId: choice('general', 'name') }), object({ open: flag }),
+    ['Live managed Get Info utility and native section; no global modal.'],
+    ['Set actual native disclosure presentation, retained through minimize/remount.'], ['windows.infoSections'], NONE,
+    object({ windowId: identity, sectionId: choice('general', 'name') })),
   define('desktop.folder.navigate', 'shell.desktop', object({ windowId: identity, folderId: identity }), empty,
     ['Live Finder window and simulated folder; no native global modal.'],
     ['Show actual location contents in the exact Finder window; update contextual title and activate the root.'], NONE, NONE,

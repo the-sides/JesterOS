@@ -2,13 +2,17 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import { isTrashed } from './windows11-app-helpers.js';
 
   let { profile, windowId, folderId, files, execute } = $props();
   const Icon = $derived(profile.renderer === 'sonoma' ? SonomaIcon
     : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
-  const folder = $derived(files.find((file) => file.id === folderId && !file.deleted));
-  const parent = $derived(files.find((file) => file.id === folder?.parentId && !file.deleted));
-  const contents = $derived(files.filter((file) => !file.deleted && file.parentId === folderId));
+  const store = $derived({ files });
+  const folder = $derived(files.find(file => file.id === folderId));
+  const unavailable = $derived(!folder || isTrashed(store, folder));
+  const parent = $derived(unavailable ? null : files.find(file => file.id === folder.parentId && !isTrashed(store, file)));
+  const contents = $derived(folderId === 'trash' ? files.filter(file => file.deleted)
+    : unavailable ? [] : files.filter(file => file.parentId === folderId && !isTrashed(store, file)));
   const desktop = $derived(files.find((file) => file.id === 'desktop' && !file.deleted));
 
   function navigate(destination) {
@@ -29,15 +33,15 @@
     {#each contents as file (file.id)}
       <div class="folder-item" role="listitem" data-folder-item-id={file.id}>
         {#if file.kind === 'folder'}
-          <button class="folder-directory" type="button" aria-label={`Open ${file.name}`} onclick={() => navigate(file.id)}>
-            <Icon name={file.icon} assets={profile.assets}/><span class="folder-label">{file.name}</span>
+          <button class="folder-directory" type="button" aria-label={`Open ${file.name}`} disabled={folderId === 'trash'} onclick={() => navigate(file.id)}>
+            <Icon name={file.icon ?? 'folder'} assets={profile.assets}/><span class="folder-label">{file.name}</span>
           </button>
         {:else}
-          <div class="folder-file"><Icon name={file.icon} assets={profile.assets}/><span class="folder-label">{file.name}</span></div>
+          <div class="folder-file"><Icon name={file.icon ?? 'pdf'} assets={profile.assets}/><span class="folder-label">{file.name}</span></div>
         {/if}
       </div>
     {:else}
-      <p class="folder-empty">This folder is empty.</p>
+      <p class="folder-empty">{unavailable ? 'This location is in Trash or is no longer available.' : 'This folder is empty.'}</p>
     {/each}
   </div>
   <footer class="folder-status">{contents.length} {contents.length === 1 ? 'item' : 'items'}</footer>

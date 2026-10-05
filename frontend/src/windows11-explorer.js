@@ -54,6 +54,19 @@ export function moveVirtualFiles(apps, moves, folderId, validateName = validName
   return applied({ fileIds: plan.map(({ file }) => file.id), folderId });
 }
 
+export function trashVirtualFiles(apps, fileIds, protectedIds = ['root', 'desktop', 'documents', 'pictures']) {
+  if (!Array.isArray(fileIds) || !fileIds.length || new Set(fileIds).size !== fileIds.length)
+    return invalid('Use a nonempty unique source batch.');
+  const protectedFiles = new Set(protectedIds), plan = [];
+  for (const fileId of fileIds) {
+    const file = liveFile(apps, fileId);
+    if (!file || protectedFiles.has(fileId)) return stale('A source item cannot be deleted.');
+    plan.push(file);
+  }
+  for (const file of plan) { file.deleted = true; file.revision++; }
+  return applied({ fileIds: [...fileIds] });
+}
+
 // Filesystem operations have no application/window scope. Explorer wraps these
 // same reducers to retain its local selection policy; Terminal uses them directly.
 export function createFileCommands(apps, { validateName = validName } = {}) {
@@ -78,7 +91,10 @@ export function createFileCommands(apps, { validateName = validName } = {}) {
       const result = moveVirtualFiles(apps, [{ fileId, name }], folderId, validateName);
       return result.status === 'applied' ? applied({ fileId }) : result;
     },
-    'win11.files.trash': ({ fileId }) => { const file = mutable(apps, fileId); if (!file) return stale('This item cannot be deleted.'); file.deleted = true; file.revision++; return applied({ fileId }); },
+    'win11.files.trash': ({ fileId }) => {
+      const result = trashVirtualFiles(apps, [fileId]);
+      return result.status === 'applied' ? applied({ fileId }) : result;
+    },
     'win11.files.restore': ({ fileId }) => {
       const file = apps.files.find(item => item.id === fileId && item.deleted); if (!file) return stale('Item is not directly in Recycle Bin.');
       if (!folder(apps, file.parentId)) return stale('Restore the original parent folder first.');

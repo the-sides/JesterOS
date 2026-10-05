@@ -1,6 +1,7 @@
 import { defineCommand, text, identity, flag, offset, choice, object, empty } from './command-schema.js';
-import { shellPanels, quickControls, desktopActions, shellScrollAreas } from './windows11-shell-state.js';
+import { shellPanels, quickControls, shellScrollAreas } from './windows11-shell-state.js';
 import { desktopItemContracts } from './desktop-item-catalog.js';
+import { desktopContextContracts } from './desktop-context-catalog.js';
 const profiles = ['windows11-23h2-22631.2428'];
 const command = (name, target, payload, effects, requires = [], data = []) => defineCommand(profiles, name, 'windows.shell', target, payload, requires, effects, data);
 const nullableId = { anyOf: [identity, { type: 'null' }] };
@@ -18,8 +19,8 @@ export const windows11ShellCatalog = Object.fromEntries([
   ]),
   ...desktopItemContracts(profiles, 'win11.desktop', 'native.shell', 'native.apps.files', 'windows.shell'),
   command('win11.desktop.open', object({ fileId: identity }), empty, ['native virtual file handler']),
-  command('win11.desktop.context', object({ fileId: nullableId }), object({ x: offset, y: offset }), ['bounded desktop context menu', 'native focus']),
-  command('win11.desktop.action', object({ action: choice(...desktopActions) }), empty, ['supported current desktop context action'], ['current desktop-context menu; action enabled for current file/background target']),
+  ...desktopContextContracts(profiles, 'win11.desktop', 'native.shell', 'native.apps.files', 'windows.shell', 'windows'),
+  defineCommand(profiles, 'win11.desktop.personalize', 'windows.shell', empty, empty, [], ['open and focus native Settings Personalization'], [], [], object({ page: choice('personalization') })),
   command('win11.desktop.show', empty, empty, ['minimize all visible windows', 'desktop focus']),
   command('win11.dialog.close', object({ dialogId: choice('properties') }), empty, ['dismiss local properties dialog']),
   command('win11.notification.dismiss', object({ notificationId: identity }), empty, ['remove local notification']),

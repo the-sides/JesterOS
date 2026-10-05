@@ -5,11 +5,15 @@
   import { createApplicationCommands } from './application-commands.js';
   import { createDesktopCommands } from './desktop-commands.js';
   import { createDesktopItemCommands } from './desktop-item-commands.js';
+  import { createDesktopContextCommands } from './desktop-context-commands.js';
+  import { desktopViewDefaults, desktopContextItems, sortDesktopItems, readDesktopFileInfo, desktopFileSize } from './desktop-context-model.js';
   import { createMacDesktopFileStore, macDesktopItems, validMacDesktopName } from './desktop-file-state.js';
-  import { createFileCommands, moveVirtualFiles } from './windows11-explorer.js';
+  import { createFileCommands, moveVirtualFiles, trashVirtualFiles } from './windows11-explorer.js';
   import { windows11DesktopFiles } from './windows11-shell-state.js';
   import { liveFile, isTrashed } from './windows11-app-helpers.js';
   import MacDesktopFolder from './MacDesktopFolder.svelte';
+  import MacDesktopInfo from './MacDesktopInfo.svelte';
+  import MacDesktopViewOptions from './MacDesktopViewOptions.svelte';
   import { createNotesCommands } from './notes-commands.js';
   import { commandCatalog } from './command-catalog.js';
   import { visibleNotes } from './notes-state.js';
@@ -28,6 +32,10 @@
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu');
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
+  const desktopUtilityApps = macDesktop ? {
+    'desktop-info': { ...applications.finder, width: 360, height: 560, minimumSize: { width: 300, height: 300 } },
+    'desktop-view-options': { ...applications.finder, width: 384, height: 500, minimumSize: { width: 360, height: 340 } },
+  } : {};
 
   let windows = $state([]);
   let activeWindowId = $state(null);
@@ -46,8 +54,11 @@
   const desktopFileStore = macDesktop ? macFiles : nativeState.apps;
   const desktopFilePolicy = macDesktop ? { validateName: validMacDesktopName } : {};
   const desktopFileCommands = createFileCommands(desktopFileStore, desktopFilePolicy);
-  let desktopState = $state({ selectedFileIds: [], selectionAnchorId: null, rename: null, marquee: null, positions: {}, focusedControl: null, ...(hasWindowMenu ? { windowMenuOpen: false, windowMenuItem: null, windowMenuScrollTop: 0 } : {}) });
+  let desktopState = $state({ selectedFileIds: [], selectionAnchorId: null, rename: null, marquee: null, positions: {},
+    context: null, sortBy: 'none', viewOptions: desktopViewDefaults(profile.family, profile.renderer),
+    focusedControl: null, ...(hasWindowMenu ? { windowMenuOpen: false, windowMenuItem: null, windowMenuScrollTop: 0 } : {}) });
   const desktopItems = $derived(getDesktopItems());
+  const desktopDetails = $derived(getDesktopDetails());
   let notesViewState = $state(initialData.notes ? { context: null, contextItem: null, focusedControl: null, scroll: { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } } : undefined);
   let desktopView = null;
   let notesView = null;
@@ -61,6 +72,7 @@
     if (state.selectionAnchorId !== null && !live.has(state.selectionAnchorId)) state.selectionAnchorId = state.selectedFileIds.at(-1) ?? null;
     if (state.rename && !live.has(state.rename.fileId)) state.rename = null;
     for (const id of Object.keys(state.positions)) if (!live.has(id)) delete state.positions[id];
+    if (state.context?.fileId && !live.has(state.context.fileId)) state.context = null;
   });
 
   let handlers = {
@@ -92,19 +104,37 @@
       if (!bounds.width || !bounds.height) return rejected('unavailable', 'The workspace has no visible area.');
       layoutWindows(bounds);
       reconcileDesktopPositions(bounds);
+      reconcileDesktopContext();
       return { status: 'applied', target: {} };
     },
   };
   if (macDesktop) Object.assign(handlers, createDesktopItemCommands(desktopState, {
     getItems: getDesktopItems, getView: () => desktopView, available: windowInteractionsAvailable,
     focusDesktop, rename: renameDesktopItem, move: moveDesktopItems,
+  }), createDesktopContextCommands(desktopState, {
+    getItems: getDesktopItems, getView: () => desktopView, available: windowInteractionsAvailable,
+    focusDesktop, invoke: (command, target, payload) => handlers[command](target, payload),
+    createFolder: createDesktopFolder, trash: trashDesktopItems,
+    openInfo: fileId => openDesktopUtility('desktop-info', fileId),
+    openView: () => openDesktopUtility('desktop-view-options'),
   }), {
+    'desktop.info.section': (target, payload) => {
+      if (Object.keys(target).some(key => !['windowId', 'sectionId'].includes(key))
+        || typeof target.windowId !== 'string' || !['general', 'name'].includes(target.sectionId)
+        || Object.keys(payload).some(key => key !== 'open') || typeof payload.open !== 'boolean')
+        return rejected('invalid_arguments', 'Use a live Get Info window, sectionId and boolean open.');
+      if (!windowInteractionsAvailable()) return rejected('unavailable', 'The scene is unavailable.');
+      const window = windows.find(window => window.id === target.windowId && window.utilityKind === 'desktop-info');
+      if (!window) return rejected('not_found', 'The Get Info window no longer exists.');
+      window.infoSections[target.sectionId] = payload.open;
+      return { status: 'applied', target: { windowId: window.id, sectionId: target.sectionId } };
+    },
     'desktop.folder.navigate': async (target, payload) => {
       if (Object.keys(target).some(key => !['windowId', 'folderId'].includes(key))
         || typeof target.windowId !== 'string' || typeof target.folderId !== 'string' || Object.keys(payload).length)
         return rejected('invalid_arguments', 'Use a live Finder windowId and folderId.');
       if (!windowInteractionsAvailable()) return rejected('unavailable', 'The desktop scene is unavailable.');
-      const window = windows.find(entry => entry.id === target.windowId && entry.appId === 'finder');
+      const window = windows.find(entry => entry.id === target.windowId && entry.appId === 'finder' && !entry.utilityKind);
       const folder = liveFile(macFiles, target.folderId);
       if (!window || !folder || folder.kind !== 'folder') return rejected('not_found', 'The Finder window or folder no longer exists.');
       window.folderId = folder.id; window.title = folder.name;
@@ -122,7 +152,8 @@
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
       getProfile: () => profile,
-      getFiles: () => macDesktop ? macFiles.files.filter(file => !isTrashed(macFiles, file)) : getDesktopItems(),
+      getFiles: () => macDesktop ? macFiles.files.filter(file => !isTrashed(macFiles, file))
+        .map(file => ({ ...file, appId: file.appId ?? (file.kind === 'folder' ? 'finder' : 'preview') })) : getDesktopItems(),
       getItems: getDesktopItems,
       openedFile: (windowId, file) => {
         if (!macDesktop) return;
@@ -146,6 +177,7 @@
     getWindows: () => windows, getActiveWindowId: () => activeWindowId,
     getProfile: () => profile, focusDesktop, focusWindow, closeWindow, cancelAppQuit,
     getDesktopItems, renameDesktopItem, moveDesktopItems, windowInteractionsAvailable,
+    createDesktopFolder, trashDesktopItems, getDesktopFileInfo,
     invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
   }));
   for (const name of Object.keys(handlers)) {
@@ -174,6 +206,9 @@
         selectedFileIds: [...desktopState.selectedFileIds], selectionAnchorId: desktopState.selectionAnchorId,
         rename: desktopState.rename ? { ...desktopState.rename } : null, marquee: desktopState.marquee ? { ...desktopState.marquee } : null,
         positions: Object.fromEntries(Object.entries(desktopState.positions).map(([id, value]) => [id, { ...value }])),
+        context: desktopState.context ? { ...desktopState.context } : null,
+        sortBy: desktopState.sortBy, viewOptions: { ...desktopState.viewOptions },
+        menuItems: desktopContextItems(desktopState, getDesktopItems(), profile.family),
         locations: macFiles.files.filter(file => file.kind === 'folder' && !isTrashed(macFiles, file)).map(({ id, name, parentId }) => ({ folderId: id, name, parentId, dropAllowed: id !== 'trash' })),
         files: macFiles.files.filter(file => !isTrashed(macFiles, file)).map(({ id, name, parentId, kind }) => ({ fileId: id, name, parentId, kind })),
         itemBounds: desktopView?.itemRects() ?? [],
@@ -183,7 +218,9 @@
         bounds: { ...window.bounds },
         ...(window.folderId ? { folderId: window.folderId } : {}),
         ...(window.fileId ? { fileId: window.fileId } : {}),
-        resize: { available: hasWindowResize && !window.minimized && !window[expandedProperty] && windowInteractionsAvailable(), edges: resizeEdges, minimumSize: applications[window.appId].minimumSize },
+        ...(window.utilityKind ? { utilityKind: window.utilityKind } : {}),
+        ...(window.infoSections ? { infoSections: { ...window.infoSections } } : {}),
+        resize: { available: hasWindowResize && !window.minimized && !window[expandedProperty] && windowInteractionsAvailable(), edges: resizeEdges, minimumSize: windowApplication(window).minimumSize },
       })),
       ...(hasWindowMenu ? { menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }] } : {}),
       ...(notesState ? { notes: {
@@ -195,7 +232,10 @@
 
   async function settleCommands() {
     await tick();
-    if (!disposed && desktopView && area.width && area.height && reconcileDesktopPositions(area)) await tick();
+    if (!disposed && desktopView && area.width && area.height) {
+      const positionsChanged = reconcileDesktopPositions(area);
+      if (reconcileDesktopContext() || positionsChanged) await tick();
+    }
     // Focus, anchoring, editing and resizing can scroll before native scroll
     // events arrive. A completed command's snapshot must describe the live view.
     if (notesView) {
@@ -239,10 +279,38 @@
     [...document.querySelectorAll('[data-window-id]')].find((element) => element.dataset.windowId === id)?.focus({ preventScroll: true });
   }
 
+  function nativeDesktopItems() {
+    return macDesktop ? macDesktopItems(macFiles) : windows11DesktopFiles(profile, nativeState.apps);
+  }
   function getDesktopItems() {
-    if (macDesktop) return macDesktopItems(macFiles);
-    const items = windows11DesktopFiles(profile, nativeState.apps);
-    return nativeState.shell.sortByName ? items.sort((a, b) => a.name.localeCompare(b.name)) : items;
+    const items = nativeDesktopItems();
+    for (const item of items) {
+      const file = desktopFileStore.files.find(file => file.id === item.id);
+      if (file) {
+        item.kind = file.kind;
+        item.size = desktopFileSize(file);
+      }
+    }
+    return sortDesktopItems(items, macDesktop ? desktopState : nativeState.shell);
+  }
+  function getDesktopFileInfo(fileId) {
+    return readDesktopFileInfo(desktopFileStore, fileId, nativeDesktopItems());
+  }
+  function getDesktopDetails() {
+    const items = nativeDesktopItems();
+    const ids = new Set([...desktopFileStore.files.map(file => file.id), ...items.map(item => item.id)]);
+    return Object.fromEntries([...ids].map(fileId => [fileId, readDesktopFileInfo(desktopFileStore, fileId, items)]));
+  }
+
+  function reconcileDesktopContext() {
+    const context = (macDesktop ? desktopState : nativeState.shell).context;
+    if (!context) return false;
+    const area = desktopView.contextArea(), bounds = desktopView.contextBounds();
+    const x = Math.max(area.left, Math.min(context.x, area.left + Math.max(0, area.width - bounds.width)));
+    const y = Math.max(area.top, Math.min(context.y, area.top + Math.max(0, area.height - bounds.height)));
+    if (x === context.x && y === context.y) return false;
+    context.x = x; context.y = y;
+    return true;
   }
 
   // A native layout slot can shift when a preceding file leaves the desktop.
@@ -272,7 +340,10 @@
   function renameDesktopItem(fileId, name) {
     const result = desktopFileCommands['win11.files.rename']({ fileId }, { name });
     if (result.status === 'applied' && macDesktop)
-      for (const window of windows) if (window.folderId === fileId || window.fileId === fileId) window.title = liveFile(macFiles, fileId).name;
+      for (const window of windows) if (window.folderId === fileId || window.fileId === fileId) {
+        const name = liveFile(macFiles, fileId).name;
+        window.title = window.utilityKind === 'desktop-info' ? `${name} Info` : name;
+      }
     return result;
   }
 
@@ -280,6 +351,54 @@
     if (macDesktop && folderId === 'trash') return rejected('disabled', 'Trash deletion and restoration belong to the simulated filesystem lifecycle; this desktop slice moves to ordinary folders only.');
     const moves = fileIds.map(fileId => ({ fileId, name: liveFile(desktopFileStore, fileId)?.name }));
     return moveVirtualFiles(desktopFileStore, moves, folderId, desktopFilePolicy.validateName);
+  }
+  function createDesktopFolder(name, fileIds = []) {
+    const items = getDesktopItems();
+    if (fileIds.some(fileId => !items.some(item => item.id === fileId))) return rejected('not_found', 'A grouping source no longer exists.');
+    if (fileIds.some(fileId => !items.find(item => item.id === fileId).movable)) return rejected('disabled', 'Protected system entries cannot be grouped.');
+    if (!macDesktop && fileIds.length) return rejected('disabled', 'Windows New Folder does not group a selection.');
+    if (name === undefined) {
+      const base = macDesktop ? 'untitled folder' : 'New folder';
+      const names = new Set(items.map(item => item.name.toLowerCase()));
+      name = base;
+      for (let suffix = 2; names.has(name.toLowerCase()); suffix++) name = macDesktop ? `${base} ${suffix}` : `${base} (${suffix})`;
+    }
+    const previousCounter = desktopFileStore.nextFileId;
+    const result = desktopFileCommands['win11.files.create']({ folderId: 'desktop' }, { name, kind: 'folder' });
+    if (result.status !== 'applied' || !fileIds.length) return result;
+    const moved = moveDesktopItems(fileIds, result.target.fileId);
+    if (moved.status !== 'applied') {
+      desktopFileStore.files.splice(desktopFileStore.files.findIndex(file => file.id === result.target.fileId), 1);
+      desktopFileStore.nextFileId = previousCounter;
+      return moved;
+    }
+    return result;
+  }
+  function trashDesktopItems(fileIds) {
+    const items = getDesktopItems();
+    if (fileIds.some(fileId => !items.some(item => item.id === fileId))) return rejected('not_found', 'A trash source no longer exists.');
+    if (fileIds.some(fileId => !items.find(item => item.id === fileId).movable)) return rejected('disabled', 'Protected system entries cannot be trashed.');
+    return trashVirtualFiles(desktopFileStore, fileIds, macDesktop ? ['disk', 'desktop', 'downloads', 'trash'] : undefined);
+  }
+  function windowApplication(window) {
+    return desktopUtilityApps[window.utilityKind] ?? applications[window.appId];
+  }
+  async function openDesktopUtility(utilityKind, fileId) {
+    const info = fileId ? getDesktopFileInfo(fileId) : null;
+    if (fileId && !info) return rejected('not_found', 'The information record no longer exists.');
+    let window = windows.find(entry => entry.utilityKind === utilityKind && entry.fileId === fileId);
+    if (!window) {
+      const title = utilityKind === 'desktop-info' ? `${info.name} Info` : 'Desktop';
+      const id = openWindow('finder', title, true);
+      window = windows.find(entry => entry.id === id);
+      window.utilityKind = utilityKind;
+      delete window.folderId;
+      if (fileId) window.fileId = fileId;
+      if (utilityKind === 'desktop-info') window.infoSections = { general: true, name: true };
+      window.bounds = adapter.initialBounds(windowApplication(window), area, windows.length - 1, globalThis.innerHeight);
+    } else focusWindow(window.id);
+    await focusKeyboardWindow(window.id);
+    return { status: 'applied', target: { windowId: window.id, ...(fileId ? { fileId } : {}) } };
   }
   function focusDesktop() {
     activeWindowId = null;
@@ -324,6 +443,7 @@
     }
     activeWindowId = id;
     activeAppId = window.appId;
+    desktopState.context = null;
     if (hasWindowMenu) {
       desktopState.windowMenuOpen = false;
       desktopState.windowMenuItem = null;
@@ -334,7 +454,7 @@
 
   function openWindow(appId, title, fresh = false) {
     const app = applications[appId];
-    const existing = !fresh && windows.findLast(window => window.appId === appId);
+    const existing = !fresh && windows.findLast(window => window.appId === appId && !window.utilityKind);
     if (existing) {
       if (title !== undefined) existing.title = title;
       focusWindow(existing.id);
@@ -470,7 +590,7 @@
 
   function resizeWindow(id, edge, coordinates) {
     const window = windows.find((entry) => entry.id === id);
-    window.bounds = resizeBounds(window.bounds, edge, coordinates, applications[window.appId].minimumSize, area);
+    window.bounds = resizeBounds(window.bounds, edge, coordinates, windowApplication(window).minimumSize, area);
   }
 
   function clearNotesPresentation() {
@@ -484,7 +604,7 @@
     if (initialized && nextArea.width === area.width && nextArea.height === area.height) return;
     area = nextArea;
     for (const window of windows) {
-      const normal = adapter.fitNormalBounds(window[expandedProperty] ? window.restoreBounds : window.bounds, applications[window.appId], area);
+      const normal = adapter.fitNormalBounds(window[expandedProperty] ? window.restoreBounds : window.bounds, windowApplication(window), area);
       if (window[expandedProperty]) {
         window.restoreBounds = normal;
         window.bounds = expandedBounds(normal, area);
@@ -507,6 +627,7 @@
   {activeApp}
   viewState={desktopState}
   {desktopItems}
+  {desktopDetails}
   native={nativeState}
   execute={commands.execute}
   registerView={registerDesktopView}
@@ -550,6 +671,10 @@
             onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
             onzoom={() => toggleWindowZoom(window.id)}
           />
+        {:else if window.utilityKind === 'desktop-info'}
+          <MacDesktopInfo {profile} info={desktopDetails[window.fileId]} windowId={window.id} sections={window.infoSections} execute={commands.execute} />
+        {:else if window.utilityKind === 'desktop-view-options'}
+          <MacDesktopViewOptions {profile} options={desktopState.viewOptions} sortBy={desktopState.sortBy} execute={commands.execute} />
         {:else if macDesktop && window.appId === 'finder'}
           <MacDesktopFolder {profile} windowId={window.id} folderId={window.folderId} files={macFiles.files} execute={commands.execute} />
         {/if}

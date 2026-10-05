@@ -1,12 +1,12 @@
+import { desktopViewDefaults, desktopContextItems } from './desktop-context-model.js';
 export const shellPanels = ['start', 'search', 'quick', 'notifications'];
 export const quickControls = ['wifi', 'bluetooth', 'airplane', 'volume', 'brightness'];
-export const desktopActions = ['open', 'properties', 'refresh', 'sort-name', 'toggle-icons', 'personalize'];
 export const shellScrollAreas = ['start', 'search', 'notifications', 'panel', 'desktop', 'properties', 'taskbar'];
 export function createWindows11ShellState() {
   return {
     panel: null, startPage: 'pinned', query: '', selectedFileIds: [],
     selectionAnchorId: null, rename: null, marquee: null, positions: {},
-    context: null, dialog: null, showDesktopIcons: true, sortByName: false,
+    context: null, dialog: null, sortBy: 'none', viewOptions: desktopViewDefaults('windows'),
     focusedControl: null, scroll: Object.fromEntries(shellScrollAreas.map((area) => [area, 0])),
     scrollLeft: Object.fromEntries(shellScrollAreas.map((area) => [area, 0])),
     quick: { wifi: true, bluetooth: false, airplane: false, volume: 70, brightness: 80 },
@@ -36,7 +36,7 @@ export function windows11DesktopFiles(profile, apps) {
     entries.push({
       id: file.id, name: file.name, icon: kind === 'folder' ? 'folder' : kind === 'image' ? 'image-file' : 'text-file',
       appId: kind === 'folder' ? 'explorer' : kind === 'image' ? 'photos' : 'notepad',
-      renameable: true, movable: true,
+      renameable: true, movable: true, kind, size: file.size,
       ...(kind === 'folder' ? { folderId: file.id } : { fileId: file.id }),
     });
   }
@@ -57,11 +57,11 @@ export function readWindows11ShellTargets(shell, context) {
       selectedFileIds: [...shell.selectedFileIds], selectionAnchorId: shell.selectionAnchorId,
       rename: shell.rename ? { ...shell.rename } : null, marquee: shell.marquee ? { ...shell.marquee } : null,
       positions: Object.fromEntries(Object.entries(shell.positions).map(([id, position]) => [id, { ...position }])),
-      showIcons: shell.showDesktopIcons, sortByName: shell.sortByName,
+      sortBy: shell.sortBy, viewOptions: { ...shell.viewOptions },
       files: (context?.getDesktopItems() ?? []).map((entry) => ({ ...entry })),
       itemBounds: context?.getDesktopView()?.itemRects() ?? [],
     },
-    menus: shell.context ? [{ menuId: 'desktop-context', fileId: shell.context.fileId, itemIds: shell.context.fileId ? ['open', 'properties'] : ['refresh', 'sort-name', 'toggle-icons', 'personalize'] }] : [],
+    menus: shell.context ? [{ menuId: 'desktop-context', ...shell.context, items: desktopContextItems(shell, context?.getDesktopItems() ?? [], 'windows') }] : [],
     dialogs: shell.dialog ? [{ dialogId: 'properties', fileId: shell.dialog.fileId, actions: ['close'] }] : [],
     notifications: shell.notifications.map(({ id, appId }) => ({ notificationId: id, appId })),
     calendar: { ...shell.calendar }, focusedControl: shell.focusedControl ? { ...shell.focusedControl } : null,

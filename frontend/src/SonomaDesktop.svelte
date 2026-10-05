@@ -2,12 +2,15 @@
   import { onMount, tick } from 'svelte';
   import SonomaIcon from './SonomaIcon.svelte';
   import './sonoma.css';
-  import { createDesktopItemInteractions } from './desktop-item-interactions.js';
+  import { createDesktopItemInteractions, revealDesktopItem } from './desktop-item-interactions.js';
+  import MacDesktopContextMenu from './MacDesktopContextMenu.svelte';
+  import { desktopContextItems } from './desktop-context-model.js';
 
   let {
     profile,
     children,
     desktopItems,
+    desktopDetails = {},
     windows = [],
     runningAppIds = [],
     activeWindowId = null,
@@ -20,6 +23,30 @@
 
   const applications = $derived(profile.applications);
   const desktopFiles = $derived(desktopItems);
+  const contextItems = $derived(desktopContextItems(viewState, desktopFiles, 'macos'));
+  let filesPanel;
+  let filesHeight = $state(undefined);
+  let wrappedGrid = $state(null);
+  let layoutWidth = $state(0);
+  function updateWrappedGrid() {
+    if (!filesPanel?.isConnected || filesHeight === undefined) return;
+    const gap = parseFloat(getComputedStyle(filesPanel).gap) || 0;
+    let width = 0, height = 0, count = 0;
+    for (const button of desktopButtons()) {
+      const rect = button.getBoundingClientRect();
+      width = Math.max(width, rect.width); height = Math.max(height, rect.height); count++;
+    }
+    if (count * (height + gap) - gap > filesHeight && height > 0) {
+      const rows = Math.max(1, Math.floor((filesHeight + gap) / (height + gap)));
+      if (!wrappedGrid || wrappedGrid.rows !== rows || wrappedGrid.width !== width || wrappedGrid.height !== height) wrappedGrid = { rows, width, height };
+    } else if (wrappedGrid !== null) wrappedGrid = null;
+  }
+  $effect(() => {
+    desktopFiles; desktopDetails; options.iconSize; options.gridSpacing; options.textSize; options.labelPosition; options.showItemInfo; filesHeight; layoutWidth;
+    tick().then(updateWrappedGrid);
+  });
+  const options = $derived(viewState.viewOptions);
+  const customView = $derived(options.iconSize !== 64 || options.gridSpacing !== 24 || options.textSize !== 12 || options.labelPosition !== 'bottom');
   const dockApps = $derived(Object.values(applications).filter((app) => app.dock === 'main'));
   const recentApps = $derived(Object.values(applications).filter((app) => app.dock === 'recent'));
   let workspace;
@@ -66,12 +93,16 @@
 
   async function focusItem(fileId) {
     await tick();
-    desktopButtons().find((element) => element.dataset.fileId === fileId)?.focus();
+    updateWrappedGrid(); await tick();
+    const element = desktopButtons().find((button) => button.dataset.fileId === fileId);
+    if (wrappedGrid) revealDesktopItem(element, filesPanel);
+    element?.focus({ preventScroll: true });
   }
 
   function measureRename() {
     const element = desktopButtons().find((button) => button.dataset.fileId === viewState.rename?.fileId);
     if (!element) { renameBounds = null; return; }
+    if (wrappedGrid) revealDesktopItem(element, filesPanel);
     const origin = workspace.getBoundingClientRect();
     const rectangle = element.getBoundingClientRect();
     const label = element.querySelector('.sonoma-file-label').getBoundingClientRect();
@@ -81,10 +112,11 @@
 
   async function focusRename() {
     await tick();
+    updateWrappedGrid(); await tick();
     measureRename();
     await tick();
     const input = workspace.querySelector('[data-desktop-rename]');
-    input?.focus();
+    input?.focus({ preventScroll: true });
     if (input) {
       const extension = input.value.lastIndexOf('.');
       input.setSelectionRange(0, extension > 0 ? extension : input.value.length);
@@ -100,6 +132,8 @@
   $effect(() => {
     const fileId = viewState.rename?.fileId;
     const position = fileId ? viewState.positions[fileId] : null;
+    desktopFiles; desktopDetails; wrappedGrid; filesHeight; layoutWidth;
+    options.iconSize; options.gridSpacing; options.textSize; options.labelPosition; options.showItemInfo;
     if (fileId) tick().then(() => {
       if (viewState.rename?.fileId === fileId && viewState.positions[fileId] === position) measureRename();
     });
@@ -122,6 +156,69 @@
 
   function request(command, target = {}, payload = {}) {
     return execute({ command, target, payload });
+  }
+
+  function contextArea() {
+    const rect = workspace.getBoundingClientRect();
+    filesHeight;
+    return { left: rect.left, top: rect.top, ...measureWorkspace(), width: layoutWidth || workspace.clientWidth };
+  }
+  function contextBounds() {
+    const rect = workspace?.querySelector('[data-desktop-context-main]')?.getBoundingClientRect();
+    return { width: rect?.width ?? 0, height: rect?.height ?? 0 };
+  }
+  async function focusContextItem(itemId) {
+    await tick();
+    [...(workspace?.querySelectorAll('[data-desktop-context-item]') ?? [])]
+      .find((item) => item.dataset.desktopContextItem === itemId && !item.disabled)?.focus({ preventScroll: true });
+  }
+  async function focusContextReturn(fileId) {
+    await tick();
+    const item = desktopButtons().find((button) => button.dataset.fileId === fileId);
+    (item ?? workspace)?.focus({ preventScroll: true });
+  }
+  function gridMetrics() {
+    const origin = workspace.getBoundingClientRect();
+    const panel = filesPanel.getBoundingClientRect();
+    const rects = desktopButtons().map((button) => button.getBoundingClientRect());
+    const style = getComputedStyle(filesPanel);
+    const itemWidth = Math.max(0, ...rects.map((rect) => rect.width)) || parseFloat(style.width);
+    const itemHeight = Math.max(0, ...rects.map((rect) => rect.height)) || 86;
+    const gap = parseFloat(style.gap) || 0;
+    return { startX: panel.right - origin.left - itemWidth, startY: panel.top - origin.top,
+      stepX: itemWidth + gap, stepY: itemHeight + gap, itemWidth, itemHeight, reverseX: true };
+  }
+  function openContext(event, fileId = null) {
+    if (!itemsAvailable()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    request('desktop.context.open', { fileId }, { x: event.clientX, y: event.clientY });
+  }
+  function filePointerdown(event, fileId) {
+    if (event.button === 0 && event.ctrlKey) openContext(event, fileId);
+    else interactions.pointerdown(event, fileId);
+  }
+  function fileClick(event, fileId) {
+    if (event.ctrlKey || viewState.context) { event.preventDefault(); return; }
+    interactions.click(event, fileId);
+  }
+  function desktopKeydown(event, fileId = null) {
+    if (event.target?.closest?.('[data-desktop-context-menu], input, textarea, select, [contenteditable], [data-window-id]')) return;
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      if (!itemsAvailable()) return;
+      const rect = (fileId ? event.currentTarget : workspace).getBoundingClientRect();
+      event.preventDefault();
+      event.stopPropagation();
+      request('desktop.context.open', { fileId }, { x: rect.left + 8, y: rect.top + 8 });
+      return;
+    }
+    interactions.keydown(event, fileId);
+  }
+  function itemInfo(fileId) {
+    const info = desktopDetails[fileId];
+    if (!info) return '';
+    if (info.itemCount !== null && info.itemCount !== undefined) return `${info.itemCount} ${info.itemCount === 1 ? 'item' : 'items'}`;
+    return info.size !== null && info.size !== undefined ? `${info.size.toLocaleString()} bytes` : info.kind;
   }
 
   function enabledMenuItemIds() {
@@ -197,12 +294,19 @@
       focusRename,
       reportRenameError,
       itemsAvailable,
+      focusContextItem,
+      focusContextReturn,
+      contextBounds,
+      contextArea,
+      gridMetrics,
     });
     let previousWidth;
     let previousHeight;
     function reportLayout() {
       const { width, height } = measureWorkspace();
+      layoutWidth = width;
       if (viewState.rename) measureRename();
+      filesHeight = Math.max(0, height - parseFloat(getComputedStyle(filesPanel).top));
       if (width !== previousWidth || height !== previousHeight) {
         previousWidth = width;
         previousHeight = height;
@@ -210,6 +314,9 @@
       }
     }
     function dismissOutside(event) {
+      if (viewState.context && !event.target?.closest?.('[data-desktop-context-menu]')) {
+        request('desktop.context.close', {}, { restoreFocus: false });
+      }
       if (viewState.windowMenuOpen && !windowMenuContainer.contains(event.target)) {
         request('menu.close', { menuId: 'window' }, { restoreFocus: false });
       }
@@ -217,6 +324,7 @@
     function observeFocus(event) {
       dismissOutside(event);
       const target = event.target;
+      if (target?.closest?.('[data-desktop-context-menu]')) return;
       if (!windowMenuContainer.contains(target)
         && !dock.contains(target)
         && !(target instanceof Element && (target.matches('[data-desktop-rename]')
@@ -242,6 +350,7 @@
   function focusDesktop(event) {
     if (event.button !== 0) return;
     if (event.target !== workspace && !event.target.classList.contains('sonoma-files')) return;
+    if (event.ctrlKey) { openContext(event); return; }
     request('desktop.focus');
     interactions.pointerdown(event);
   }
@@ -281,7 +390,7 @@
       return;
     }
     if (event.target === workspace || event.target === document.body
-      || event.target === document.documentElement) interactions.keydown(event);
+      || event.target === document.documentElement) desktopKeydown(event);
   }
 
   function menuButtonKeydown(event) {
@@ -356,15 +465,22 @@
       <time datetime="2023-09-26T17:42:00">{profile.defaults.clockLabel}</time>
     </div>
   </header>
-  <main class="sonoma-workspace" bind:this={workspace} tabindex="-1" aria-label="macOS Sonoma desktop" onpointerdown={focusDesktop}>
-    <section class="sonoma-files" aria-label="Desktop files">
+  <main class="sonoma-workspace" bind:this={workspace} tabindex="-1" aria-label="macOS Sonoma desktop" onpointerdown={focusDesktop}
+    oncontextmenu={(event) => { if (event.target === workspace || event.target === filesPanel) openContext(event); }}>
+    <section class="sonoma-files" bind:this={filesPanel} class:custom-view={customView} class:right-label={options.labelPosition === 'right'} class:wrapped-grid={wrappedGrid !== null} aria-label="Desktop files"
+      style:max-height={filesHeight !== undefined ? `${filesHeight}px` : undefined}
+      style:--grid-height={filesHeight !== undefined ? `${filesHeight}px` : undefined} style:--grid-rows={wrappedGrid?.rows}
+      style:--grid-item-height={wrappedGrid ? `${wrappedGrid.height}px` : undefined} style:--grid-item-width={wrappedGrid ? `${wrappedGrid.width}px` : undefined}
+      onscroll={() => { if (viewState.rename) measureRename(); }}
+      style:--desktop-icon-size={`${options.iconSize}px`} style:--desktop-text-size={`${options.textSize}px`} style:--desktop-spacing={`${options.gridSpacing}px`}>
       {#each desktopFiles as file (file.id)}
         <button type="button" class="sonoma-file" class:selected={viewState.selectedFileIds.includes(file.id)} aria-label={file.name} aria-pressed={viewState.selectedFileIds.includes(file.id)} data-file-id={file.id}
           style:translate={viewState.positions[file.id] ? `${viewState.positions[file.id].x}px ${viewState.positions[file.id].y}px` : undefined}
           onfocus={() => request('desktop.focusControl', { control: 'file', fileId: file.id })}
-          onclick={(event) => interactions.click(event, file.id)} onpointerdown={(event) => interactions.pointerdown(event, file.id)}
-          ondblclick={() => request('desktop.open', { fileId: file.id })} onkeydown={(event) => interactions.keydown(event, file.id)}
-        ><SonomaIcon name={file.icon} assets={profile.assets}/><span class="sonoma-file-label" style:visibility={viewState.rename?.fileId === file.id ? 'hidden' : undefined}>{file.name}</span></button>
+          onclick={(event) => fileClick(event, file.id)} onpointerdown={(event) => filePointerdown(event, file.id)}
+          oncontextmenu={(event) => openContext(event, file.id)}
+          ondblclick={() => request('desktop.open', { fileId: file.id })} onkeydown={(event) => desktopKeydown(event, file.id)}
+        >{#if options.showIconPreview || file.folderId || file.icon === 'drive' || file.icon === 'folder'}<SonomaIcon name={file.icon} assets={profile.assets}/>{:else}<svg class="sonoma-icon generic-document" viewBox="0 0 64 64" aria-hidden="true"><path fill="#fafafa" stroke="#b4b4b4" d="M14 3h25l12 12v46H14z"/><path fill="#dedede" stroke="#b4b4b4" d="M39 3v12h12"/><path stroke="#b6c1cb" stroke-width="2" d="M22 27h21M22 34h21M22 41h21M22 48h15"/></svg>{/if}<span class="sonoma-file-label" style:visibility={viewState.rename?.fileId === file.id ? 'hidden' : undefined}>{file.name}</span>{#if options.showItemInfo}<small class="desktop-item-info">{itemInfo(file.id)}</small>{/if}</button>
       {/each}
     </section>
     {#if viewState.rename && renameBounds}
@@ -376,6 +492,7 @@
       <div class="mac-desktop-marquee" aria-hidden="true" style:left={`${viewState.marquee.x}px`} style:top={`${viewState.marquee.y}px`}
         style:width={`${viewState.marquee.width}px`} style:height={`${viewState.marquee.height}px`}></div>
     {/if}
+    {#if viewState.context}<MacDesktopContextMenu {profile} context={viewState.context} items={contextItems} area={contextArea()} {execute}/>{/if}
     {@render children()}
   </main>
   <footer class="sonoma-dock" bind:this={dock} aria-label="Application dock">
@@ -399,5 +516,20 @@
   .mac-desktop-rename { position: absolute; z-index: 1; box-sizing: border-box; padding: 0 3px; border: 1px solid #7f9fca; border-radius: 3px; background: white; color: #111; font: inherit; font-size: 12px; line-height: 16px; text-align: center; outline: none; }
   .mac-desktop-rename:focus { box-shadow: 0 0 0 2px rgb(119 173 240 / 60%); }
   .mac-desktop-marquee { position: absolute; pointer-events: none; box-sizing: border-box; border: 1px solid rgb(255 255 255 / 70%); background: rgb(137 169 218 / 25%); }
+  .sonoma-file { flex-shrink: 0; }
+  .custom-view { width: max(104px, calc(var(--desktop-icon-size) + 40px)); gap: var(--desktop-spacing); }
+  .custom-view .sonoma-file { font-size: var(--desktop-text-size); line-height: 1.3333; width: max(104px, calc(var(--desktop-icon-size) + 40px)); }
+  .custom-view :global(.sonoma-icon) { width: var(--desktop-icon-size); height: var(--desktop-icon-size); }
+  .right-label { width: max(180px, calc(var(--desktop-icon-size) + 120px)); }
+  .right-label .sonoma-file { width: max(180px, calc(var(--desktop-icon-size) + 120px)); flex-direction: row; flex-wrap: wrap; text-align: left; }
+  .right-label .sonoma-file-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .right-label .desktop-item-info { flex-basis: calc(100% - var(--desktop-icon-size) - 6px); margin-left: calc(var(--desktop-icon-size) + 6px); }
+  .desktop-item-info { color: #c5defb; font-size: .9em; text-shadow: 0 1px 2px #000; max-width: 100%; }
+  .generic-document { flex-shrink: 0; }
+  .wrapped-grid { display: grid; left: 18px; width: auto; height: var(--grid-height); grid-auto-flow: column; grid-template-rows: repeat(var(--grid-rows), var(--grid-item-height)); grid-auto-columns: var(--grid-item-width); direction: rtl; justify-content: start; align-content: start; overflow: auto; scrollbar-width: thin; }
+  .wrapped-grid .sonoma-file { width: 104px; direction: ltr; }
+  .wrapped-grid.custom-view .sonoma-file { width: max(104px, calc(var(--desktop-icon-size) + 40px)); }
+  .wrapped-grid.right-label .sonoma-file { width: max(180px, calc(var(--desktop-icon-size) + 120px)); }
+  @media (max-width: 760px) { .wrapped-grid:not(.custom-view) .sonoma-file { width: 86px; } .wrapped-grid { left: 9px; } }
   @media (max-width: 760px) { .mac-desktop-rename { font-size: 11px; } }
 </style>

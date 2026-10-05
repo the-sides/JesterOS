@@ -1,3 +1,15 @@
+// Scroll only the icon pane, never the workspace or the containing document.
+export function revealDesktopItem(element, panel) {
+  if (!element || !panel) return;
+  const rect = element.getBoundingClientRect(), bounds = panel.getBoundingClientRect();
+  const left = bounds.left + panel.clientLeft, top = bounds.top + panel.clientTop;
+  const right = left + panel.clientWidth, bottom = top + panel.clientHeight;
+  if (rect.left < left) panel.scrollLeft += rect.left - left;
+  else if (rect.right > right) panel.scrollLeft += rect.right - right;
+  if (rect.top < top) panel.scrollTop += rect.top - top;
+  else if (rect.bottom > bottom) panel.scrollTop += rect.bottom - bottom;
+}
+
 export function createDesktopItemInteractions({ getWorkspace, getArea, getItems, getState, execute, family, openCommand, available }) {
   const prefix = family === 'windows' ? 'win11.desktop' : 'desktop';
   let disposed = false, gesture = null, suppressClick = false, pending = Promise.resolve();
@@ -29,6 +41,21 @@ export function createDesktopItemInteractions({ getWorkspace, getArea, getItems,
     if (key === 'Escape') { event.preventDefault(); await send('select', { fileId: null }); return; }
     if (modifier && key.toLowerCase() === 'a') { event.preventDefault(); event.stopPropagation(); await send('select.all'); return; }
     const selected = getState().selectedFileIds;
+    if (modifier && event.shiftKey && key.toLowerCase() === 'n') {
+      event.preventDefault(); event.stopPropagation(); await send('folder.create'); return;
+    }
+    if ((family === 'windows' && key === 'Delete' && !event.shiftKey)
+      || (family !== 'windows' && modifier && ['Backspace', 'Delete'].includes(key))) {
+      if (!selected.length) return;
+      event.preventDefault(); event.stopPropagation(); await send('trash', { fileIds: [...selected] }); return;
+    }
+    if ((family !== 'windows' && modifier && key.toLowerCase() === 'i')
+      || (family === 'windows' && event.altKey && key === 'Enter')) {
+      event.preventDefault(); event.stopPropagation();
+      if (family === 'windows' && selected.length !== 1) return;
+      for (const selectedId of [...selected]) await send(family === 'windows' ? 'properties' : 'info.open', { fileId: selectedId });
+      return;
+    }
     const current = fileId ?? selected.at(-1) ?? getItems()[0]?.id;
     if (!current) return;
     if ((family === 'windows' && key === 'F2') || (family !== 'windows' && key === 'Enter' && !modifier)) {
