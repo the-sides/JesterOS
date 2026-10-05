@@ -1,6 +1,7 @@
 import { applications, desktopFiles } from './mojave-applications.js';
 import { highSierraProfile } from './high-sierra-profile.js';
 import { sonomaProfile } from './sonoma-profile.js';
+import { windows11Profile } from './windows11-profile.js';
 
 export const DEFAULT_PROFILE_ID = 'macos-mojave-10.14';
 
@@ -38,6 +39,7 @@ const profiles = freezeTree({
   },
   [highSierraProfile.id]: highSierraProfile,
   [sonomaProfile.id]: sonomaProfile,
+  [windows11Profile.id]: windows11Profile,
 });
 
 export function getOSProfile(id) {

@@ -34,5 +34,6 @@ function createSceneData() {
 
 export const sonomaAdapter = Object.freeze({
   Desktop, Window, MessagesWindow, NotesWindow,
+  expandedProperty: 'zoomed',
   prepareDocument, createSceneData, initialBounds, fitNormalBounds,
 });

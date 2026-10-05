@@ -23,7 +23,7 @@ test('uninstalled profiles and missing capabilities cannot write Notes data', as
   const catalog = Object.fromEntries(Object.keys(handlers).map((name) => [name, commandCatalog[name]]));
   const api = createFeatureCommands(handlers,
     () => structuredClone({ notes, view }), async () => {}, catalog,
-    () => ({ noteIds: notes.notes.map((note) => note.id) }), () => activeProfile);
+    () => ({ noteIds: notes.notes.map((note) => note.id) }), () => activeProfile, commandCatalog);
   const before = structuredClone({ notes, view });
   for (const unsupported of [null, { ...profile, id: 'uninstalled-windows-profile' }, { ...profile, capabilities: [] }]) {
     activeProfile = unsupported;

@@ -1,0 +1,22 @@
+{
+  "profile": "windows11-23h2-22631.2428",
+  "runtime": "Offline authored SVG/CSS; no Microsoft desktop or application screenshot is a runtime surface.",
+  "assets": [
+    {
+      "paths": ["wallpaper.svg"],
+      "creator": "JesterOS contributors, authored for CORE-06",
+      "method": "New vector paths interpreting the Windows 11 blue folded Bloom motif. Not the original Microsoft photograph/render and not a pixel-identical reproduction.",
+      "reference": "https://blogs.windows.com/windowsexperience/2023/09/26/the-most-personal-windows-11-experience-begins-rolling-out-today/"
+    },
+    {
+      "paths": ["icons/explorer.svg", "icons/edge.svg", "icons/notepad.svg", "icons/calculator.svg", "icons/settings.svg", "icons/paint.svg", "icons/photos.svg", "icons/clock.svg", "icons/snipping.svg", "icons/terminal.svg", "icons/pc.svg", "icons/recycle.svg", "icons/folder.svg", "icons/text-file.svg", "icons/image-file.svg", "icons/windows.svg"],
+      "creator": "JesterOS contributors, authored for CORE-06",
+      "method": "New simplified source-based vector artwork; no downloaded binaries, traced screenshots, external image dependencies or extracted Windows executable resources.",
+      "references": ["https://blogs.windows.com/windowsexperience/2023/09/26/the-most-personal-windows-11-experience-begins-rolling-out-today/", "https://learn.microsoft.com/en-us/windows/apps/design/basics/titlebar-design"]
+    }
+  ],
+  "appearance": "Glow is an authored pink/purple radial-gradient composition; Flow is an authored CSS blue/cyan gradient. These are local scene appearances, not claims of exact Microsoft wallpaper files.",
+  "fonts": "Uses installed Segoe UI when available, otherwise existing local InterVariable.woff2 (frontend/public/fonts/LICENSE.txt). Segoe UI is not redistributed. Inter is a metric/style approximation, not an official Windows font.",
+  "rights": "All SVG path data here was newly authored. Microsoft product names and recognizable Windows/Edge motifs remain Microsoft trademarks/designs. No Microsoft artwork license or endorsement is asserted; this provenance is not permission to redistribute Microsoft brand artwork. The repository license governs contributor-authored code/artwork where applicable.",
+  "researchLimits": "First-party published screenshots are reference-only; Microsoft warns that simulated screens and controlled rollout vary. Exact Store-app versions for the 22631.2428 installation image were not verified. See docs/windows11-profile.md."
+}

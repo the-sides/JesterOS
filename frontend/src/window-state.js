@@ -11,6 +11,6 @@ export function fitNormalBounds(bounds, app, area, scale) {
   return clampPosition({ ...bounds, width: app.width * scale, height: app.height * scale, scale }, area);
 }
 
-export function zoomBounds(normalBounds, area) {
+export function expandedBounds(normalBounds, area) {
   return { x: 0, y: 0, width: area.width, height: area.height, scale: normalBounds.scale };
 }

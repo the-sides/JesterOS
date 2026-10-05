@@ -8,15 +8,15 @@ export function rejected(code, message) {
   return { status: 'rejected', error: { code, message } };
 }
 
-export function createFeatureCommands(handlers, readState, afterApply, catalog, readTargets, readProfile) {
+export function createFeatureCommands(handlers, readState, afterApply, catalog, readTargets, readProfile, knownCatalog) {
   const commandNames = Object.keys(handlers);
-  if (!isRecord(catalog)
-    || commandNames.some((name) => !Object.hasOwn(catalog, name))
+  if (!isRecord(catalog) || !isRecord(knownCatalog)
+    || commandNames.some((name) => !Object.hasOwn(catalog, name) || !Object.hasOwn(knownCatalog, name))
     || Object.keys(catalog).some((name) => !Object.hasOwn(handlers, name))) {
     throw new Error('Every feature handler needs exactly one command catalog descriptor.');
   }
   function supported(name, profile) {
-    return profile !== null && profile !== undefined
+    return Object.hasOwn(handlers, name) && profile !== null && profile !== undefined
       && catalog[name].profiles.includes(profile.id)
       && profile.capabilities.includes(catalog[name].capability);
   }
@@ -48,7 +48,9 @@ export function createFeatureCommands(handlers, readState, afterApply, catalog, 
         return finish(request, rejected('invalid_request', 'Expected a command request with an optional nonempty requestId.'));
       }
       if (!Object.hasOwn(handlers, request.command)) {
-        return finish(request, rejected('unsupported_command', `Unsupported command: ${request.command}`));
+        return finish(request, Object.hasOwn(knownCatalog, request.command)
+          ? unsupportedProfile(request.command)
+          : rejected('unsupported_command', `Unsupported command: ${request.command}`));
       }
       const target = request.target === undefined ? {} : request.target;
       const payload = request.payload === undefined ? {} : request.payload;
@@ -71,7 +73,7 @@ export function createFeatureCommands(handlers, readState, afterApply, catalog, 
       if (command !== undefined && typeof command !== 'string') {
         return rejected('invalid_arguments', 'Expected an optional command name.');
       }
-      if (command !== undefined && !Object.hasOwn(catalog, command)) {
+      if (command !== undefined && !Object.hasOwn(knownCatalog, command)) {
         return rejected('unsupported_command', `Unsupported command: ${command}`);
       }
       const profile = readProfile();

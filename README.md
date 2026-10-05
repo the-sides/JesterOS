@@ -2,20 +2,20 @@
 
 A simulated desktop and applications for actors to use as screen props during film and television scenes. The default screen is inspired by macOS Mojave (2018); it is not a real operating system or an iMessage client.
 
-Installed profiles span **macOS High Sierra 10.13 (2017), Mojave 10.14 (2018), and Sonoma 14.0 (2023)**. **Windows 11** is next; **Linux** remains conditional. Each profile has separately researched native shell/app presentation, assets, and inventories, not a cosmetic theme.
+Installed profiles span **macOS High Sierra 10.13 (2017), Mojave 10.14 (2018), Sonoma 14.0 (2023), and Windows 11 Pro 23H2 build 22631.2428 (2023)**. Linux remains conditional. Each profile has separately researched native shell/app presentation, assets, and inventories, not a cosmetic theme.
 
 ## Current implementation
 
 - Rust/Axum backend serves the built frontend and `GET /api/health`.
-- Svelte 5 + Vite frontend renders an interactive desktop with a menu bar, desktop files, Dock, and managed application windows.
-- Notes supports creating/editing plain-text notes, search, pinning, trash, and recovery in each profile's native presentation. Other applications except Messages still have empty interiors; registered stock membership does not claim functional coverage.
-- Messages retains its sample conversation. Clock, battery level, conversation selection, and message history remain fixed scene content. Messages search and editing are disabled.
+- Svelte 5 + Vite renders native macOS menu-bar/Dock desktops or the Windows centered-taskbar/Start desktop, with managed application windows.
+- macOS Notes supports plain-text creation/editing, search, pinning, trash, and recovery; other macOS applications except the fixed Messages sample remain launch-only. Windows has ten functional offline simulations: File Explorer, Edge, Notepad, Calculator, Settings, Paint, Photos, Clock, Snipping Tool, and Terminal. Wider researched inventories do not imply implemented workflows.
+- macOS Messages retains its sample conversation; its conversation selection, search, message editing/history, menu-bar clock and battery are fixed scene content.
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
-- Browser-local `jesteros.execute()` supports 32 shared scene/app/window/desktop/Window-menu/Notes commands; `jesteros.inspect()` exposes detached state and `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics, and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Other app/menu features remain queued.
+- Browser-local `jesteros.execute()` supports 32 commands in each macOS profile and 151 in Windows; `jesteros.inspect()` exposes detached state and `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics, and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Rust control and further app/menu features remain queued.
 
 ## OS profile setup
 
-Open the normal desktop URL for **Mojave**. Select an installed native scene with `?profile=macos-high-sierra-10.13`, `?profile=macos-mojave-10.14`, or `?profile=macos-sonoma-14.0`. Unsupported/empty/inherited IDs show a setup error rather than a substitute desktop. Profile metadata, capabilities, local assets/defaults, stock-app coverage, and installed profile targets are inspectable through the browser-local interface.
+Open the normal desktop URL for **Mojave**. Select an installed native scene with `?profile=macos-high-sierra-10.13`, `?profile=macos-mojave-10.14`, `?profile=macos-sonoma-14.0`, or `?profile=windows11-23h2-22631.2428`. Unsupported/empty/inherited IDs show a setup error rather than a substitute desktop. Profile metadata, capabilities, local assets/defaults, stock-app coverage, and installed profile targets are inspectable through the browser-local interface.
 
 ```js
 await jesteros.execute({
@@ -24,9 +24,9 @@ await jesteros.execute({
 });
 ```
 
-A different profile starts a **fresh native scene**, resetting fictional records, windows, menus, focus and scroll; selecting the current ID retains state. The stable `jesteros` object follows the new scene, including cached controller references. Await selection before issuing dependent commands. Notes uses a profile-local fictional clock, never host time. See [profile boundaries](docs/pseudo-os-architecture.md#implemented-profile-boundaries), [High Sierra research](docs/high-sierra-profile.md), and [Sonoma research](docs/sonoma-profile.md). Additional app interiors, Windows and Linux remain queued.
+A different profile starts a **fresh native scene**, resetting fictional records, windows, menus, focus and scroll; selecting the current ID retains state. The stable `jesteros` object follows the new scene, including cached controller references. Await selection before issuing dependent commands. Notes timestamps and Windows Clock use fictional profile-local time, never host time. See [profile boundaries](docs/pseudo-os-architecture.md#implemented-profile-boundaries), [High Sierra research](docs/high-sierra-profile.md), [Sonoma research](docs/sonoma-profile.md), [Windows shell research](docs/windows11-profile.md), and [Windows application workflows](docs/windows11-apps.md). Further app coverage and Linux remain queued.
 
-## Desktop interactions
+## macOS desktop interactions
 
 - Click a Dock icon, or focus it and press Enter/Space, to open, raise, or restore its application's single window. Repeated activation does not create duplicates.
 - Click a desktop icon to select it; double-click or press Enter to open it. Macintosh HD, Personal, Downloads, and Trash open the same Finder window with the corresponding title. Itinerary.pdf opens Preview. These are simulated locations, not host files.
@@ -53,7 +53,7 @@ Primary-source screenshots, UI observations, implementation decisions, defects/f
 
 [Pseudo-OS feature backlog](docs/pseudo-os-backlog.md) is the durable queue for long-session work: stable IDs, completed versus pending slices, suggested iteration order, and coverage of the desktop, menus, bundled apps, utilities, System Preferences panes, and secondary dialogs. Additional period-compatible production apps are listed separately. The Rust controller remains deferred.
 
-[Multi-OS and feature command requirements](docs/pseudo-os-architecture.md) define the architecture: every feature must expose transport-neutral commands so actor input and a future WebSocket adapter can invoke the same behavior, including menus, dialogs, transient UI state, and incoming events. Existing working desktop/window/Window-menu/Notes actions now use that interface. Multi-OS switching, remaining app/menu capabilities, and WebSocket control are not implemented today.
+[Multi-OS and feature command requirements](docs/pseudo-os-architecture.md) define the architecture: every feature must expose transport-neutral commands so actor input and a future WebSocket adapter can invoke the same behavior, including menus, dialogs, transient UI state, and incoming events. Installed native profiles and scene switching use that interface. Remaining app/menu capabilities and WebSocket control are not implemented today.
 
 ## Requirements
 
@@ -134,16 +134,19 @@ frontend/
   src/HighSierra*.svelte    High Sierra native desktop/icons/Messages views
   src/sonoma-*             2023 profile, native adapter, view mechanics and scoped styling
   src/Sonoma*.svelte        Sonoma native shell/window/Notes/Messages views
+  src/windows11-*          23H2 profile, virtual files/apps, native shell and command adapters
+  src/Windows11*.svelte    Native Windows shell/chrome and ten application interiors
   src/Desktop.svelte       Mojave menu bar, desktop selection, Dock, Window menu
   src/mojave-applications.js Mojave stock app and desktop-file registry
   src/feature-commands.js   Profile/capability-gated execution and detached queries
   src/command-catalog.js    Typed request/result contracts and effect/completion metadata
-  src/desktop-commands.js   Shared desktop/Dock/Window-menu handlers
+  src/command-schema.js     Shared strict JSON Schema builders
+  src/desktop-commands.js   macOS desktop/Dock/Window-menu handlers
   src/window-commands.js    Shared window operation handlers
   src/notes-commands.js     Shared Notes data/presentation handlers
   src/Window.svelte         Mojave frame, focus, pointer dragging, content hosting
   src/WindowControls.svelte Mojave close/minimize/zoom buttons
-  src/window-state.js       Shared physical clamp/fit/zoom primitives; explicit scale
+  src/window-state.js       Shared physical clamp/fit/expanded-bounds primitives; explicit scale
   src/windows.css          Mojave window chrome and active/inactive appearance
   src/MessagesWindow.svelte Measured Mojave Messages chrome and conversation
   src/NotesWindow.svelte    Notes toolbar, folders, list, editor, context menu

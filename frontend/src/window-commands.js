@@ -1,7 +1,7 @@
 import { rejected } from './feature-commands.js';
 
 // Window primitives remain owned by App; UI and direct callers share these checks.
-export function createWindowCommands(getWindows, actions) {
+export function createWindowCommands(getWindows, actions, expandedProperty) {
   function withWindow(action, fields = []) {
     return async (target, payload) => {
       if (Object.keys(target).some((key) => key !== 'windowId')
@@ -11,12 +11,23 @@ export function createWindowCommands(getWindows, actions) {
       }
       const window = getWindows().find((entry) => entry.id === target.windowId);
       if (!window) return rejected('not_found', 'Window does not exist.');
+      if (!actions.available()) return rejected('unavailable', 'Dismiss the native global modal before interacting with windows.');
       return action(window, payload);
     };
   }
 
   function applied(window) {
     return { status: 'applied', target: { appId: window.appId, windowId: window.id } };
+  }
+
+  function setExpanded(property) {
+    return withWindow(async (window, payload) => {
+      if (typeof payload[property] !== 'boolean') return rejected('invalid_arguments', `${property} must be a boolean.`);
+      if (window.minimized) return rejected('unavailable', 'Restore the window before changing its expanded state.');
+      if (window[property] !== payload[property]) actions.expand(window.id);
+      await actions.focusKeyboard(window.id);
+      return applied(window);
+    }, [property]);
   }
 
   return {
@@ -28,9 +39,8 @@ export function createWindowCommands(getWindows, actions) {
       if (payload.keyboard !== false) await actions.focusKeyboard(window.id);
       return applied(window);
     }, ['keyboard']),
-    'window.close': withWindow((window) => {
-      actions.close(window.id);
-      return applied(window);
+    'window.close': withWindow(async (window) => {
+      return await actions.close(window.id) ?? applied(window);
     }),
     'window.setMinimized': withWindow(async (window, payload) => {
       if (typeof payload.minimized !== 'boolean') return rejected('invalid_arguments', 'minimized must be a boolean.');
@@ -41,18 +51,13 @@ export function createWindowCommands(getWindows, actions) {
       }
       return applied(window);
     }, ['minimized']),
-    'window.setZoomed': withWindow(async (window, payload) => {
-      if (typeof payload.zoomed !== 'boolean') return rejected('invalid_arguments', 'zoomed must be a boolean.');
-      if (window.minimized) return rejected('unavailable', 'Restore the window before changing zoom.');
-      if (window.zoomed !== payload.zoomed) actions.zoom(window.id);
-      await actions.focusKeyboard(window.id);
-      return applied(window);
-    }, ['zoomed']),
+    'window.setZoomed': setExpanded('zoomed'),
+    'window.setMaximized': setExpanded('maximized'),
     'window.move': withWindow((window, payload) => {
       if (!Number.isFinite(payload.x) || !Number.isFinite(payload.y)) {
         return rejected('invalid_arguments', 'Window coordinates must be finite workspace pixels.');
       }
-      if (window.minimized || window.zoomed) return rejected('unavailable', 'Only visible normal windows can be moved.');
+      if (window.minimized || window[expandedProperty]) return rejected('unavailable', 'Only visible normal windows can be moved.');
       actions.move(window.id, payload.x, payload.y);
       return applied(window);
     }, ['x', 'y']),

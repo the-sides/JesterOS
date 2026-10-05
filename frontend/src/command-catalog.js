@@ -1,23 +1,11 @@
 import { DEFAULT_PROFILE_ID } from './os-profiles.js';
+import { defineCommand, NONE, text, identity, flag, number, offset, choice, object, match, empty } from './command-schema.js';
+import { windows11ShellCatalog } from './windows11-shell-catalog.js';
+import { windows11AppCatalog } from './windows11-app-commands.js';
 
-export const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
 const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
-const NONE = [];
-const EMPTY_PROPERTIES = {};
-const text = { type: 'string' };
-const identity = { type: 'string', minLength: 1 };
-const flag = { type: 'boolean' };
-const number = { type: 'number' };
-const offset = { type: 'number', minimum: 0 };
-const choice = (...values) => ({ enum: values });
-const object = (properties = EMPTY_PROPERTIES, required = Object.keys(properties)) => ({
-  type: 'object', properties, required, additionalProperties: false,
-});
-// Partial matching is for conditionals, not closed request/target objects.
-const match = (properties, required = Object.keys(properties)) => ({
-  type: 'object', properties, required,
-});
-const empty = object();
+const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
+const ALL_PROFILES = [...MAC_PROFILES, ...WINDOWS_PROFILES];
 const windowTarget = object({ windowId: identity });
 const noteTarget = object({ noteId: identity });
 const menuTarget = object({ menuId: { const: 'window' } });
@@ -28,59 +16,43 @@ const contextItem = choice('pin', 'delete', 'restore');
 const visibleView = 'An existing, non-minimized Notes view; never opened implicitly.';
 const currentNote = 'noteId belongs to the current folder/search collection (describe().targets.notes.eligibleIds).';
 const requestedFocus = 'focus:true additionally requires the visible Notes view before any data mutation.';
-const completion = {
-  mode: 'promise', success: 'applied',
-  settles: 'Handler state, Svelte DOM flush, requested native focus, and actual retained scroll offsets. Not asynchronous font/media/animation completion.',
-};
+const windowAvailable = 'No profile-native global modal blocks window interaction.';
+const define = defineCommand.bind(null, MAC_PROFILES);
+const defineShared = defineCommand.bind(null, ALL_PROFILES);
+const defineWindows = defineCommand.bind(null, WINDOWS_PROFILES);
 
-const anyObject = { type: 'object' };
-function define(name, capability, target, payload, requires, presentation, data = NONE, rules = NONE, resultTarget = anyObject) {
-  const required = ['command'];
-  if (target !== empty) required.push('target');
-  if (payload.required?.length || payload.anyOf) required.push('payload');
-  const requestSchema = {
-    $schema: JSON_SCHEMA_DIALECT,
-    ...object({ command: { const: name }, requestId: identity, target, payload }, required),
-  };
-  if (rules.length) requestSchema.allOf = rules;
-  return [name, {
-    profiles: MAC_PROFILES, capability, requestSchema, requires,
-    effects: { data, presentation }, completion,
-    resultSchema: {
-      ...object({ status: { const: 'applied' }, requestId: identity, target: resultTarget }, ['status', 'target']),
-      additionalProperties: true,
-    },
-  }];
-}
-
-export const commandCatalog = Object.fromEntries([
-  define('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
+export const commandCatalog = {
+  ...Object.fromEntries([
+  defineShared('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
     ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],
     ['A different profile disposes the old native scene and mounts a fresh native shell; the stable public API follows it.'],
     ['A different profile resets fictional application records and all window/menu/focus/scroll state.'], NONE,
     object({ profileId: identity })),
-  define('app.open', 'shell.apps', object({ appId: identity }), object({ title: text }, NONE),
-    ['appId is in targets.applications; workspace dimensions are available.'],
+  defineShared('app.open', 'shell.apps', object({ appId: identity }), object({ title: text }, NONE),
+    ['appId is in targets.applications; workspace dimensions are available.', windowAvailable],
     ['Open/restore, activate and stack the window; optional contextual title; focus its root.'], NONE, NONE,
     object({ appId: identity, windowId: identity })),
-  define('window.focus', 'shell.windows', windowTarget, object({ keyboard: flag }, NONE),
-    ['windowId is in targets.windows, including minimized windows.'],
+  defineShared('window.focus', 'shell.windows', windowTarget, object({ keyboard: flag }, NONE),
+    ['windowId is in targets.windows, including minimized windows.', windowAvailable],
     ['Restore, activate, stack; root keyboard focus defaults true, false preserves native child focus.']),
-  define('window.close', 'shell.windows', windowTarget, empty,
-    ['windowId is in targets.windows.'],
-    ['Remove the window; select the last remaining visible window as active; application data survives.']),
-  define('window.setMinimized', 'shell.windows', windowTarget, object({ minimized: flag }),
-    ['windowId is in targets.windows.'],
+  defineShared('window.close', 'shell.windows', windowTarget, empty,
+    ['windowId is in targets.windows.', windowAvailable],
+    ['Request native close; remove the window and choose the last visible active window, or show the Windows Notepad dirty-close dialog. App data otherwise survives.']),
+  defineShared('window.setMinimized', 'shell.windows', windowTarget, object({ minimized: flag }),
+    ['windowId is in targets.windows.', windowAvailable],
     ['Set minimized state; false restores/activates/focuses the root; retain app data and scroll.']),
   define('window.setZoomed', 'shell.macos-window-zoom', windowTarget, object({ zoomed: flag }),
-    ['Existing non-minimized window.'],
+    ['Existing non-minimized window.', windowAvailable],
     ['Set workspace zoom or restore normal bounds; activate and focus the root.']),
-  define('window.move', 'shell.windows', windowTarget, object({ x: number, y: number }),
-    ['Existing, non-minimized, non-zoomed window; coordinates are finite physical workspace pixels.'],
+  defineWindows('window.setMaximized', 'shell.windows-maximize', windowTarget, object({ maximized: flag }),
+    ['Existing non-minimized Windows window.', windowAvailable],
+    ['Set native workspace maximization or restore normal bounds; activate and focus the root.']),
+  defineShared('window.move', 'shell.windows', windowTarget, object({ x: number, y: number }),
+    ['Existing, non-minimized, non-expanded window; coordinates are finite physical workspace pixels.', windowAvailable],
     ['Clamp window position to workspace; no activation.']),
-  define('desktop.refreshLayout', 'shell.desktop', empty, empty,
-    ['Mounted desktop view; actual workspace/Dock dimensions are positive.'],
-    ['Measure real browser workspace; refit normal/zoomed windows, including minimized restore geometry.']),
+  defineShared('desktop.refreshLayout', 'shell.desktop', empty, empty,
+    ['Mounted desktop view; actual native workspace dimensions are positive.'],
+    ['Measure real browser workspace above native Dock/taskbar; refit normal/expanded windows, including minimized restore geometry.']),
   define('desktop.select', 'shell.desktop', object({ fileId: { type: ['string', 'null'] } }), empty,
     ['Non-null fileId is in targets.desktopFiles.'],
     ['Select file and activate desktop; null deselects without changing active app.']),
@@ -174,4 +146,7 @@ export const commandCatalog = Object.fromEntries([
     ...object({ top: offset, left: offset, observe: flag }, NONE), anyOf: [match({ top: true }), match({ left: true })],
   }, [visibleView, 'Editor additionally requires a selected current record; coordinates are finite nonnegative pixels.'],
     ['Apply offsets, or observe native scrolling without moving it; retain actual clamped offsets; editor means body textarea.']),
-]);
+  ]),
+  ...windows11ShellCatalog,
+  ...windows11AppCatalog,
+};

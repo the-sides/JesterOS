@@ -6,7 +6,7 @@
   import { createNotesCommands } from './notes-commands.js';
   import { commandCatalog } from './command-catalog.js';
   import { visibleNotes } from './notes-state.js';
-  import { clampPosition, zoomBounds } from './window-state.js';
+  import { clampPosition, expandedBounds } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
 
   let { profile: profileInput, adapter: adapterInput, registerCommands, selectProfile } = $props();
@@ -14,22 +14,27 @@
   // instance instead of relabeling incompatible application/view state.
   const profile = untrack(() => profileInput);
   const adapter = untrack(() => adapterInput);
-  const { Desktop, Window, MessagesWindow, NotesWindow } = adapter;
+  const { Desktop, Window, MessagesWindow, NotesWindow, Applications } = adapter;
   const { applications, desktopFiles } = profile;
+  const expandedProperty = adapter.expandedProperty;
+  const hasWindowMenu = profile.capabilities.includes('shell.window-menu');
 
   let windows = $state([]);
   let activeWindowId = $state(null);
   let area = $state({ width: 0, height: 0 });
   // Application data outlives its window; close/minimize must not erase edits.
-  let notesState = $state(adapter.createSceneData().notes);
-  let desktopState = $state({ selectedFileId: null, windowMenuOpen: false, windowMenuItem: null, windowMenuScrollTop: 0, focusedControl: null });
-  let notesViewState = $state({ context: null, contextItem: null, focusedControl: null, scroll: { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } });
+  const initialData = adapter.createSceneData();
+  let notesState = $state(initialData.notes);
+  let nativeState = $state(initialData.native);
+  let desktopState = $state({ selectedFileId: null, focusedControl: null, ...(hasWindowMenu ? { windowMenuOpen: false, windowMenuItem: null, windowMenuScrollTop: 0 } : {}) });
+  let notesViewState = $state(initialData.notes ? { context: null, contextItem: null, focusedControl: null, scroll: { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } } : undefined);
   let desktopView = null;
   let notesView = null;
+  const applicationViews = new Map();
   let initialized = false;
   const activeApp = $derived(applications[windows.find((window) => window.id === activeWindowId)?.appId] ?? applications[profile.defaults.desktopAppId]);
 
-  const handlers = {
+  let handlers = {
     'scene.selectProfile': async (target, payload) => {
       if (Object.keys(target).some((key) => key !== 'profileId')
         || typeof target.profileId !== 'string' || !target.profileId
@@ -50,6 +55,7 @@
       }
       if (!Object.hasOwn(applications, target.appId)) return rejected('not_found', 'Application does not exist.');
       if (!area.width || !area.height) return rejected('unavailable', 'The desktop has not been laid out.');
+      if (!windowInteractionsAvailable()) return rejected('unavailable', 'Dismiss the native global modal before opening an application.');
       openWindow(target.appId, payload.title);
       await focusKeyboardWindow(target.appId);
       return { status: 'applied', target: { appId: target.appId, windowId: target.appId } };
@@ -67,9 +73,10 @@
   };
   Object.assign(handlers,
     createWindowCommands(() => windows, {
-      focus: focusWindow, close: closeWindow, minimize: minimizeWindow, zoom: zoomWindow, move: moveWindow,
+      focus: focusWindow, close: requestCloseWindow, minimize: minimizeWindow, expand: expandWindow, move: moveWindow,
       focusKeyboard: focusKeyboardWindow,
-    }),
+      available: windowInteractionsAvailable,
+    }, expandedProperty),
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
       getProfile: () => profile,
@@ -77,24 +84,43 @@
       openApp: (target, payload) => handlers['app.open'](target, payload),
       windowAction: (command, target, payload) => handlers[command](target, payload),
     }),
-    createNotesCommands(notesState, notesViewState, {
-      getView: () => notesView, focusWindow: () => focusWindow('notes'),
-      isVisible: () => windows.some((window) => window.appId === 'notes' && !window.minimized),
-    }),
   );
+  if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
+    getView: () => notesView, focusWindow: () => focusWindow('notes'),
+    isVisible: () => windows.some((window) => window.appId === 'notes' && !window.minimized),
+  }));
+  if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
+    native: nativeState,
+    getDesktopView: () => desktopView,
+    getApplicationView,
+    getWindows: () => windows, getActiveWindowId: () => activeWindowId,
+    getProfile: () => profile, focusDesktop, focusWindow, closeWindow,
+    invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
+  }));
+  for (const name of Object.keys(handlers)) {
+    if (!Object.hasOwn(commandCatalog, name)) throw new Error(`Missing native command descriptor: ${name}`);
+  }
+  const sceneCatalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) => descriptor.profiles.includes(profile.id)));
+  // Composite callbacks capture this binding, so they use the same sealed,
+  // capability-guarded registry after native profile selection.
+  handlers = Object.fromEntries(Object.entries(handlers).filter(([name]) => Object.hasOwn(sceneCatalog, name)));
   const commands = createFeatureCommands(handlers,
-    () => $state.snapshot({ profile, windows, activeWindowId, area, notes: notesState, desktop: desktopState, notesView: notesViewState }),
-    settleCommands, commandCatalog, () => ({
+    () => $state.snapshot({ profile, windows, activeWindowId, area, desktop: desktopState,
+      ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
+      ...(nativeState ? { native: nativeState } : {}),
+    }),
+    settleCommands, sceneCatalog, () => ({
       profiles: listOSProfiles().map(({ id, name, family, version }) => ({ profileId: id, name, family, version })),
-      applications: Object.values(applications).map(({ id, name, dock, coverage }) => ({ appId: id, name, dock: dock ?? null, coverage })),
+      applications: Object.values(applications).map(({ id, name, dock, taskbar, coverage }) => ({ appId: id, name, coverage, ...(dock ? { dock } : {}), ...(taskbar ? { taskbar } : {}) })),
       desktopFiles: desktopFiles.map(({ id, name, appId }) => ({ fileId: id, name, appId })),
-      windows: windows.map(({ id, appId, minimized, zoomed }) => ({ windowId: id, appId, minimized, zoomed })),
-      menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }],
-      notes: {
+      windows: windows.map((window) => ({ windowId: window.id, appId: window.appId, minimized: window.minimized, [expandedProperty]: window[expandedProperty] })),
+      ...(hasWindowMenu ? { menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }] } : {}),
+      ...(notesState ? { notes: {
         records: notesState.notes.map(({ id, deleted }) => ({ noteId: id, deleted })),
         eligibleIds: visibleNotes(notesState).map(({ id }) => id),
-      },
-    }), () => profile);
+      } } : {}),
+      ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getWindows: () => windows, getProfile: () => profile }) : {}),
+    }), () => profile, commandCatalog);
 
   async function settleCommands() {
     await tick();
@@ -107,7 +133,7 @@
         if (actual.top !== previous.top || actual.left !== previous.left) notesViewState.scroll[area] = actual;
       }
     }
-    if (desktopView) desktopState.windowMenuScrollTop = desktopView.windowMenuScrollTop();
+    if (desktopView && hasWindowMenu) desktopState.windowMenuScrollTop = desktopView.windowMenuScrollTop();
   }
 
   function registerDesktopView(view) {
@@ -120,6 +146,22 @@
     return () => { if (notesView === view) notesView = null; };
   }
 
+  function registerApplicationView(appId, view) {
+    applicationViews.set(appId, view);
+    return () => { if (applicationViews.get(appId) === view) applicationViews.delete(appId); };
+  }
+
+  function windowInteractionsAvailable() {
+    return adapter.windowInteractionsAvailable?.(nativeState) ?? true;
+  }
+
+  function getApplicationView(appId) {
+    if (!windowInteractionsAvailable()) return undefined;
+    return windows.some((window) => window.appId === appId && !window.minimized)
+      ? applicationViews.get(appId)
+      : undefined;
+  }
+
   async function focusKeyboardWindow(id) {
     await tick();
     [...document.querySelectorAll('[data-window-id]')].find((element) => element.dataset.windowId === id)?.focus({ preventScroll: true });
@@ -127,11 +169,11 @@
 
   function focusDesktop() {
     activeWindowId = null;
-    desktopState.windowMenuOpen = false;
-    desktopState.windowMenuItem = null;
-    notesViewState.context = null;
-    notesViewState.contextItem = null;
-    notesViewState.focusedControl = null;
+    if (hasWindowMenu) {
+      desktopState.windowMenuOpen = false;
+      desktopState.windowMenuItem = null;
+    }
+    if (notesViewState) clearNotesPresentation();
     if (document.activeElement?.closest('[data-window-id]')) document.activeElement.blur();
   }
 
@@ -144,7 +186,16 @@
     return windowCommand('window.setZoomed', id, { zoomed: !window?.zoomed });
   }
 
-  onMount(() => registerCommands(commands));
+  function toggleWindowMaximize(id) {
+    const window = windows.find((entry) => entry.id === id);
+    return windowCommand('window.setMaximized', id, { maximized: !window?.maximized });
+  }
+
+  onMount(() => {
+    const unregister = registerCommands(commands);
+    const stopScene = adapter.startScene?.(nativeState, commands.execute);
+    return () => { stopScene?.(); unregister(); };
+  });
 
 
   function focusWindow(id) {
@@ -157,14 +208,12 @@
       windows.push(window);
     }
     activeWindowId = id;
-    desktopState.windowMenuOpen = false;
-    desktopState.windowMenuItem = null;
-    desktopState.focusedControl = null;
-    if (id !== 'notes') {
-      notesViewState.context = null;
-      notesViewState.contextItem = null;
-      notesViewState.focusedControl = null;
+    if (hasWindowMenu) {
+      desktopState.windowMenuOpen = false;
+      desktopState.windowMenuItem = null;
+      desktopState.focusedControl = null;
     }
+    if (id !== 'notes' && notesViewState) clearNotesPresentation();
   }
 
   function openWindow(appId, title) {
@@ -181,7 +230,7 @@
       appId,
       title: title ?? app.name,
       minimized: false,
-      zoomed: false,
+      [expandedProperty]: false,
       bounds: adapter.initialBounds(app, area, windows.length, globalThis.innerHeight),
       restoreBounds: null,
     });
@@ -192,13 +241,29 @@
     activeWindowId = windows.findLast((window) => !window.minimized)?.id ?? null;
   }
 
+
+  async function requestCloseWindow(id) {
+    if (adapter.requestClose) {
+      const appId = windows.find((entry) => entry.id === id).appId;
+      const result = await adapter.requestClose(id, {
+        invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
+        closeWindow,
+      });
+      return result.status === 'applied'
+        ? { ...result, target: { windowId: id, appId } }
+        : result;
+    }
+    closeWindow(id);
+  }
   function closeWindow(id) {
     const index = windows.findIndex((window) => window.id === id);
     if (index < 0) return;
     windows.splice(index, 1);
     if (activeWindowId === id) focusRemaining();
-    desktopState.windowMenuOpen = false;
-    desktopState.windowMenuItem = null;
+    if (hasWindowMenu) {
+      desktopState.windowMenuOpen = false;
+      desktopState.windowMenuItem = null;
+    }
     if (id === 'notes') clearNotesPresentation();
   }
 
@@ -207,29 +272,31 @@
     if (!window) return;
     window.minimized = true;
     if (activeWindowId === id) focusRemaining();
-    desktopState.windowMenuOpen = false;
-    desktopState.windowMenuItem = null;
+    if (hasWindowMenu) {
+      desktopState.windowMenuOpen = false;
+      desktopState.windowMenuItem = null;
+    }
     if (id === 'notes') clearNotesPresentation();
   }
 
-  function zoomWindow(id) {
+  function expandWindow(id) {
     const window = windows.find((window) => window.id === id);
     if (!window) return;
     focusWindow(id);
-    if (window.zoomed) {
+    if (window[expandedProperty]) {
       window.bounds = adapter.fitNormalBounds(window.restoreBounds, applications[window.appId], area);
       window.restoreBounds = null;
-      window.zoomed = false;
+      window[expandedProperty] = false;
     } else {
       window.restoreBounds = window.bounds;
-      window.bounds = zoomBounds(window.restoreBounds, area);
-      window.zoomed = true;
+      window.bounds = expandedBounds(window.restoreBounds, area);
+      window[expandedProperty] = true;
     }
   }
 
   function moveWindow(id, x, y) {
     const window = windows.find((window) => window.id === id);
-    if (window && !window.zoomed) window.bounds = clampPosition({ ...window.bounds, x, y }, area);
+    if (window && !window[expandedProperty]) window.bounds = clampPosition({ ...window.bounds, x, y }, area);
   }
 
   function clearNotesPresentation() {
@@ -242,10 +309,10 @@
     if (nextArea.width <= 0 || nextArea.height <= 0) return;
     area = nextArea;
     for (const window of windows) {
-      const normal = adapter.fitNormalBounds(window.zoomed ? window.restoreBounds : window.bounds, applications[window.appId], area);
-      if (window.zoomed) {
+      const normal = adapter.fitNormalBounds(window[expandedProperty] ? window.restoreBounds : window.bounds, applications[window.appId], area);
+      if (window[expandedProperty]) {
         window.restoreBounds = normal;
-        window.bounds = zoomBounds(normal, area);
+        window.bounds = expandedBounds(normal, area);
       } else {
         window.bounds = normal;
       }
@@ -263,6 +330,7 @@
   {activeWindowId}
   {activeApp}
   viewState={desktopState}
+  native={nativeState}
   execute={commands.execute}
   registerView={registerDesktopView}
   onlayout={() => commands.execute({ command: 'desktop.refreshLayout' })}
@@ -277,9 +345,12 @@
         onclose={() => windowCommand('window.close', window.id)}
         onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
         onzoom={() => toggleWindowZoom(window.id)}
+        onmaximize={() => toggleWindowMaximize(window.id)}
         onmove={(x, y) => windowCommand('window.move', window.id, { x, y })}
       >
-        {#if window.appId === 'messages'}
+        {#if Applications}
+          <Applications appId={window.appId} {profile} native={nativeState} execute={commands.execute} registerView={registerApplicationView} />
+        {:else if window.appId === 'messages'}
           <MessagesWindow
             assets={profile.assets}
             active={activeWindowId === window.id}
