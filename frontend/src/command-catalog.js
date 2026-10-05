@@ -7,6 +7,7 @@ import { desktopContextContracts } from './desktop-context-catalog.js';
 import { desktopStacksCatalog } from './desktop-stacks-catalog.js';
 import { macDockCatalog } from './mac-dock-catalog.js';
 import { macDockFoldersCatalog } from './mac-dock-folders-catalog.js';
+import { applicationSwitchingCatalog } from './application-switching-catalog.js';
 
 const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -33,6 +34,7 @@ Object.assign(quitContract[1].resultSchema.properties, { quit: flag, confirmatio
 quitContract[1].resultSchema.required.push('quit', 'confirmationRequired');
 
 export const commandCatalog = {
+  ...applicationSwitchingCatalog,
   ...Object.fromEntries([
   defineShared('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
     ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],

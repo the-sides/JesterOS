@@ -272,6 +272,7 @@ export function createMacDockCommands(desktop, context) {
       else if (entry.id === 'keep-in-dock') result = await commands['dock.pin']({ appId }, { pinned: !state.pinnedAppIds.includes(appId) });
       else if (entry.id === 'show-in-finder') result = await commands['dock.reveal']({ appId }, {});
       else if (entry.id === 'open') result = await commands['dock.activate']({ appId }, {});
+      else if (entry.id === 'hide') result = await context.invoke('app.setHidden', { appId }, { hidden: !context.isHidden(appId) });
       else if (entry.id === 'quit') result = await context.invoke('app.quit', { appId }, {});
       else if (entry.id === 'auto-hide') result = await commands['dock.preferences.set']({}, { autoHide: !state.preferences.autoHide });
       else if (entry.id === 'magnification') result = await commands['dock.preferences.set']({}, { magnification: !state.preferences.magnification });

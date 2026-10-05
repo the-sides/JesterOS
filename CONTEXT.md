@@ -78,3 +78,15 @@ A fan/grid/list popup showing one real folder's current immediate children, with
 
 **Trash occupancy**:
 The empty/full presentation and count derived from the existing simulated Trash's deleted records. It is not host Trash state, a second file store, or an implemented restore/empty lifecycle.
+
+**Application switcher**:
+The macOS scene's frozen, selectable MRU strip of running application identities, including hidden, all-minimized and zero-window apps. Browsing is not activation; activation unhides an app without reopening or restoring minimized windows.
+
+**Window switcher**:
+The Windows scene's frozen roster of actual managed-window identities. Cards project the original inert application surfaces, not screenshots or duplicate instances; activating a card restores that exact minimized window.
+
+**Hidden application**:
+A running macOS application whose entire window group is temporarily invisible and inert. Its documents, views, minimized state and normal/restore geometry remain retained. Hiding is distinct from closing, minimizing or quitting.
+
+**Window cycling**:
+Immediate activation in stable scene creation order, skipping hidden/minimized frames. macOS cycles only the active application's windows; Windows cycles all eligible managed windows. This order is independent of activation MRU and Dock recent history.

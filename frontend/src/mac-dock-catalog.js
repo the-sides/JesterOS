@@ -66,7 +66,7 @@ export const macDockCatalog = Object.fromEntries([
     ['Select/reveal/focus an enabled current entry and publish its branch. False collapses a parent; child entries require the branch open. Scroll only the menu pane.'],
     NONE, NONE, object({ menuId: { const: 'dock-context' }, itemId: identity })),
   define('dock.context.execute', capability, item, empty, [available, menu],
-    ['Execute the exact current enabled leaf via real application/window/alias/Finder/App Expose commands. Disabled or parent entries reject before mutation; successful actions close the originating tree.'],
+    ['Execute the exact current enabled leaf via real application/window/alias/Finder/App Expose commands, including whole-app Hide/Show without reopening or unminimizing. Disabled or parent entries reject before mutation; successful actions close the originating tree.'],
     NONE, NONE, object({ menuId: { const: 'dock-context' }, itemId: identity, appId: nullableIdentity })),
   define('dock.context.scroll', capability, object({ region: choice('main', 'submenu') }), object({ top: offset, observe: flag }, ['top']), [available, menu, 'The requested menu pane is rendered.'],
     ['Set a clamped real menu-pane scroll offset, or observe actual DOM scrolling with observe:true. Retain the actual value through highlight/refit.'],

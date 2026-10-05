@@ -3,7 +3,10 @@
   import Windows11Icon from './Windows11Icon.svelte';
   import WindowResizeHandles from './WindowResizeHandles.svelte';
   import './windows11.css';
-  let { window, active, zIndex, onfocus, onclose, onminimize, onmaximize, onmove, resizable = false, onresize, children } = $props();
+  let { window, active, zIndex, onfocus, onclose, onminimize, onmaximize, onmove, resizable = false, onresize,
+    presentationBounds, interactive = true, visible = true, children } = $props();
+  const bounds = $derived(presentationBounds ?? window.bounds);
+  $effect(() => { if (!interactive || !visible) endDrag(); });
   let element;
   let drag = null;
   function endDrag(event) {
@@ -12,7 +15,7 @@
     if (element?.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId);
   }
   function startDrag(event) {
-    if (!event.isPrimary || event.button !== 0) return;
+    if (!interactive || !visible || !event.isPrimary || event.button !== 0) return;
     onfocus();
     if (window.maximized || !(event.target instanceof Element) || !event.target.closest('[data-window-drag]') || event.target.closest('button,input,textarea,select,a,[contenteditable]')) return;
     endDrag(); element.focus({ preventScroll: true });
@@ -25,14 +28,21 @@
     onmove(drag.left + event.clientX - drag.x, drag.top + event.clientY - drag.y); event.preventDefault();
   }
   function windowKey(event) {
+    if (!interactive || !visible) return;
     if (event.altKey && event.key === 'F4') { event.preventDefault(); event.stopPropagation(); onclose(); }
     else if (event.metaKey && event.key === 'ArrowUp') { event.preventDefault(); event.stopPropagation(); if (!window.maximized) onmaximize(); }
     else if (event.metaKey && event.key === 'ArrowDown') { event.preventDefault(); event.stopPropagation(); if (window.maximized) onmaximize(); else onminimize(); }
   }
   onDestroy(() => endDrag());
 </script>
-<div bind:this={element} class="win11-window managed-window" class:inactive={!active} class:maximized={window.maximized} data-window-id={window.id} role="dialog" aria-label={window.title} tabindex="-1" style:left="{window.bounds.x}px" style:top="{window.bounds.y}px" style:width="{window.bounds.width}px" style:height="{window.bounds.height}px" style:z-index={zIndex} onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={endDrag} onpointercancel={endDrag} onlostpointercapture={endDrag} onfocusin={onfocus} onkeydown={windowKey} ondblclick={(event) => { if (event.target.closest('[data-window-drag]') && !event.target.closest('button')) onmaximize(); }}>
-  <div class="win11-window-surface" style:width="{window.bounds.width / window.bounds.scale}px" style:height="{window.bounds.height / window.bounds.scale}px" style:transform="scale({window.bounds.scale})">
+<div bind:this={element} class="win11-window managed-window" class:inactive={!active} class:maximized={window.maximized}
+  data-window-id={window.id} role="dialog" aria-label={window.title} tabindex="-1" inert={!interactive}
+  style:visibility={visible ? undefined : 'hidden'} style:left="{bounds.x}px" style:top="{bounds.y}px"
+  style:width="{bounds.width}px" style:height="{bounds.height}px" style:z-index={zIndex}
+  onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={endDrag} onpointercancel={endDrag}
+  onlostpointercapture={endDrag} onfocusin={() => { if (interactive && visible) onfocus(); }} onkeydown={windowKey}
+  ondblclick={(event) => { if (interactive && visible && event.target.closest('[data-window-drag]') && !event.target.closest('button')) onmaximize(); }}>
+  <div class="win11-window-surface" style:width="{bounds.width / bounds.scale}px" style:height="{bounds.height / bounds.scale}px" style:transform="scale({bounds.scale})">
     <header class="win11-titlebar" data-window-drag>
       <Windows11Icon name={window.appId} size={16}/><span>{window.title}</span>
       <div class="win11-caption-controls">
@@ -43,5 +53,5 @@
     </header>
     <div class="win11-window-body">{@render children()}</div>
   </div>
-  <WindowResizeHandles windowId={window.id} bounds={window.bounds} {resizable} {onfocus} {onresize} />
+  <WindowResizeHandles windowId={window.id} bounds={window.bounds} resizable={resizable && interactive && visible} {onfocus} {onresize} />
 </div>

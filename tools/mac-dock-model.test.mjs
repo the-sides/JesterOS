@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { macDockApps, macDockDefaults, macDockWindowCards, macDockItems, macDockTiles, recordMacAppUse } from '../frontend/src/mac-dock-model.js';
+import { macDockApps, macDockDefaults, macDockContextItems, macDockWindowCards, macDockItems, macDockTiles, recordMacAppUse } from '../frontend/src/mac-dock-model.js';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { createMacDesktopFileStore } from '../frontend/src/desktop-file-state.js';
 import { macDockFolders } from '../frontend/src/mac-dock-folders.js';
@@ -85,4 +85,16 @@ test('minimized tiles project actual live records in file-side order and disappe
   state.appWindows = null;
   expect(macDockTiles(state, windows)).toEqual([a]);
   expect(windows.map(window => window.bounds)).toEqual(geometry);
+});
+
+test('Dock Hide requires another foreground receiver, while Show remains available without reopening a window', () => {
+  const profile = getOSProfile('macos-mojave-10.14'), state = macDockDefaults(profile);
+  state.context = { kind: 'app', appId: 'finder' };
+  const hide = (running, quitting = [], hidden = []) =>
+    macDockContextItems(profile, state, [], running, null, quitting, hidden).find(item => item.id === 'hide');
+  expect(hide(['finder']).enabled).toBe(false);
+  expect(hide(['finder', 'notes']).enabled).toBe(true);
+  expect(hide(['finder', 'notes'], ['notes']).enabled).toBe(false);
+  expect(hide(['finder', 'notes'], [], ['finder'])).toMatchObject({ label: 'Show', enabled: true });
+  expect(hide(['finder', 'notes'], ['finder'], ['finder']).enabled).toBe(false);
 });

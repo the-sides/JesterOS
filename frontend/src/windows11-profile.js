@@ -5,7 +5,7 @@ const application = (id, name, width, height, minimumSize, taskbar = 'running') 
 export const windows11Profile = {
   id: 'windows11-23h2-22631.2428', name: 'Windows 11 Pro', family: 'windows',
   version: '23H2', build: '22631.2428', releaseYear: 2023, renderer: 'windows11',
-  capabilities: ['shell.apps', 'shell.windows', 'shell.windows-maximize', 'shell.window-resize', 'shell.window-create', 'app.lifecycle', 'shell.desktop', 'scene.profile-selection', 'windows.shell', 'windows.apps'],
+  capabilities: ['shell.apps', 'shell.windows', 'shell.windows-maximize', 'shell.window-resize', 'shell.window-create', 'app.lifecycle', 'shell.switcher', 'shell.desktop', 'scene.profile-selection', 'windows.shell', 'windows.apps'],
   applications: {
     explorer: application('explorer', 'File Explorer', 1000, 650, { width: 640, height: 420 }, 'pinned'),
     edge: application('edge', 'Microsoft Edge', 1060, 720, { width: 640, height: 460 }, 'pinned'),

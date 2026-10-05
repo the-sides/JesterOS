@@ -3,6 +3,10 @@
   import { createFeatureCommands, rejected } from './feature-commands.js';
   import { createWindowCommands } from './window-commands.js';
   import { createApplicationCommands } from './application-commands.js';
+  import { applicationSwitchingDefaults, recordApplicationActivation, reconcileApplicationSwitching,
+    applicationSwitcherItems, applicationMenuItems, createApplicationSwitchingCommands } from './application-switching.js';
+  import ApplicationSwitcher from './ApplicationSwitcher.svelte';
+  import MacApplicationMenu from './MacApplicationMenu.svelte';
   import { createDesktopCommands } from './desktop-commands.js';
   import { createDesktopItemCommands } from './desktop-item-commands.js';
   import { createDesktopContextCommands } from './desktop-context-commands.js';
@@ -55,6 +59,45 @@
   let runningAppIds = $state(adapter.closeKeepsRunning ? [profile.defaults.desktopAppId] : []);
   let pendingQuitAppIds = $state([]);
   const quitInFlight = new Set();
+  let switching = $state(applicationSwitchingDefaults());
+  let switcherControls = $state();
+  let applicationMenuControls = $state();
+  let switcherPreviewSlots = $state({});
+  let applicationMenuAnchor = $state(null);
+  let switchingReturnFocus = null;
+  let switchingReturnFocusIdentity = null;
+  const switcherItems = $derived(applicationSwitcherItems(switching, profile, runningAppIds, windows, pendingQuitAppIds));
+  const appMenuItems = $derived(switching.appMenu
+    ? applicationMenuItems(switching, profile, switching.appMenu.appId, runningAppIds, pendingQuitAppIds) : []);
+  const switcherWindowBounds = $derived.by(() => {
+    if (switching.switcher?.kind !== 'windows') return {};
+    const projections = {};
+    for (const item of switcherItems) {
+      const slot = switcherPreviewSlots[item.windowId];
+      const window = windows.find(window => window.id === item.windowId);
+      if (!slot || !window || slot.width <= 0 || slot.height <= 0) continue;
+      const logicalWidth = window.bounds.width / window.bounds.scale;
+      const logicalHeight = window.bounds.height / window.bounds.scale;
+      const scale = Math.min(window.bounds.scale, slot.width / logicalWidth, slot.height / logicalHeight);
+      const width = logicalWidth * scale, height = logicalHeight * scale;
+      projections[window.id] = { x: slot.x + (slot.width - width) / 2, y: slot.y + (slot.height - height) / 2, width, height, scale };
+    }
+    return projections;
+  });
+  $effect(() => {
+    reconcileApplicationSwitching(switching, profile, runningAppIds, windows, pendingQuitAppIds);
+  });
+  $effect(() => {
+    const menu = switching.appMenu;
+    activeAppId; area.width; area.height;
+    if (!menu) { applicationMenuAnchor = null; return; }
+    let cancelled = false;
+    tick().then(() => {
+      if (cancelled || switching.appMenu !== menu) return;
+      applicationMenuAnchor = applicationHeaderRect(menu.appId);
+    });
+    return () => { cancelled = true; };
+  });
   let nextWindowId = 1;
   let disposed = false;
   let area = $state({ width: 0, height: 0 });
@@ -241,7 +284,7 @@
     openPreferences: openDockPreferences,
     invoke: (command, target, payload) => handlers[command](target, payload),
     reveal: revealMacApplication, focusDock, restoreOverviewFocus,
-    isQuitting: appId => pendingQuitAppIds.includes(appId),
+    isQuitting: appId => pendingQuitAppIds.includes(appId), isHidden: isAppHidden,
     dismissAppMenus: clearNotesPresentation,
   }));
   if (hasDockContext) Object.assign(handlers, createMacDockFolderCommands(desktopState, {
@@ -255,11 +298,40 @@
       clearNotesPresentation();
     },
   }));
+  const switchingView = {
+    prepare: async () => { await tick(); await tick(); },
+    available: () => Boolean(desktopView && sceneInteractionsAvailable() && area.width > 0 && area.height > 0),
+    focus: itemId => switcherControls?.focus(itemId) ?? false,
+    focusedItemId: () => document.activeElement?.closest('[data-shell-switcher]') ? document.activeElement.dataset.switcherItemKey ?? null : null,
+    itemIds: () => switcherControls?.itemIds() ?? [],
+    bounds: () => switcherControls?.bounds() ?? null,
+    scroll: (top, left) => switcherControls?.scroll(top, left) ?? null,
+    scrollPosition: () => switcherControls?.scrollPosition() ?? null,
+    appMenuAnchor: applicationHeaderRect,
+    appMenuFocus: itemId => applicationMenuControls?.focus(itemId) ?? false,
+    appMenuFocusedItemId: () => document.activeElement?.closest('[data-application-menu]') ? document.activeElement.dataset.applicationMenuItem ?? null : null,
+    appMenuItemIds: () => applicationMenuControls?.itemIds() ?? [],
+    appMenuScroll: top => applicationMenuControls?.scroll(top) ?? null,
+    appMenuScrollPosition: () => applicationMenuControls?.scrollPosition() ?? null,
+    appMenuBounds: () => applicationMenuControls?.bounds() ?? null,
+    appMenuReturnFocus: focusApplicationHeader,
+  };
+  Object.assign(handlers, createApplicationSwitchingCommands(switching, {
+    profile, getWindows: () => windows, getRunningAppIds: () => runningAppIds,
+    getActiveWindowId: () => activeWindowId, getActiveAppId: () => activeAppId,
+    getPendingQuitAppIds: () => pendingQuitAppIds,
+    available: () => switchingView.available(), getView: () => switchingView,
+    captureFocus: captureSwitchingFocus,
+    restoreFocus: restoreSwitchingFocus, clearPresentations: clearSwitchingPresentations,
+    restorePresentations: restoreSwitchingPresentations,
+    activateApp: activateSwitcherApplication, visibilityChanged: settleApplicationVisibility,
+    invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
+  }));
   Object.assign(handlers,
     createWindowCommands(() => windows, {
       focus: focusWindow, close: requestCloseWindow, minimize: minimizeWindow, expand: expandWindow, move: moveWindow,
       focusKeyboard: focusKeyboardWindow,
-      available: windowInteractionsAvailable,
+      available: windowInteractionsAvailable, isHidden: isAppHidden,
       resize: resizeWindow,
     }, expandedProperty),
     createDesktopCommands(desktopState, {
@@ -282,7 +354,8 @@
   );
   if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
     getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes').id),
-    isVisible: () => !desktopState.dock?.appWindows && windows.some((window) => window.appId === 'notes' && !window.minimized),
+    isVisible: () => !desktopState.dock?.appWindows && !switching.switcher && !isAppHidden('notes')
+      && windows.some((window) => window.appId === 'notes' && !window.minimized),
   }));
   if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
     native: nativeState,
@@ -302,7 +375,7 @@
   // capability-guarded registry after native profile selection.
   handlers = Object.fromEntries(Object.entries(handlers).filter(([name]) => Object.hasOwn(sceneCatalog, name)));
   const commands = createFeatureCommands(handlers,
-    () => $state.snapshot({ profile, windows, activeWindowId, activeAppId, runningAppIds, pendingQuitAppIds, area, desktop: desktopState,
+    () => $state.snapshot({ profile, windows, activeWindowId, activeAppId, runningAppIds, pendingQuitAppIds, switching, area, desktop: desktopState,
       ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(nativeState ? { native: nativeState } : {}),
@@ -312,6 +385,7 @@
       applications: Object.values(applications).map(({ id, name, dock, taskbar, coverage, minimumSize, multipleWindows, quitAllowed }) => ({
         appId: id, name, coverage, minimumSize, multipleWindows, quitAllowed,
         running: runningAppIds.includes(id), active: activeAppId === id, quitting: pendingQuitAppIds.includes(id),
+        ...(macDesktop ? { hidden: isAppHidden(id) } : {}),
         windowIds: windows.filter(window => window.appId === id).map(window => window.id),
         ...(hasDockContext ? {
           ...(dockApplications.main.some(app => app.id === id) ? { dock: 'main' }
@@ -362,8 +436,22 @@
         appWindows: desktopState.dock.appWindows ? { ...desktopState.dock.appWindows, cards: dockWindowCards.map(card => ({ ...card, rect: { ...card.rect } })) } : null,
         bundles: macFiles.files.filter(file => file.bundleAppId).map(file => ({ appId: file.bundleAppId, fileId: file.id, folderId: file.parentId })),
       } } : {}),
+      ...(profile.capabilities.includes('shell.switcher') ? { switching: {
+        activationAppIds: [...switching.activationAppIds], activationWindowIds: [...switching.activationWindowIds],
+        creationWindowIds: [...switching.creationWindowIds],
+        ...(macDesktop ? { hiddenAppIds: [...switching.hiddenAppIds] } : {}),
+        switcher: switching.switcher ? { ...switching.switcher, itemIds: [...switching.switcher.itemIds],
+          scroll: { ...switching.switcher.scroll }, items: switcherItems.map(item => ({ ...item })),
+          renderedItemIds: switcherControls?.itemIds() ?? [], bounds: switcherControls?.bounds() ?? null } : null,
+        applicationMenu: switching.appMenu ? { ...switching.appMenu, items: appMenuItems.map(item => ({ ...item })),
+          bounds: applicationMenuControls?.bounds() ?? null } : null,
+        shortcuts: { switcher: macDesktop ? 'Command+Tab' : 'Alt+Tab', sticky: 'Control+Shift+F3',
+          cycle: macDesktop ? 'Command+`' : 'Alt+Escape', cycleAlias: 'Control+Shift+F8',
+          nativeDelivery: 'Host/browser may intercept reserved chords; aliases require delivered page events. Ctrl+Tab/Ctrl+Shift+Tab are never intercepted.' },
+      } } : {}),
       windows: windows.map((window) => ({
         windowId: window.id, appId: window.appId, minimized: window.minimized, [expandedProperty]: window[expandedProperty],
+        ...(macDesktop ? { hidden: isAppHidden(window.appId) } : {}),
         bounds: { ...window.bounds },
         ...(window.folderId ? { folderId: window.folderId } : {}),
         ...(window.fileId ? { fileId: window.fileId } : {}),
@@ -373,7 +461,11 @@
         ...(window.settingsPane ? { settingsPane: window.settingsPane } : {}),
         ...(desktopState.dock?.appWindows ? { presentationVisible: Boolean(dockWindowBounds[window.id]),
           ...(dockWindowBounds[window.id] ? { overviewBounds: { ...dockWindowBounds[window.id] } } : {}) } : {}),
-        resize: { available: hasWindowResize && !window.minimized && !window[expandedProperty] && windowInteractionsAvailable(), edges: resizeEdges, minimumSize: windowApplication(window).minimumSize },
+        ...(switching.switcher?.kind === 'windows' ? { presentationVisible: Boolean(switcherWindowBounds[window.id]),
+          ...(switcherWindowBounds[window.id] ? { switcherBounds: { ...switcherWindowBounds[window.id] } } : {}) } : {}),
+        presentationInteractive: !switching.switcher && !desktopState.dock?.appWindows && !window.minimized && !isAppHidden(window.appId),
+        resize: { available: hasWindowResize && !switching.switcher && !isAppHidden(window.appId)
+          && !window.minimized && !window[expandedProperty] && windowInteractionsAvailable(), edges: resizeEdges, minimumSize: windowApplication(window).minimumSize },
       })),
       ...(hasWindowMenu ? { menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }] } : {}),
       ...(notesState ? { notes: {
@@ -405,6 +497,14 @@
         if (top !== null) desktopState.dock.context.scroll[region] = top;
       }
     }
+    if (switching.switcher) {
+      const offsets = switcherControls?.scrollPosition();
+      if (offsets && (offsets.top !== switching.switcher.scroll.top || offsets.left !== switching.switcher.scroll.left)) switching.switcher.scroll = offsets;
+    }
+    if (switching.appMenu) {
+      const top = applicationMenuControls?.scrollPosition();
+      if (top !== null && top !== undefined && top !== switching.appMenu.scrollTop) switching.appMenu.scrollTop = top;
+    }
   }
 
   function registerDesktopView(view) {
@@ -430,8 +530,8 @@
   }
 
   function getApplicationView(windowId) {
-    if (!windowInteractionsAvailable()) return undefined;
-    return windows.some(window => window.id === windowId && !window.minimized)
+    if (!windowInteractionsAvailable() || switching.switcher) return undefined;
+    return windows.some(window => window.id === windowId && !window.minimized && !isAppHidden(window.appId))
       ? applicationViews.get(windowId)
       : undefined;
   }
@@ -448,7 +548,7 @@
   function getDockMenuItems() {
     if (desktopState.dock.context?.kind === 'folder')
       return macDockFolderContextItems(desktopState.dock, macFiles, desktopState.dock.context.dockItemId);
-    return macDockContextItems(profile, desktopState.dock, windows, runningAppIds, activeWindowId, pendingQuitAppIds);
+    return macDockContextItems(profile, desktopState.dock, windows, runningAppIds, activeWindowId, pendingQuitAppIds, switching.hiddenAppIds);
   }
   async function focusDock(appId) {
     const current = [...dockApplications.main, ...dockApplications.recent].find(app => app.id === appId)
@@ -664,8 +764,11 @@
     if (dock.preferences.autoHide && !dock.hover && !dock.drag) dock.revealed = false;
   }
   function focusDesktop() {
+    switching.switcher = null; switching.appMenu = null;
+    unhideApplication(profile.defaults.desktopAppId);
     activeWindowId = null;
     activeAppId = profile.defaults.desktopAppId;
+    if (macDesktop) recordApplicationActivation(switching, activeAppId);
     dismissDockPresentation();
     if (hasDesktopStacks) desktopState.stacks.focusedStackId = null;
     if (hasWindowMenu) {
@@ -690,10 +793,233 @@
     return windowCommand('window.setMaximized', id, { maximized: !window?.maximized });
   }
 
+  function isAppHidden(appId) {
+    return macDesktop && switching.hiddenAppIds.includes(appId);
+  }
+  function unhideApplication(appId) {
+    if (isAppHidden(appId)) switching.hiddenAppIds = switching.hiddenAppIds.filter(id => id !== appId);
+  }
+  function applicationHeader(appId) {
+    return [...document.querySelectorAll('[data-application-menu-button]')]
+      .find(node => node.dataset.appId === appId && node.isConnected);
+  }
+  function applicationHeaderRect(appId) {
+    const node = applicationHeader(appId);
+    if (!node || !node.getClientRects().length) return null;
+    const rect = node.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, left: rect.left, top: rect.top, right: rect.right,
+      bottom: rect.bottom, width: rect.width, height: rect.height };
+  }
+  async function focusApplicationHeader(appId) {
+    await tick(); await tick();
+    const node = applicationHeader(appId);
+    if (!node || !node.getClientRects().length || node.closest('[inert]')) return false;
+    node.focus({ preventScroll: true });
+    return document.activeElement === node;
+  }
+  async function focusSceneWorkspace() {
+    await tick();
+    const workspace = document.querySelector(macDesktop ? '.desktop-workspace, .sonoma-workspace' : '.win11-workspace');
+    if (!workspace?.isConnected || workspace.closest('[inert]')) return false;
+    workspace.focus({ preventScroll: true });
+    return document.activeElement === workspace;
+  }
+  function captureSwitchingFocus() {
+    const node = document.activeElement;
+    switchingReturnFocus = node;
+    const attributes = [...node.attributes].filter(attribute => attribute.name.startsWith('data-'));
+    const selector = attributes.length
+      ? node.localName + attributes.map(attribute => `[${attribute.name}="${CSS.escape(attribute.value)}"]`).join('')
+      : node.id ? `#${CSS.escape(node.id)}` : null;
+    switchingReturnFocusIdentity = selector ? { selector, windowId: node.closest('[data-window-id]')?.dataset.windowId } : null;
+  }
+  async function restoreSwitchingFocus() {
+    await tick(); await tick();
+    const identity = switchingReturnFocusIdentity;
+    const scope = identity?.windowId
+      ? document.querySelector(`.managed-window[data-window-id="${CSS.escape(identity.windowId)}"]`) : document;
+    // Competing menus remount on failed preparation; return to their canonical
+    // control, not a disconnected node or an outside focus that dismisses them.
+    const original = switchingReturnFocus?.isConnected ? switchingReturnFocus
+      : identity && scope ? scope.querySelector(identity.selector) : null;
+    switchingReturnFocus = null; switchingReturnFocusIdentity = null;
+    if (original?.isConnected && typeof original.focus === 'function' && !original.closest('[inert]')
+      && original.getClientRects().length && getComputedStyle(original).visibility === 'visible') {
+      original.focus({ preventScroll: true });
+      if (document.activeElement === original) return true;
+    }
+    const current = windows.find(window => window.id === activeWindowId && !window.minimized && !isAppHidden(window.appId));
+    if (current) {
+      await focusKeyboardWindow(current.id);
+      return document.activeElement?.dataset.windowId === current.id;
+    }
+    return focusSceneWorkspace();
+  }
+  function clearSwitchingPresentations() {
+    const snapshot = $state.snapshot({
+      desktop: { context: desktopState.context, focusedControl: desktopState.focusedControl,
+        ...(hasWindowMenu ? { windowMenuOpen: desktopState.windowMenuOpen, windowMenuItem: desktopState.windowMenuItem,
+          windowMenuScrollTop: desktopState.windowMenuScrollTop } : {}) },
+      ...(hasDockContext ? { dock: { context: desktopState.dock.context, appWindows: desktopState.dock.appWindows,
+        folderStack: desktopState.dock.folderStack, focusedItemId: desktopState.dock.focusedItemId, revealed: desktopState.dock.revealed } } : {}),
+      ...(notesViewState ? { notes: { context: notesViewState.context, contextItem: notesViewState.contextItem,
+        focusedControl: notesViewState.focusedControl } } : {}),
+      ...(nativeState ? { shell: { panel: nativeState.shell.panel, context: nativeState.shell.context,
+        focusedControl: nativeState.shell.focusedControl } } : {}),
+    });
+    desktopState.context = null; desktopState.focusedControl = null;
+    if (hasWindowMenu) { desktopState.windowMenuOpen = false; desktopState.windowMenuItem = null; desktopState.windowMenuScrollTop = 0; }
+    dismissDockPresentation();
+    if (notesViewState) clearNotesPresentation();
+    if (nativeState) { nativeState.shell.panel = null; nativeState.shell.context = null; nativeState.shell.focusedControl = null; }
+    return snapshot;
+  }
+  async function restoreSwitchingPresentations(snapshot) {
+    Object.assign(desktopState, snapshot.desktop);
+    if (snapshot.dock) Object.assign(desktopState.dock, snapshot.dock);
+    if (snapshot.notes) Object.assign(notesViewState, snapshot.notes);
+    if (snapshot.shell) Object.assign(nativeState.shell, snapshot.shell);
+    await tick(); await tick();
+  }
+  async function activateSwitcherApplication(appId, preserveSwitcher = false) {
+    if (!runningAppIds.includes(appId) || pendingQuitAppIds.includes(appId))
+      return rejected('stale_target', 'The selected application is no longer available.');
+    const presentation = preserveSwitcher ? switching.switcher : null;
+    unhideApplication(appId);
+    const ownerWindows = windows.filter(window => window.appId === appId && !window.minimized);
+    const window = switching.activationWindowIds.map(id => ownerWindows.find(window => window.id === id)).find(Boolean)
+      ?? ownerWindows.at(-1);
+    if (window) focusWindow(window.id);
+    else {
+      activeAppId = appId; activeWindowId = null;
+      recordApplicationActivation(switching, appId);
+      switching.switcher = null; switching.appMenu = null;
+      clearSwitchingPresentations();
+    }
+    if (presentation) switching.switcher = presentation;
+    await tick();
+    if (!presentation) {
+      if (window) await focusKeyboardWindow(window.id);
+      else await focusSceneWorkspace();
+    }
+    return { status: 'applied', target: { appId, ...(window ? { windowId: window.id } : {}) } };
+  }
+  async function settleApplicationVisibility(change) {
+    if (!macDesktop) return;
+    const retainSwitcher = Boolean(switching.switcher);
+    if (change.kind === 'all') { await tick(); return; }
+    if (change.kind === 'others' || (change.kind === 'set' && change.hidden === false)) {
+      await activateSwitcherApplication(change.appId, retainSwitcher);
+      return;
+    }
+    if (!isAppHidden(activeAppId) && runningAppIds.includes(activeAppId)) { await tick(); return; }
+    const eligible = runningAppIds.filter(id => !pendingQuitAppIds.includes(id));
+    const order = [...switching.activationAppIds.filter(id => eligible.includes(id)),
+      ...eligible.filter(id => !switching.activationAppIds.includes(id))];
+    let next = order.find(id => !isAppHidden(id));
+    if (!next) next = eligible.includes(profile.defaults.desktopAppId) ? profile.defaults.desktopAppId : order[0];
+    if (next) await activateSwitcherApplication(next, retainSwitcher);
+  }
+  function consumeSwitchingKey(event) {
+    event.preventDefault(); event.stopImmediatePropagation();
+  }
+  function switchingKeydown(event) {
+    if (event.defaultPrevented || event.isComposing || !profile.capabilities.includes('shell.switcher') || !switchingView.available()) return;
+    const state = switching.switcher;
+    if (macDesktop && event.target?.closest?.('[data-application-menu-button]')
+      && !event.metaKey && !event.ctrlKey && !event.altKey && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+      consumeSwitchingKey(event);
+      commands.execute({ command: 'app.menu.open', target: { appId: activeAppId },
+        payload: { position: event.key === 'ArrowUp' ? 'last' : 'first' } });
+      return;
+    }
+    const nativeTab = event.key === 'Tab' && (macDesktop
+      ? event.metaKey && !event.ctrlKey && !event.altKey
+      : event.altKey && !event.metaKey);
+    const fallbackTab = event.key === 'F3' && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
+    if (nativeTab || fallbackTab) {
+      consumeSwitchingKey(event);
+      const direction = nativeTab && event.shiftKey ? 'previous' : 'next';
+      if (state) commands.execute({ command: 'shell.switcher.step', payload: { direction } });
+      else commands.execute({ command: 'shell.switcher.open', payload: { direction,
+        commitOnRelease: nativeTab && !(event.ctrlKey && !macDesktop) ? macDesktop ? 'Meta' : 'Alt' : null } });
+      return;
+    }
+    // Browser tab traversal remains the browser's even while a switcher is open.
+    if (event.key === 'Tab' && event.ctrlKey) return;
+    if (state) {
+      if (event.key === 'Escape' || (macDesktop && event.key === '.')) {
+        consumeSwitchingKey(event); commands.execute({ command: 'shell.switcher.close' }); return;
+      }
+      if (macDesktop && state.commitOnRelease === 'Meta' && event.metaKey && !event.ctrlKey && !event.altKey
+        && ['h', 'q'].includes(event.key.toLowerCase())) {
+        consumeSwitchingKey(event);
+        const selected = switcherItems.find(item => item.itemId === state.selectedItemId);
+        if (selected && !event.repeat) commands.execute({ command: event.key.toLowerCase() === 'q' ? 'app.quit' : 'app.setHidden',
+          target: { appId: selected.appId }, ...(event.key.toLowerCase() === 'h' ? { payload: { hidden: !isAppHidden(selected.appId) } } : {}) });
+        return;
+      }
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End', 'Enter', ' '].includes(event.key)) {
+        if ((event.metaKey || event.altKey) && ['Enter', ' '].includes(event.key)) return;
+        consumeSwitchingKey(event);
+        if (event.key === 'Enter' || event.key === ' ') commands.execute({ command: 'shell.switcher.activate' });
+        else if (event.key === 'Home' || event.key === 'End') commands.execute({ command: 'shell.switcher.select',
+          target: { itemId: state.itemIds[event.key === 'Home' ? 0 : state.itemIds.length - 1] } });
+        else commands.execute({ command: 'shell.switcher.step', payload: {
+          direction: ['ArrowLeft', 'ArrowUp'].includes(event.key) || (event.key === 'Tab' && event.shiftKey) ? 'previous' : 'next' } });
+        return;
+      }
+      return;
+    }
+    const nativeCycle = macDesktop ? event.metaKey && !event.ctrlKey && !event.altKey && event.code === 'Backquote'
+      : event.altKey && !event.ctrlKey && !event.metaKey && event.key === 'Escape';
+    const cycleAlias = event.key === 'F8' && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
+    if (nativeCycle || cycleAlias) {
+      consumeSwitchingKey(event);
+      commands.execute({ command: 'window.cycle', payload: { direction: nativeCycle && event.shiftKey ? 'previous' : 'next' } });
+    } else if (macDesktop && event.metaKey && !event.ctrlKey && event.key.toLowerCase() === 'h') {
+      consumeSwitchingKey(event);
+      if (!event.repeat) commands.execute({ command: event.altKey ? 'app.hideOthers' : 'app.setHidden',
+        target: { appId: activeAppId }, ...(event.altKey ? {} : { payload: { hidden: true } }) });
+    }
+  }
+  function switchingKeyup(event) {
+    if (switching.switcher?.commitOnRelease !== event.key) return;
+    consumeSwitchingKey(event);
+    commands.execute({ command: 'shell.switcher.activate' });
+  }
+  function switchingOutside(event) {
+    const target = event.target;
+    if (switching.switcher && !target?.closest?.('[data-shell-switcher]'))
+      commands.execute({ command: 'shell.switcher.close', payload: { restoreFocus: false } });
+    if (switching.appMenu && !target?.closest?.('[data-application-menu], [data-application-menu-button]'))
+      commands.execute({ command: 'app.menu.close', payload: { restoreFocus: false } });
+  }
+  function cancelHeldSwitcher() {
+    if (switching.switcher?.commitOnRelease) commands.execute({ command: 'shell.switcher.close', payload: { restoreFocus: false } });
+  }
+  function switchingVisibility() {
+    if (document.hidden) cancelHeldSwitcher();
+  }
+
   onMount(() => {
     const unregister = registerCommands(commands);
     const stopScene = adapter.startScene?.(nativeState, commands.execute);
-    return () => { disposed = true; stopScene?.(); unregister(); };
+    window.addEventListener('keydown', switchingKeydown, true);
+    window.addEventListener('keyup', switchingKeyup, true);
+    window.addEventListener('blur', cancelHeldSwitcher);
+    document.addEventListener('visibilitychange', switchingVisibility);
+    document.addEventListener('pointerdown', switchingOutside, true);
+    document.addEventListener('focusin', switchingOutside, true);
+    return () => {
+      disposed = true; stopScene?.(); unregister();
+      window.removeEventListener('keydown', switchingKeydown, true);
+      window.removeEventListener('keyup', switchingKeyup, true);
+      window.removeEventListener('blur', cancelHeldSwitcher);
+      document.removeEventListener('visibilitychange', switchingVisibility);
+      document.removeEventListener('pointerdown', switchingOutside, true);
+      document.removeEventListener('focusin', switchingOutside, true);
+    };
   });
 
 
@@ -701,6 +1027,8 @@
     const index = windows.findIndex((window) => window.id === id);
     if (index < 0) return;
     const window = windows[index];
+    unhideApplication(window.appId);
+    switching.switcher = null; switching.appMenu = null;
     window.minimized = false;
     if (index !== windows.length - 1) {
       windows.splice(index, 1);
@@ -708,6 +1036,7 @@
     }
     activeWindowId = id;
     activeAppId = window.appId;
+    recordApplicationActivation(switching, window.appId, id);
     desktopState.context = null;
     dismissDockPresentation();
     if (hasDesktopStacks) desktopState.stacks.focusedStackId = null;
@@ -721,6 +1050,8 @@
 
   function openWindow(appId, title, fresh = false) {
     const app = applications[appId];
+    unhideApplication(appId);
+    switching.switcher = null; switching.appMenu = null;
     const existing = !fresh && windows.findLast(window => window.appId === appId && !window.utilityKind);
     if (existing) {
       if (title !== undefined) existing.title = title;
@@ -743,6 +1074,7 @@
     if (!runningAppIds.includes(appId)) runningAppIds.push(appId);
     activeWindowId = id;
     activeAppId = appId;
+    recordApplicationActivation(switching, appId, id, true);
     if (hasDockContext) {
       recordMacAppUse(desktopState.dock, appId);
       dismissDockPresentation();
@@ -752,7 +1084,7 @@
   }
 
   function focusRemaining() {
-    const remaining = windows.findLast(window => !window.minimized
+    const remaining = windows.findLast(window => !window.minimized && !isAppHidden(window.appId)
       && (!adapter.closeKeepsRunning || window.appId === activeAppId));
     activeWindowId = remaining?.id ?? null;
     if (remaining) activeAppId = remaining.appId;
@@ -762,6 +1094,9 @@
 
   async function requestCloseWindow(id) {
     const window = windows.find(entry => entry.id === id);
+    if (switching.switcher && !(macDesktop && quitInFlight.has(window.appId))) {
+      switching.switcher = null; await tick();
+    }
     if (adapter.requestClose) {
       const result = await adapter.requestClose(id, {
         window, invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
@@ -817,12 +1152,17 @@
       }
       if (disposed) return rejected('unavailable', 'The outgoing scene has been disposed.');
       runningAppIds = runningAppIds.filter(entry => entry !== appId);
+      switching.hiddenAppIds = switching.hiddenAppIds.filter(id => id !== appId);
+      switching.appMenu = null;
       if (activeAppId === appId) {
-        const remaining = windows.findLast(window => !window.minimized);
+        const remaining = windows.findLast(window => !window.minimized && !isAppHidden(window.appId));
         activeWindowId = remaining?.id ?? null;
         activeAppId = remaining?.appId ?? profile.defaults.desktopAppId;
       }
+      if (macDesktop) await settleApplicationVisibility({ kind: 'removed' });
       cancelAppQuit(appId);
+      await tick();
+      if (switching.switcher) await switcherControls?.focus(switching.switcher.selectedItemId);
       return { status: 'applied', target: { appId }, quit: true, confirmationRequired: false };
     } finally {
       quitInFlight.delete(appId);
@@ -958,6 +1298,7 @@
 <Desktop
   {profile}
   {windows}
+  switchingState={switching}
   {runningAppIds}
   {activeWindowId}
   {activeApp}
@@ -977,9 +1318,13 @@
   onlayout={() => commands.execute({ command: 'desktop.refreshLayout' })}
 >
   {#each windows as window, index (window.id)}
-    {#if !window.minimized || dockWindowBounds[window.id]}
-      {@render managedWindow(window, activeWindowId === window.id, dockWindowBounds[window.id] ? 7001 : index + 1,
-        dockWindowBounds[window.id], !desktopState.dock?.appWindows, !desktopState.dock?.appWindows || Boolean(dockWindowBounds[window.id]))}
+    {@const projection = switcherWindowBounds[window.id] ?? dockWindowBounds[window.id]}
+    {#if !window.minimized || projection}
+      {@render managedWindow(window, activeWindowId === window.id && !switching.switcher && !isAppHidden(window.appId),
+        switcherWindowBounds[window.id] ? 11001 : dockWindowBounds[window.id] ? 7001 : index + 1,
+        projection, !desktopState.dock?.appWindows && !switching.switcher && !isAppHidden(window.appId),
+        !isAppHidden(window.appId) && (switching.switcher?.kind === 'windows'
+          ? Boolean(switcherWindowBounds[window.id]) : !desktopState.dock?.appWindows || Boolean(dockWindowBounds[window.id])))}
     {/if}
   {/each}
   {#if desktopState.dock?.appWindows}
@@ -988,5 +1333,13 @@
   {#if desktopState.dock?.folderStack && dockStackFolder && dockStackAnchor}
     <MacDockStack {profile} state={desktopState.dock.folderStack} folder={dockStackFolder}
       items={dockStackItems} view={dockStackView} anchor={dockStackAnchor} execute={commands.execute} bind:this={dockStackControls} />
+  {/if}
+  {#if switching.switcher}
+    <ApplicationSwitcher {profile} state={switching.switcher} items={switcherItems} execute={commands.execute}
+      onlayout={slots => { switcherPreviewSlots = slots; }} bind:this={switcherControls} />
+  {/if}
+  {#if switching.appMenu && applicationMenuAnchor}
+    <MacApplicationMenu {profile} app={applications[switching.appMenu.appId]} state={switching.appMenu}
+      items={appMenuItems} anchor={applicationMenuAnchor} execute={commands.execute} bind:this={applicationMenuControls} />
   {/if}
 </Desktop>

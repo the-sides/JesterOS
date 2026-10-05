@@ -52,7 +52,7 @@ export function macDockItems(profile, state, runningAppIds, windows, folders) {
     { itemId: 'trash', name: 'Trash', kind: 'folder' }];
 }
 
-export function macDockContextItems(profile, state, windows, runningAppIds, activeWindowId, quittingAppIds = []) {
+export function macDockContextItems(profile, state, windows, runningAppIds, activeWindowId, quittingAppIds, hiddenAppIds) {
   if (state.context?.kind === 'dock') return [
     { id: 'auto-hide', label: state.preferences.autoHide ? 'Turn Hiding Off' : 'Turn Hiding On', enabled: true },
     { id: 'magnification', label: state.preferences.magnification ? 'Turn Magnification Off' : 'Turn Magnification On', enabled: true },
@@ -71,7 +71,9 @@ export function macDockContextItems(profile, state, windows, runningAppIds, acti
     { id: 'open-at-login', label: 'Open at Login', enabled: false },
     { id: 'show-in-finder', label: 'Show in Finder', enabled: !quitting, separatorBefore: true },
   ] });
-  if (running) items.push({ id: 'hide', label: 'Hide', enabled: false, separatorBefore: true },
+  if (running) items.push({ id: 'hide', label: hiddenAppIds.includes(appId) ? 'Show' : 'Hide',
+    enabled: !quitting && (hiddenAppIds.includes(appId)
+      || runningAppIds.some(id => id !== appId && !quittingAppIds.includes(id))), separatorBefore: true },
     { id: 'quit', label: 'Quit', enabled: app.quitAllowed && !quitting });
   else items.push({ id: 'open', label: 'Open', enabled: !quitting, separatorBefore: true });
   return items;

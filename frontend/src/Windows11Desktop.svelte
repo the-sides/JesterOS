@@ -167,6 +167,7 @@
       if (shell.panel && !panel?.contains(event.target) && !event.target.closest('[data-shell-trigger]')) request('win11.panel.close', {}, { restoreFocus: false });
     }
     function focus(event) {
+      if (event.target?.closest?.('[data-shell-switcher]')) return;
       const controlId = event.target instanceof Element && event.target.hasAttribute('data-shell-control') ? event.target.dataset.shellControl : null;
       if (controlId !== (shell.focusedControl?.controlId ?? null)) request('win11.shell.focus', { controlId });
     }

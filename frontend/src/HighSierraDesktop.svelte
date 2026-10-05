@@ -24,6 +24,7 @@
     activeWindowId = null,
     activeApp = profile.applications.finder,
     viewState,
+    switchingState,
     execute,
     registerView,
     onlayout,
@@ -338,7 +339,7 @@
     function observeFocus(event) {
       dismissOutside(event);
       const target = event.target;
-      if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu], [data-dock-stack]')) return;
+      if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu], [data-dock-stack], [data-shell-switcher], [data-application-menu], [data-application-menu-button]')) return;
       if (!dock.contains(target) && viewState.dock.focusedItemId) request('dock.focus', { itemId: null }, { observe: true });
       if (!windowMenuContainer.contains(target)
         && !dock.contains(target)
@@ -452,7 +453,9 @@
   <header class="menu-bar" aria-label="Desktop menu bar">
     <div class="menu-headings">
       <span class="apple-mark" aria-label="Apple menu"><svg viewBox="0 0 20 24" aria-hidden="true"><path fill="currentColor" d="M13.1 4.1c1-1.1 1.6-2.6 1.4-4.1-1.4.1-3 .9-4 2-1 1.1-1.7 2.6-1.5 4 1.6.1 3.1-.8 4.1-1.9ZM17 12.7c0-2.7 2.2-4 2.3-4.1-1.3-1.9-3.4-2.1-4.1-2.1-1.8-.2-3.5 1.1-4.4 1.1s-2.3-1.1-3.8-1.1C5 6.6 3 7.9 2 9.8c-2.1 3.8-.5 9.3 1.5 12.1 1 1.4 2.1 2.8 3.6 2.7 1.5-.1 2-1 3.8-1s2.3 1 3.9 1c1.6 0 2.6-1.4 3.5-2.8 1.1-1.6 1.6-3.1 1.6-3.2-.1 0-3-1.1-2.9-5.9Z" transform="translate(0 -1) scale(.9)"/></svg></span>
-      <span class="app-menu">{activeApp.name}</span>
+      <button type="button" class="window-menu-button app-menu"
+        data-application-menu-button data-app-id={activeApp.id} aria-haspopup="menu" aria-expanded={Boolean(switchingState.appMenu)}
+        onclick={() => request(switchingState.appMenu ? 'app.menu.close' : 'app.menu.open', switchingState.appMenu ? {} : { appId: activeApp.id })}>{activeApp.name}</button>
       <span class="static-menu">File</span><span class="static-menu">Edit</span><span class="static-menu">View</span>
       {#if activeApp.id === 'finder'}<span class="optional-menu">Go</span>{/if}
       {#if activeApp.id === 'notes'}<span class="optional-menu">Format</span>{/if}

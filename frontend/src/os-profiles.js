@@ -23,7 +23,7 @@ const profiles = freezeTree({
     renderer: 'mojave',
     capabilities: [
       'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
-      'shell.window-create', 'app.lifecycle',
+      'shell.window-create', 'app.lifecycle', 'shell.switcher', 'app.visibility',
       'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management', 'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu',
       'scene.profile-selection',
       'notes.plain-text', 'notes.presentation', 'messages.sample',
