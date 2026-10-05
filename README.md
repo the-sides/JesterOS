@@ -33,6 +33,10 @@ Open Notes from the Dock. The three-pane light UI follows Apple's **macOS Mojave
 
 Primary-source screenshots, UI observations, implementation decisions, defects/fixes, and verification notes are in [Mojave Notes research and working notes](docs/notes-mojave.md).
 
+## Feature backlog
+
+[Pseudo-OS feature backlog](docs/pseudo-os-backlog.md) is the durable queue for long-session work: stable IDs, completed versus pending slices, suggested iteration order, and coverage of the desktop, menus, bundled apps, utilities, System Preferences panes, and secondary dialogs. Additional period-compatible production apps are listed separately. The Rust controller remains deferred.
+
 ## Requirements
 
 - Bun 1.4.2 or newer.
