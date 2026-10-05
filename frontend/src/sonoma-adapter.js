@@ -13,7 +13,7 @@ function windowScale(app, area) {
 }
 
 function fitNormalBounds(bounds, app, area) {
-  return fitBounds(bounds, app, area, windowScale(app, area));
+  return fitBounds(bounds, app, area, bounds.scale ? 0.9 : windowScale(app, area));
 }
 
 function initialBounds(app, area, windowCount = 0, viewportHeight = area.height + 28) {

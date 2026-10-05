@@ -11,7 +11,7 @@ Installed profiles span **macOS High Sierra 10.13 (2017), Mojave 10.14 (2018), S
 - macOS Notes supports plain-text creation/editing, search, pinning, trash, and recovery; other macOS applications except the fixed Messages sample remain launch-only. Windows has ten functional offline simulations: File Explorer, Edge, Notepad, Calculator, Settings, Paint, Photos, Clock, Snipping Tool, and Terminal. Wider researched inventories do not imply implemented workflows.
 - macOS Messages retains its sample conversation; its conversation selection, search, message editing/history, menu-bar clock and battery are fixed scene content.
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
-- Browser-local `jesteros.execute()` supports 32 commands in each macOS profile and 151 in Windows; `jesteros.inspect()` exposes detached state and `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics, and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Rust control and further app/menu features remain queued.
+- Browser-local `jesteros.execute()` supports 33 commands in each macOS profile and 152 in Windows; `jesteros.inspect()` exposes detached state and `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics, and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Rust control and further app/menu features remain queued.
 
 ## OS profile setup
 
@@ -33,6 +33,7 @@ Conditional [Linux research](docs/ubuntu-24.04-profile.md) selects **Ubuntu Desk
 - Click a Dock icon, or focus it and press Enter/Space, to open, raise, or restore its application's single window. Repeated activation does not create duplicates.
 - Click a desktop icon to select it; double-click or press Enter to open it. Macintosh HD, Personal, Downloads, and Trash open the same Finder window with the corresponding title. Itinerary.pdf opens Preview. These are simulated locations, not host files.
 - Click a window to raise and activate it. Drag its title bar to move it within the space below the menu bar and above the Dock. Windows refit when the viewport changes.
+- Drag any edge or corner to resize a normal window. App-specific logical minimum sizes and native workspace boundaries apply; zoom/minimize/restore and viewport fitting retain the resized logical dimensions. Fixed/launch-only interiors have conservative layout limits, not measured factory minimums.
 - Red closes the window. Yellow minimizes it while retaining its title, position, and zoom state; the Dock or Window menu restores it. Green toggles workspace-sized zoom and the prior normal bounds, without entering browser fullscreen.
 - The Window menu closes, minimizes, zooms, or switches to any open/minimized window, including Preview. Arrow keys, Home/End, Enter, and Escape work in the menu. Escape also clears desktop selection; clicking the background focuses the desktop.
 - Dock running dots include minimized applications. Finder's dot remains because the desktop is always running. Window state is client-side and resets on reload to the initial Messages scene; it is not persisted or synchronized through Rust.
@@ -148,7 +149,8 @@ frontend/
   src/notes-commands.js     Shared Notes data/presentation handlers
   src/Window.svelte         Mojave frame, focus, pointer dragging, content hosting
   src/WindowControls.svelte Mojave close/minimize/zoom buttons
-  src/window-state.js       Shared physical clamp/fit/expanded-bounds primitives; explicit scale
+  src/WindowResizeHandles.svelte Shared physical edge/corner gestures; native frames host them
+  src/window-state.js       Shared clamp/fit/resize/expanded geometry; logical size and native scale
   src/windows.css          Mojave window chrome and active/inactive appearance
   src/MessagesWindow.svelte Measured Mojave Messages chrome and conversation
   src/NotesWindow.svelte    Notes toolbar, folders, list, editor, context menu
@@ -183,6 +185,8 @@ The interactive production build was exercised through Rust at localhost:3000 in
 Notes was exercised in the live Rust-served build at the same three viewport sizes: create/edit, case/whitespace search, zero matches, blank-title fallback, Command/Ctrl shortcuts, list/context-menu keyboard navigation, mouse pin/unpin, trash/recovery of entire collections, sidebar toggling, close/minimize retention, drag, zoom, resized restoration, and reload reset. Verification caught and fixed a Svelte rune/prop collision, keyboard focus loss after unpinning, and fractional Dock-height overlap. The final production build has no component warnings or page errors. Evidence screenshots are under ignored `artifacts/notes-mojave/`.
 
 Earlier backend smoke checks covered the health response, unknown API routes, unsupported health methods, root HTML, missing assets, and the missing-frontend startup diagnostic. The combined development command and Vite API proxy were also exercised. The latest health check returned `status: ok`. There is no application UI test suite; `bun test tools/compare-mojave.test.mjs` passes a real-ImageMagick regression for RGB errors, transparent padding, and visible difference maps.
+
+OS-05 browser proof covered all eight resize edges/corners in each installed profile, physical pointer deltas at reduced scale, minimum/workspace clamps, cancellation and outgoing-scene disposal, global-modal/expanded/minimized rejection, native caption controls, and retained logical dimensions through minimized expansion at 390×844 and back. Notes, Calculator and Settings minimum layouts were visually inspected. Fresh lifecycle diagnostics were empty; the default Mojave comparison measured zero changed pixels. `bun test tools/window-resize.test.mjs tools/profile-capabilities.test.mjs tools/compare-mojave.test.mjs tools/windows11-terminal.test.mjs` passed eight behavioral regressions with 74 assertions.
 
 ## Visual comparison
 

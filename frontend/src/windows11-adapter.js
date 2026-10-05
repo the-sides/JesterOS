@@ -13,7 +13,7 @@ function windowScale(app, area) {
 }
 
 function fitNormalBounds(bounds, app, area) {
-  return fitBounds(bounds, app, area, windowScale(app, area));
+  return fitBounds(bounds, app, area, bounds.scale ? 1 : windowScale(app, area));
 }
 
 function initialBounds(app, area, windowCount = 0) {

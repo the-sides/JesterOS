@@ -1,8 +1,9 @@
 <script>
   import { onDestroy } from 'svelte';
   import Windows11Icon from './Windows11Icon.svelte';
+  import WindowResizeHandles from './WindowResizeHandles.svelte';
   import './windows11.css';
-  let { window, active, zIndex, onfocus, onclose, onminimize, onmaximize, onmove, children } = $props();
+  let { window, active, zIndex, onfocus, onclose, onminimize, onmaximize, onmove, resizable = false, onresize, children } = $props();
   let element;
   let drag = null;
   function endDrag(event) {
@@ -42,4 +43,5 @@
     </header>
     <div class="win11-window-body">{@render children()}</div>
   </div>
+  <WindowResizeHandles windowId={window.id} bounds={window.bounds} {resizable} {onfocus} {onresize} />
 </div>

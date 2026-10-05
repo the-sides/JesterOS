@@ -6,7 +6,7 @@
   import { createNotesCommands } from './notes-commands.js';
   import { commandCatalog } from './command-catalog.js';
   import { visibleNotes } from './notes-state.js';
-  import { clampPosition, expandedBounds } from './window-state.js';
+  import { clampPosition, expandedBounds, resizeBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
 
   let { profile: profileInput, adapter: adapterInput, registerCommands, selectProfile } = $props();
@@ -18,6 +18,8 @@
   const { applications, desktopFiles } = profile;
   const expandedProperty = adapter.expandedProperty;
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu');
+  const hasWindowResize = profile.capabilities.includes('shell.window-resize');
+  const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
 
   let windows = $state([]);
   let activeWindowId = $state(null);
@@ -76,6 +78,7 @@
       focus: focusWindow, close: requestCloseWindow, minimize: minimizeWindow, expand: expandWindow, move: moveWindow,
       focusKeyboard: focusKeyboardWindow,
       available: windowInteractionsAvailable,
+      resize: resizeWindow,
     }, expandedProperty),
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
@@ -111,9 +114,13 @@
     }),
     settleCommands, sceneCatalog, () => ({
       profiles: listOSProfiles().map(({ id, name, family, version }) => ({ profileId: id, name, family, version })),
-      applications: Object.values(applications).map(({ id, name, dock, taskbar, coverage }) => ({ appId: id, name, coverage, ...(dock ? { dock } : {}), ...(taskbar ? { taskbar } : {}) })),
+      applications: Object.values(applications).map(({ id, name, dock, taskbar, coverage, minimumSize }) => ({ appId: id, name, coverage, minimumSize, ...(dock ? { dock } : {}), ...(taskbar ? { taskbar } : {}) })),
       desktopFiles: desktopFiles.map(({ id, name, appId }) => ({ fileId: id, name, appId })),
-      windows: windows.map((window) => ({ windowId: window.id, appId: window.appId, minimized: window.minimized, [expandedProperty]: window[expandedProperty] })),
+      windows: windows.map((window) => ({
+        windowId: window.id, appId: window.appId, minimized: window.minimized, [expandedProperty]: window[expandedProperty],
+        bounds: { ...window.bounds },
+        resize: { available: hasWindowResize && !window.minimized && !window[expandedProperty] && windowInteractionsAvailable(), edges: resizeEdges, minimumSize: applications[window.appId].minimumSize },
+      })),
       ...(hasWindowMenu ? { menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }] } : {}),
       ...(notesState ? { notes: {
         records: notesState.notes.map(({ id, deleted }) => ({ noteId: id, deleted })),
@@ -284,7 +291,8 @@
     if (!window) return;
     focusWindow(id);
     if (window[expandedProperty]) {
-      window.bounds = adapter.fitNormalBounds(window.restoreBounds, applications[window.appId], area);
+      // Viewport changes already refit restoreBounds; restore the user's geometry.
+      window.bounds = window.restoreBounds;
       window.restoreBounds = null;
       window[expandedProperty] = false;
     } else {
@@ -299,6 +307,11 @@
     if (window && !window[expandedProperty]) window.bounds = clampPosition({ ...window.bounds, x, y }, area);
   }
 
+  function resizeWindow(id, edge, coordinates) {
+    const window = windows.find((entry) => entry.id === id);
+    window.bounds = resizeBounds(window.bounds, edge, coordinates, applications[window.appId].minimumSize, area);
+  }
+
   function clearNotesPresentation() {
     notesViewState.context = null;
     notesViewState.contextItem = null;
@@ -307,6 +320,7 @@
 
   function layoutWindows(nextArea) {
     if (nextArea.width <= 0 || nextArea.height <= 0) return;
+    if (initialized && nextArea.width === area.width && nextArea.height === area.height) return;
     area = nextArea;
     for (const window of windows) {
       const normal = adapter.fitNormalBounds(window[expandedProperty] ? window.restoreBounds : window.bounds, applications[window.appId], area);
@@ -347,6 +361,8 @@
         onzoom={() => toggleWindowZoom(window.id)}
         onmaximize={() => toggleWindowMaximize(window.id)}
         onmove={(x, y) => windowCommand('window.move', window.id, { x, y })}
+        resizable={hasWindowResize && !window[expandedProperty] && windowInteractionsAvailable()}
+        onresize={(edge, coordinates) => windowCommand('window.resize', window.id, { edge, ...coordinates })}
       >
         {#if Applications}
           <Applications appId={window.appId} {profile} native={nativeState} execute={commands.execute} registerView={registerApplicationView} />

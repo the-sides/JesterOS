@@ -1,20 +1,21 @@
 // Release attribution, complete native inventory and bounded coverage: docs/windows11-profile.md.
-const application = (id, name, width, height, taskbar = 'running') => ({ id, name, icon: id, width, height, taskbar, coverage: 'local-simulation' });
+// Logical simulation layout limits, not measured factory Windows app minima.
+const application = (id, name, width, height, minimumSize, taskbar = 'running') => ({ id, name, icon: id, width, height, minimumSize, taskbar, coverage: 'local-simulation' });
 export const windows11Profile = {
   id: 'windows11-23h2-22631.2428', name: 'Windows 11 Pro', family: 'windows',
   version: '23H2', build: '22631.2428', releaseYear: 2023, renderer: 'windows11',
-  capabilities: ['shell.apps', 'shell.windows', 'shell.windows-maximize', 'shell.desktop', 'scene.profile-selection', 'windows.shell', 'windows.apps'],
+  capabilities: ['shell.apps', 'shell.windows', 'shell.windows-maximize', 'shell.window-resize', 'shell.desktop', 'scene.profile-selection', 'windows.shell', 'windows.apps'],
   applications: {
-    explorer: application('explorer', 'File Explorer', 1000, 650, 'pinned'),
-    edge: application('edge', 'Microsoft Edge', 1060, 720, 'pinned'),
-    notepad: application('notepad', 'Notepad', 820, 600, 'pinned'),
-    calculator: application('calculator', 'Calculator', 390, 580),
-    settings: application('settings', 'Settings', 1050, 720, 'pinned'),
-    paint: application('paint', 'Paint', 1000, 680),
-    photos: application('photos', 'Photos', 1000, 680),
-    clock: application('clock', 'Clock', 900, 640),
-    snipping: application('snipping', 'Snipping Tool', 850, 610),
-    terminal: application('terminal', 'Windows Terminal', 920, 590),
+    explorer: application('explorer', 'File Explorer', 1000, 650, { width: 640, height: 420 }, 'pinned'),
+    edge: application('edge', 'Microsoft Edge', 1060, 720, { width: 640, height: 460 }, 'pinned'),
+    notepad: application('notepad', 'Notepad', 820, 600, { width: 520, height: 400 }, 'pinned'),
+    calculator: application('calculator', 'Calculator', 390, 580, { width: 390, height: 520 }),
+    settings: application('settings', 'Settings', 1050, 720, { width: 900, height: 620 }, 'pinned'),
+    paint: application('paint', 'Paint', 1000, 680, { width: 800, height: 520 }),
+    photos: application('photos', 'Photos', 1000, 680, { width: 640, height: 480 }),
+    clock: application('clock', 'Clock', 900, 640, { width: 640, height: 520 }),
+    snipping: application('snipping', 'Snipping Tool', 850, 610, { width: 680, height: 500 }),
+    terminal: application('terminal', 'Windows Terminal', 920, 590, { width: 560, height: 400 }),
   },
   desktopFiles: [
     { id: 'pc', name: 'This PC', icon: 'pc', appId: 'explorer', folderId: 'root' },

@@ -1,5 +1,6 @@
 // macOS 10.13 inventory and implemented coverage are researched separately in
 // docs/high-sierra-profile.md. Native stock membership is not interior coverage.
+// Minimum sizes protect the represented layouts, not factory macOS measurements.
 export const highSierraProfile = {
   id: 'macos-high-sierra-10.13',
   name: 'macOS High Sierra',
@@ -8,23 +9,23 @@ export const highSierraProfile = {
   releaseYear: 2017,
   renderer: 'high-sierra',
   capabilities: [
-    'shell.apps', 'shell.windows', 'shell.macos-window-zoom',
+    'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
     'shell.desktop', 'shell.window-menu',
     'scene.profile-selection',
     'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {
-    finder: { id: 'finder', name: 'Finder', icon: 'finder', width: 720, height: 480, dock: 'main', coverage: 'launch-only' },
-    launchpad: { id: 'launchpad', name: 'Launchpad', icon: 'launchpad', width: 720, height: 480, dock: 'main', coverage: 'launch-only' },
-    safari: { id: 'safari', name: 'Safari', icon: 'safari', width: 720, height: 480, dock: 'main', coverage: 'launch-only' },
-    mail: { id: 'mail', name: 'Mail', icon: 'mail', width: 720, height: 480, dock: 'main', coverage: 'launch-only' },
-    contacts: { id: 'contacts', name: 'Contacts', icon: 'contacts', width: 720, height: 480, dock: 'main', coverage: 'launch-only' },
-    calendar: { id: 'calendar', name: 'Calendar', icon: 'calendar', width: 720, height: 480, dock: 'main', coverage: 'launch-only' },
-    notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 660, dock: 'main', coverage: 'plain-text' },
-    photos: { id: 'photos', name: 'Photos', icon: 'photos', width: 720, height: 480, dock: 'main', coverage: 'launch-only' },
-    messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 928, height: 710, dock: 'main', coverage: 'sample' },
-    settings: { id: 'settings', name: 'System Preferences', icon: 'settings', width: 720, height: 480, dock: 'main', coverage: 'launch-only' },
-    preview: { id: 'preview', name: 'Preview', icon: 'pdf', width: 720, height: 480, coverage: 'launch-only' },
+    finder: { id: 'finder', name: 'Finder', icon: 'finder', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, dock: 'main', coverage: 'launch-only' },
+    launchpad: { id: 'launchpad', name: 'Launchpad', icon: 'launchpad', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, dock: 'main', coverage: 'launch-only' },
+    safari: { id: 'safari', name: 'Safari', icon: 'safari', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, dock: 'main', coverage: 'launch-only' },
+    mail: { id: 'mail', name: 'Mail', icon: 'mail', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, dock: 'main', coverage: 'launch-only' },
+    contacts: { id: 'contacts', name: 'Contacts', icon: 'contacts', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, dock: 'main', coverage: 'launch-only' },
+    calendar: { id: 'calendar', name: 'Calendar', icon: 'calendar', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, dock: 'main', coverage: 'launch-only' },
+    notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 660, minimumSize: { width: 1060, height: 420 }, dock: 'main', coverage: 'plain-text' },
+    photos: { id: 'photos', name: 'Photos', icon: 'photos', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, dock: 'main', coverage: 'launch-only' },
+    messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 928, height: 710, minimumSize: { width: 928, height: 710 }, dock: 'main', coverage: 'sample' },
+    settings: { id: 'settings', name: 'System Preferences', icon: 'settings', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, dock: 'main', coverage: 'launch-only' },
+    preview: { id: 'preview', name: 'Preview', icon: 'pdf', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, coverage: 'launch-only' },
   },
   desktopFiles: [
     { id: 'disk', name: 'Macintosh HD', icon: 'drive', appId: 'finder' },

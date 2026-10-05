@@ -1,9 +1,10 @@
 <script>
   import { onDestroy } from 'svelte';
   import WindowControls from './WindowControls.svelte';
+  import WindowResizeHandles from './WindowResizeHandles.svelte';
   import './windows.css';
 
-  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onmove, children } = $props();
+  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onmove, resizable = false, onresize, children } = $props();
   let element;
   let drag = null;
 
@@ -81,4 +82,5 @@
       </div>
     {/if}
   </div>
+  <WindowResizeHandles windowId={window.id} bounds={window.bounds} {resizable} {onfocus} {onresize} />
 </div>

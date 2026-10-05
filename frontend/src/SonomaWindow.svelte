@@ -1,9 +1,10 @@
 <script>
   import { onDestroy } from 'svelte';
   import WindowControls from './WindowControls.svelte';
+  import WindowResizeHandles from './WindowResizeHandles.svelte';
   import './sonoma.css';
 
-  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onmove, children } = $props();
+  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onmove, resizable = false, onresize, children } = $props();
   let element;
   let drag = null;
 
@@ -47,4 +48,5 @@
     {#if window.appId === 'messages' || window.appId === 'notes'}{@render children()}
     {:else}<div class="sonoma-launch-window"><header class="sonoma-launch-toolbar" data-window-drag><WindowControls {active} zoomed={window.zoomed} {onclose} {onminimize} {onzoom}/><span>{window.title}</span></header><div class="sonoma-launch-content" aria-label="Launch-only application window"></div></div>{/if}
   </div>
+  <WindowResizeHandles windowId={window.id} bounds={window.bounds} {resizable} {onfocus} {onresize} />
 </div>

@@ -22,7 +22,7 @@ const profiles = freezeTree({
     releaseYear: 2018,
     renderer: 'mojave',
     capabilities: [
-      'shell.apps', 'shell.windows', 'shell.macos-window-zoom',
+      'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
       'shell.desktop', 'shell.window-menu',
       'scene.profile-selection',
       'notes.plain-text', 'notes.presentation', 'messages.sample',

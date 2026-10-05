@@ -1,4 +1,5 @@
 import { rejected } from './feature-commands.js';
+import { WINDOW_RESIZE_AXES } from './window-state.js';
 
 // Window primitives remain owned by App; UI and direct callers share these checks.
 export function createWindowCommands(getWindows, actions, expandedProperty) {
@@ -61,5 +62,18 @@ export function createWindowCommands(getWindows, actions, expandedProperty) {
       actions.move(window.id, payload.x, payload.y);
       return applied(window);
     }, ['x', 'y']),
+    'window.resize': withWindow((window, payload) => {
+      if (typeof payload.edge !== 'string' || !Object.hasOwn(WINDOW_RESIZE_AXES, payload.edge)) {
+        return rejected('invalid_arguments', 'Use a documented window resize edge.');
+      }
+      const axes = WINDOW_RESIZE_AXES[payload.edge];
+      if (Object.hasOwn(payload, 'x') !== axes.includes('x') || Object.hasOwn(payload, 'y') !== axes.includes('y')
+        || (axes.includes('x') && !Number.isFinite(payload.x)) || (axes.includes('y') && !Number.isFinite(payload.y))) {
+        return rejected('invalid_arguments', 'Supply finite workspace coordinates for exactly the resized axes.');
+      }
+      if (window.minimized || window[expandedProperty]) return rejected('unavailable', 'Only visible normal windows can be resized.');
+      actions.resize(window.id, payload.edge, payload);
+      return applied(window);
+    }, ['edge', 'x', 'y']),
   };
 }
