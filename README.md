@@ -11,7 +11,7 @@ JesterOS will eventually support **multiple OS profiles**: different macOS relea
 - Notes supports creating/editing plain-text notes, search, pinning, trash, and recovery in a researched Mojave-style UI. Other applications except Messages still have empty interiors.
 - Messages retains its sample conversation. Clock, battery level, conversation selection, and message history remain fixed scene content. Messages search and editing are disabled.
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
-- Browser-local `jesteros.execute()` currently supports `app.open`, shared with Dock/desktop-file activation; `jesteros.inspect()` exposes detached state snapshots. See the [implemented command inventory](docs/feature-commands.md). Other feature commands remain queued.
+- Browser-local `jesteros.execute()` supports 31 shared app/window/desktop/Window-menu/Notes commands, including focus, context, and scrolling; `jesteros.inspect()` exposes detached state snapshots. See the [implemented command inventory](docs/feature-commands.md). Other app/menu features remain queued.
 
 ## Desktop interactions
 
@@ -40,7 +40,7 @@ Primary-source screenshots, UI observations, implementation decisions, defects/f
 
 [Pseudo-OS feature backlog](docs/pseudo-os-backlog.md) is the durable queue for long-session work: stable IDs, completed versus pending slices, suggested iteration order, and coverage of the desktop, menus, bundled apps, utilities, System Preferences panes, and secondary dialogs. Additional period-compatible production apps are listed separately. The Rust controller remains deferred.
 
-[Multi-OS and feature command requirements](docs/pseudo-os-architecture.md) define the architecture: every feature must expose transport-neutral commands so actor input and a future WebSocket adapter can invoke the same behavior, including menus, dialogs, transient UI state, and incoming events. The existing desktop/Notes actions still need the tracked command-interface retrofit; neither multi-OS switching nor universal WebSocket control is implemented today.
+[Multi-OS and feature command requirements](docs/pseudo-os-architecture.md) define the architecture: every feature must expose transport-neutral commands so actor input and a future WebSocket adapter can invoke the same behavior, including menus, dialogs, transient UI state, and incoming events. Existing working desktop/window/Window-menu/Notes actions now use that interface. Multi-OS switching, remaining app/menu capabilities, and WebSocket control are not implemented today.
 
 ## Requirements
 

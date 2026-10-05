@@ -1,16 +1,17 @@
 <script>
-  import { tick } from 'svelte';
+  import { onMount } from 'svelte';
   import WindowControls from './WindowControls.svelte';
-  import { noteTitle, notePreview, visibleNotes, createNote, updateNote, togglePin, trashNote, restoreNote, selectFolder, selectNote, setSearch } from './notes-state.js';
+  import { noteTitle, notePreview, visibleNotes } from './notes-state.js';
   import './notes.css';
 
-  let { state: noteState = $bindable(), active = true, zoomed = false, onclose, onminimize, onzoom } = $props();
+  let { state: noteState, viewState, execute, registerView, active = true, zoomed = false, onclose, onminimize, onzoom } = $props();
   let root;
   let titleInput = $state(null);
   let bodyInput = $state(null);
   let searchInput;
+  let listElement;
   let contextElement = $state(null);
-  let context = $state(null);
+  const context = $derived(viewState.context);
   const notes = $derived(visibleNotes(noteState));
   const selected = $derived(noteState.notes.find((note) => note.id === noteState.selectedId));
   const dateFormat = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
@@ -25,39 +26,16 @@
     return newline < 0 ? '' : note.text.slice(newline + 1);
   }
 
-  async function newNote() {
-    context = null;
-    createNote(noteState);
-    await tick();
-    titleInput?.focus();
+  function command(name, target = {}, payload = {}) {
+    return execute({ command: `notes.${name}`, target, payload });
+  }
+
+  function newNote() {
+    return command('create', {}, { focus: true });
   }
 
   function edit(title, body) {
-    if (!selected || selected.deleted) return;
-    const id = selected.id;
-    // Leaving the search filter before an edit prevents a disappearing result
-    // from unmounting the editor while the actor is typing.
-    if (noteState.search) setSearch(noteState, '');
-    updateNote(noteState, id, body ? `${title}\n${body}` : title);
-  }
-
-  function removeSelected() {
-    if (selected && !selected.deleted) trashNote(noteState, selected.id);
-    return finishContextAction();
-  }
-
-  function restoreSelected() {
-    if (selected?.deleted) restoreNote(noteState, selected.id);
-    return finishContextAction();
-  }
-
-  async function finishContextAction() {
-    const wasOpen = Boolean(context);
-    context = null;
-    if (!wasOpen) return;
-    await tick();
-    if (noteState.selectedId) focusRow(noteState.selectedId);
-    else root.querySelector('button[aria-label="New note"]')?.focus();
+    return command('edit', { noteId: selected.id }, { text: body ? `${title}\n${body}` : title });
   }
 
   function keyboard(event) {
@@ -67,43 +45,38 @@
       newNote();
     } else if (event.key.toLowerCase() === 'f') {
       event.preventDefault();
-      searchInput?.focus();
-      searchInput?.select();
+      command('focus', { control: 'search' }, { select: true });
     }
   }
 
   function dismissContext(event) {
-    if (context && !contextElement?.contains(event.target)) context = null;
+    if (context && !contextElement?.contains(event.target)) command('context.close');
   }
 
-  async function openContext(event, note, fromKeyboard = false) {
+  function openContext(event, note, fromKeyboard = false) {
     event.preventDefault();
-    selectNote(noteState, note.id);
-    const rect = root.getBoundingClientRect();
-    const scale = rect.width / root.clientWidth;
-    const target = event.currentTarget.getBoundingClientRect();
-    context = {
-      id: note.id,
-      left: Math.max(4, Math.min(root.clientWidth - 208, ((fromKeyboard ? target.right : event.clientX) - rect.left) / scale)),
-      top: Math.max(4, Math.min(root.clientHeight - 82, ((fromKeyboard ? target.top : event.clientY) - rect.top) / scale)),
-    };
-    await tick();
-    contextElement?.querySelector('button')?.focus();
+    const payload = { focus: true };
+    if (!fromKeyboard) {
+      const rect = root.getBoundingClientRect();
+      const scale = rect.width / root.clientWidth;
+      payload.x = (event.clientX - rect.left) / scale;
+      payload.y = (event.clientY - rect.top) / scale;
+    }
+    command('context.open', { noteId: note.id }, payload);
   }
 
-  function focusRow(id) {
-    root.querySelector(`[data-note-id="${id}"]`)?.focus();
+  function contextAction(item) {
+    const note = noteState.notes.find((entry) => entry.id === context.id);
+    return command('context.execute', { noteId: context.id, item }, { focus: true, ...(item === 'pin' ? { pinned: !note.pinned } : {}) });
   }
 
   function contextKeydown(event) {
-    const items = [...contextElement.querySelectorAll('button')];
-    const index = items.indexOf(document.activeElement);
+    const items = noteState.folder === 'deleted' ? ['restore'] : ['pin', 'delete'];
+    const index = items.indexOf(viewState.contextItem);
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      const id = context.id;
-      context = null;
-      focusRow(id);
+      command('context.close', {}, { focus: true });
       return;
     }
     let next;
@@ -113,7 +86,7 @@
     else if (event.key === 'End') next = items.length - 1;
     else return;
     event.preventDefault();
-    items[next]?.focus();
+    command('context.select', { item: items[next] }, { focus: true });
   }
 
   function rowKeydown(event, note) {
@@ -128,17 +101,80 @@
     else if (event.key === 'End') index = notes.length - 1;
     else return;
     event.preventDefault();
-    selectNote(noteState, notes[index].id);
-    focusRow(notes[index].id);
+    command('select', { noteId: notes[index].id }, { focus: true });
   }
 
-  async function pinContext() {
-    const id = context.id;
-    togglePin(noteState, id);
-    context = null;
-    await tick();
-    focusRow(id);
+  function controlElement(target) {
+    if (target.control === 'title') return titleInput;
+    if (target.control === 'body') return bodyInput;
+    if (target.control === 'search') return searchInput;
+    return [...root.querySelectorAll('[data-notes-control]')].find((element) =>
+      element.dataset.notesControl === target.control
+      && (target.noteId === undefined || element.dataset.noteId === target.noteId)
+      && (target.folder === undefined || element.dataset.folder === target.folder)
+      && (target.item === undefined || element.dataset.item === target.item));
   }
+
+  function observeFocus(event) {
+    const element = event.target.closest('[data-notes-control]');
+    if (!element || !root.contains(element)) {
+      command('focus', { control: 'none' }, { observe: true });
+      return;
+    }
+    const target = { control: element.dataset.notesControl };
+    if (target.control === 'row') target.noteId = element.dataset.noteId;
+    if (target.control === 'folder') target.folder = element.dataset.folder;
+    if (target.control === 'context') target.item = element.dataset.item;
+    command('focus', target, { observe: true });
+  }
+
+  function observeBlur(event) {
+    if (!root.contains(event.relatedTarget)) command('focus', { control: 'none' }, { observe: true });
+  }
+
+  function observeScroll(area, event) {
+    command('scroll', { area }, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft, observe: true });
+  }
+
+  onMount(() => {
+    const scrollElement = (area) => area === 'list' ? listElement : bodyInput;
+    const view = {
+      anchorContext(noteId, position) {
+        const row = controlElement({ control: 'row', noteId });
+        if (!row) return null;
+        // A semantic remote/keyboard target may be outside the scrolled list.
+        // Reveal its row before anchoring; pointer-positioned menus stay put.
+        if (!position) row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        const rect = root.getBoundingClientRect();
+        const scale = rect.width / root.clientWidth;
+        const anchor = row.getBoundingClientRect();
+        return {
+          left: Math.max(4, Math.min(root.clientWidth - 208, position?.x ?? (anchor.right - rect.left) / scale)),
+          top: Math.max(4, Math.min(root.clientHeight - 82, position?.y ?? (anchor.top - rect.top) / scale)),
+        };
+      },
+      focus(target, { select = false } = {}) {
+        const element = controlElement(target);
+        if (!element) return;
+        // Observation commands never invoke this helper or reset the actor's caret.
+        if (document.activeElement !== element) element.focus();
+        if (select) element.select?.();
+      },
+      scroll(area, position) {
+        const element = scrollElement(area);
+        if (!element) return;
+        if (position.top !== undefined) element.scrollTop = position.top;
+        if (position.left !== undefined) element.scrollLeft = position.left;
+      },
+      scrollPosition(area) {
+        const element = scrollElement(area);
+        return { top: element?.scrollTop ?? 0, left: element?.scrollLeft ?? 0 };
+      },
+    };
+    const cleanup = registerView(view);
+    for (const area of ['list', 'editor']) view.scroll(area, viewState.scroll?.[area] ?? { top: 0, left: 0 });
+    return cleanup;
+  });
 </script>
 
 {#snippet icon(name)}
@@ -156,21 +192,21 @@
 <svelte:window onkeydown={keyboard} />
 <svelte:document onpointerdown={dismissContext} onfocusin={dismissContext} />
 
-<section class="notes-window" class:inactive={!active} bind:this={root} aria-label="Notes application">
+<section class="notes-window" class:inactive={!active} bind:this={root} aria-label="Notes application" onfocusin={observeFocus} onfocusout={observeBlur}>
   <header class="notes-toolbar" data-window-drag>
     <WindowControls class="notes-traffic-lights" {active} {zoomed} {onclose} {onminimize} {onzoom} />
     <div class="notes-toolbar-actions" data-window-no-drag>
-      <button type="button" class="notes-tool" aria-label={noteState.sidebarVisible ? 'Hide folders' : 'Show folders'} title="Show or hide folders" aria-pressed={noteState.sidebarVisible} onclick={() => { noteState.sidebarVisible = !noteState.sidebarVisible; }}>{@render icon('sidebar')}</button>
-      <button type="button" class="notes-tool" aria-label="New note" title="New note (⌘N)" onclick={newNote}>{@render icon('new')}</button>
+      <button type="button" class="notes-tool" data-notes-control="sidebar" aria-label={noteState.sidebarVisible ? 'Hide folders' : 'Show folders'} title="Show or hide folders" aria-pressed={noteState.sidebarVisible} onclick={() => command('setSidebarVisible', {}, { visible: !noteState.sidebarVisible })}>{@render icon('sidebar')}</button>
+      <button type="button" class="notes-tool" data-notes-control="new-note" aria-label="New note" title="New note (⌘N)" onclick={newNote}>{@render icon('new')}</button>
       {#if noteState.folder === 'deleted'}
-        <button type="button" class="notes-tool" aria-label="Restore note" title="Restore note" disabled={!selected} onclick={restoreSelected}>{@render icon('restore')}</button>
+        <button type="button" class="notes-tool" data-notes-control="restore" aria-label="Restore note" title="Restore note" disabled={!selected} onclick={() => command('restore', { noteId: selected.id })}>{@render icon('restore')}</button>
       {:else}
-        <button type="button" class="notes-tool" aria-label="Delete note" title="Delete note" disabled={!selected} onclick={removeSelected}>{@render icon('trash')}</button>
+        <button type="button" class="notes-tool" data-notes-control="delete" aria-label="Delete note" title="Delete note" disabled={!selected} onclick={() => command('trash', { noteId: selected.id })}>{@render icon('trash')}</button>
       {/if}
     </div>
     <label class="notes-search" data-window-no-drag>
       {@render icon('search')}
-      <input type="search" aria-label="Search notes" placeholder="Search" bind:this={searchInput} value={noteState.search} oninput={(event) => setSearch(noteState, event.currentTarget.value)} />
+      <input type="search" data-notes-control="search" aria-label="Search notes" placeholder="Search" bind:this={searchInput} value={noteState.search} oninput={(event) => command('search', {}, { query: event.currentTarget.value })} />
     </label>
   </header>
 
@@ -178,17 +214,17 @@
     {#if noteState.sidebarVisible}
       <aside class="notes-folders" aria-label="Note folders">
         <h2>On My Mac</h2>
-        <button type="button" class:selected={noteState.folder === 'notes'} aria-label="Notes folder" aria-pressed={noteState.folder === 'notes'} onclick={() => selectFolder(noteState, 'notes')}><span>Notes</span></button>
-        <button type="button" class:selected={noteState.folder === 'deleted'} aria-label="Recently Deleted folder" aria-pressed={noteState.folder === 'deleted'} onclick={() => selectFolder(noteState, 'deleted')}><span>Recently Deleted</span></button>
+        <button type="button" data-notes-control="folder" data-folder="notes" class:selected={noteState.folder === 'notes'} aria-label="Notes folder" aria-pressed={noteState.folder === 'notes'} onclick={() => command('selectFolder', { folder: 'notes' })}><span>Notes</span></button>
+        <button type="button" data-notes-control="folder" data-folder="deleted" class:selected={noteState.folder === 'deleted'} aria-label="Recently Deleted folder" aria-pressed={noteState.folder === 'deleted'} onclick={() => command('selectFolder', { folder: 'deleted' })}><span>Recently Deleted</span></button>
       </aside>
     {/if}
 
-    <nav class="notes-list" aria-label="Notes list">
+    <nav class="notes-list" aria-label="Notes list" bind:this={listElement} onscroll={(event) => observeScroll('list', event)}>
       {#each notes as note, index (note.id)}
         {#if !noteState.search && noteState.folder === 'notes' && ((index === 0 && note.pinned) || (index > 0 && notes[index - 1].pinned && !note.pinned))}
           <div class="notes-list-heading">{note.pinned ? 'Pinned' : 'Notes'}</div>
         {/if}
-        <button type="button" class="notes-row" class:selected={note.id === noteState.selectedId} data-note-id={note.id} aria-label={`${noteTitle(note)}${note.pinned && !note.deleted ? ', pinned' : ''}`} aria-pressed={note.id === noteState.selectedId} onclick={() => selectNote(noteState, note.id)} oncontextmenu={(event) => openContext(event, note)} onkeydown={(event) => rowKeydown(event, note)}>
+        <button type="button" class="notes-row" class:selected={note.id === noteState.selectedId} data-notes-control="row" data-note-id={note.id} aria-label={`${noteTitle(note)}${note.pinned && !note.deleted ? ', pinned' : ''}`} aria-pressed={note.id === noteState.selectedId} onclick={() => command('select', { noteId: note.id })} oncontextmenu={(event) => openContext(event, note)} onkeydown={(event) => rowKeydown(event, note)}>
           <span class="notes-row-title">{noteTitle(note)}</span>
           <span class="notes-row-summary"><time datetime={new Date(note.updatedAt).toISOString()}>{summaryDateFormat.format(note.updatedAt)}</time><span>{notePreview(note) || 'No additional text'}</span></span>
           {#if note.pinned && !note.deleted}<span class="notes-row-pin" aria-label="Pinned">{@render icon('pin')}</span>{/if}
@@ -201,8 +237,8 @@
       {#if selected}
         <time class="notes-modified" datetime={new Date(selected.updatedAt).toISOString()}>{dateFormat.format(selected.updatedAt)}</time>
         {#if selected.deleted}<div class="notes-deleted-message">Restore this note to make changes.</div>{/if}
-        <input class="notes-note-title" aria-label="Note title" placeholder="New Note" spellcheck="false" readonly={selected.deleted} bind:this={titleInput} value={firstLine(selected)} oninput={(event) => edit(event.currentTarget.value, bodyText(selected))} onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); bodyInput?.focus(); } }} />
-        <textarea class="notes-note-body" aria-label="Note body" placeholder="" spellcheck="false" readonly={selected.deleted} bind:this={bodyInput} value={bodyText(selected)} oninput={(event) => edit(firstLine(selected), event.currentTarget.value)}></textarea>
+        <input class="notes-note-title" data-notes-control="title" aria-label="Note title" placeholder="New Note" spellcheck="false" readonly={selected.deleted} bind:this={titleInput} value={firstLine(selected)} oninput={(event) => edit(event.currentTarget.value, bodyText(selected))} onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); command('focus', { control: 'body' }); } }} />
+        <textarea class="notes-note-body" data-notes-control="body" aria-label="Note body" placeholder="" spellcheck="false" readonly={selected.deleted} bind:this={bodyInput} value={bodyText(selected)} oninput={(event) => edit(firstLine(selected), event.currentTarget.value)} onscroll={(event) => observeScroll('editor', event)}></textarea>
       {:else}
         <div class="notes-editor-empty">{noteState.search ? 'No matching notes' : noteState.folder === 'deleted' ? 'No recently deleted notes' : 'No note selected'}</div>
       {/if}
@@ -212,10 +248,10 @@
   {#if context}
     <div class="notes-context-menu" role="menu" aria-label="Note actions" tabindex="-1" bind:this={contextElement} style:left="{context.left}px" style:top="{context.top}px" onkeydown={contextKeydown}>
       {#if noteState.folder === 'deleted'}
-        <button type="button" role="menuitem" onclick={restoreSelected}>Restore Note</button>
+        <button type="button" role="menuitem" data-notes-control="context" data-item="restore" onclick={() => contextAction('restore')}>Restore Note</button>
       {:else}
-        <button type="button" role="menuitem" onclick={pinContext}>{noteState.notes.find((note) => note.id === context.id)?.pinned ? 'Unpin Note' : 'Pin Note'}</button>
-        <button type="button" role="menuitem" onclick={removeSelected}>Delete Note</button>
+        <button type="button" role="menuitem" data-notes-control="context" data-item="pin" onclick={() => contextAction('pin')}>{noteState.notes.find((note) => note.id === context.id)?.pinned ? 'Unpin Note' : 'Pin Note'}</button>
+        <button type="button" role="menuitem" data-notes-control="context" data-item="delete" onclick={() => contextAction('delete')}>Delete Note</button>
       {/if}
     </div>
   {/if}

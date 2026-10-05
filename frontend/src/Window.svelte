@@ -3,7 +3,7 @@
   import WindowControls from './WindowControls.svelte';
   import './windows.css';
 
-  let { window, area, active, zIndex, onfocus, onclose, onminimize, onzoom, onmove, children } = $props();
+  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onmove, children } = $props();
   let element;
   let drag = null;
 
@@ -33,8 +33,8 @@
       endDrag(event);
       return;
     }
-    const x = Math.max(0, Math.min(drag.left + event.clientX - drag.x, area.width - window.bounds.width));
-    const y = Math.max(0, Math.min(drag.top + event.clientY - drag.y, area.height - window.bounds.height));
+    const x = drag.left + event.clientX - drag.x;
+    const y = drag.top + event.clientY - drag.y;
     onmove(x, y);
     event.preventDefault();
   }

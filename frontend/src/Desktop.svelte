@@ -8,12 +8,9 @@
     windows = [],
     activeWindowId = null,
     activeApp = applications.finder,
-    onopen,
-    onfocus,
-    onclose,
-    onminimize,
-    onzoom,
-    ondesktopfocus,
+    viewState,
+    execute,
+    registerView,
     onlayout,
   } = $props();
 
@@ -24,19 +21,87 @@
   let windowMenuContainer;
   let windowMenuButton;
   let windowMenuPanel = $state(null);
-  let selectedFileId = $state(null);
-  let windowMenuOpen = $state(false);
   let windowMenuLeft = $state(0);
   const runningApps = $derived(new Set(windows.map((window) => window.appId)));
   const activeWindow = $derived(windows.find((window) => window.id === activeWindowId));
 
+  function request(command, target = {}, payload = {}) {
+    return execute({ command, target, payload });
+  }
+
+  function enabledMenuItemIds() {
+    return [
+      ...(activeWindow ? ['close', 'minimize', 'zoom'] : []),
+      ...windows.map((window) => `window:${window.id}`),
+    ];
+  }
+
+  // Window commands can remove or disable the currently focused menu item.
+  $effect(() => {
+    const items = enabledMenuItemIds();
+    if (viewState.windowMenuOpen && viewState.windowMenuItem !== null
+      && !items.includes(viewState.windowMenuItem)) {
+      request('menu.select', { menuId: 'window', itemId: items[0] ?? null });
+    }
+  });
+
+  function prepareWindowMenu() {
+    windowMenuLeft = windowMenuButton.getBoundingClientRect().left;
+  }
+
+  async function focusMenuItem(itemId) {
+    await tick();
+    const item = [...(windowMenuPanel?.querySelectorAll('[data-menu-item-id]') ?? [])]
+      .find((element) => element.dataset.menuItemId === itemId && !element.disabled);
+    item?.focus();
+  }
+
+  function focusControl(target) {
+    let element;
+    if (target.control === 'window-menu') element = windowMenuButton;
+    else if (target.control === 'file') {
+      element = [...workspace.querySelectorAll('[data-file-id]')]
+        .find((file) => file.dataset.fileId === target.fileId);
+    } else if (target.control === 'dock') {
+      element = [...dock.querySelectorAll('[data-app-id], [data-dock-item-id]')]
+        .find((item) => target.appId !== undefined
+          ? item.dataset.appId === target.appId
+          : item.dataset.dockItemId === target.itemId);
+    }
+    element?.focus();
+  }
+
+  function windowMenuScrollTop() {
+    return windowMenuPanel?.scrollTop ?? 0;
+  }
+
+  async function scrollWindowMenu(top) {
+    await tick();
+    if (windowMenuPanel) windowMenuPanel.scrollTop = top;
+    return windowMenuScrollTop();
+  }
+
+  function measureWorkspace() {
+    const width = workspace.clientWidth;
+    // Reserve fractional Dock pixels too; offsetHeight can round them down.
+    const height = Math.max(0, workspace.clientHeight - Math.ceil(dock.getBoundingClientRect().height));
+    return { width, height };
+  }
+
   onMount(() => {
+    const unregisterView = registerView({
+      prepareWindowMenu,
+      enabledMenuItemIds,
+      focusMenuItem,
+      focusControl,
+      windowMenuScrollTop,
+      scrollWindowMenu,
+      measureWorkspace,
+    });
     let previousWidth;
     let previousHeight;
     function reportLayout() {
-      const width = workspace.clientWidth;
-      // Reserve fractional Dock pixels too; offsetHeight can round them down.
-      const height = Math.max(0, workspace.clientHeight - Math.ceil(dock.getBoundingClientRect().height));
+      const { width, height } = measureWorkspace();
       if (width !== previousWidth || height !== previousHeight) {
         previousWidth = width;
         previousHeight = height;
@@ -44,69 +109,66 @@
       }
     }
     function dismissOutside(event) {
-      if (!windowMenuContainer.contains(event.target)) windowMenuOpen = false;
+      if (viewState.windowMenuOpen && !windowMenuContainer.contains(event.target)) {
+        request('menu.close', { menuId: 'window' }, { restoreFocus: false });
+      }
+    }
+    function observeFocus(event) {
+      dismissOutside(event);
+      const target = event.target;
+      if (!windowMenuContainer.contains(target)
+        && !dock.contains(target)
+        && !(target instanceof Element && target.closest('[data-file-id]')?.closest('.desktop-files'))) {
+        request('desktop.focusControl', { control: null });
+      }
     }
     reportLayout();
     const observer = new ResizeObserver(reportLayout);
     observer.observe(workspace);
     observer.observe(dock);
     document.addEventListener('pointerdown', dismissOutside);
-    document.addEventListener('focusin', dismissOutside);
+    document.addEventListener('focusin', observeFocus);
     return () => {
+      unregisterView();
       observer.disconnect();
       document.removeEventListener('pointerdown', dismissOutside);
-      document.removeEventListener('focusin', dismissOutside);
+      document.removeEventListener('focusin', observeFocus);
     };
   });
 
   function focusDesktop(event) {
     if (event.button !== 0) return;
     if (event.target !== workspace && !event.target.classList.contains('desktop-files')) return;
-    selectedFileId = null;
-    ondesktopfocus();
-  }
-
-  function selectFile(file) {
-    selectedFileId = file.id;
-    ondesktopfocus();
+    request('desktop.focus');
   }
 
   function fileKeydown(event, file) {
     if (event.key === 'Enter') {
       event.preventDefault();
-      onopen(file.appId, file.name);
+      request('desktop.open', { fileId: file.id });
     }
   }
 
   function escapeKey(event) {
     if (event.key !== 'Escape') return;
-    selectedFileId = null;
-    if (windowMenuOpen) {
+    request('desktop.select', { fileId: null });
+    if (viewState.windowMenuOpen) {
       event.preventDefault();
-      windowMenuOpen = false;
-      windowMenuButton.focus();
+      request('menu.close', { menuId: 'window' });
     }
-  }
-
-  async function openWindowMenu(last = false) {
-    windowMenuLeft = windowMenuButton.getBoundingClientRect().left;
-    windowMenuOpen = true;
-    await tick();
-    const items = windowMenuPanel?.querySelectorAll('[role="menuitem"]:not(:disabled)');
-    if (items?.length) items[last ? items.length - 1 : 0].focus();
   }
 
   function menuButtonKeydown(event) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      openWindowMenu(event.key === 'ArrowUp');
+      request('menu.open', { menuId: 'window' }, { position: event.key === 'ArrowUp' ? 'last' : 'first' });
     }
   }
 
   function menuKeydown(event) {
-    const items = [...windowMenuPanel.querySelectorAll('[role="menuitem"]:not(:disabled)')];
+    const items = enabledMenuItemIds();
     if (!items.length) return;
-    const index = items.indexOf(document.activeElement);
+    const index = items.indexOf(viewState.windowMenuItem);
     let next;
     if (event.key === 'ArrowDown') next = (index + 1) % items.length;
     else if (event.key === 'ArrowUp') next = (index - 1 + items.length) % items.length;
@@ -114,21 +176,21 @@
     else if (event.key === 'End') next = items.length - 1;
     else return;
     event.preventDefault();
-    items[next].focus();
+    request('menu.select', { menuId: 'window', itemId: items[next] });
   }
 
-  function activateWindow(id) {
-    windowMenuOpen = false;
-    onfocus(id);
-    windowMenuButton.focus();
+  function observeMenuItem(itemId) {
+    request('menu.select', { menuId: 'window', itemId });
   }
 
-  function operateWindow(action) {
-    if (!activeWindow) return;
-    const id = activeWindow.id;
-    windowMenuOpen = false;
-    action(id);
-    windowMenuButton.focus();
+  function executeMenuItem(itemId) {
+    request('menu.execute', { menuId: 'window', itemId });
+  }
+
+  function observeMenuScroll(event) {
+    if (viewState.windowMenuOpen && event.currentTarget.scrollTop !== viewState.windowMenuScrollTop) {
+      request('desktop.scroll', { region: 'window-menu' }, { top: event.currentTarget.scrollTop });
+    }
   }
 </script>
 
@@ -148,20 +210,21 @@
           id="window-menu-button"
           bind:this={windowMenuButton}
           aria-haspopup="menu"
-          aria-expanded={windowMenuOpen}
-          aria-controls={windowMenuOpen ? 'window-menu' : undefined}
-          onclick={() => windowMenuOpen ? windowMenuOpen = false : openWindowMenu()}
+          aria-expanded={viewState.windowMenuOpen}
+          aria-controls={viewState.windowMenuOpen ? 'window-menu' : undefined}
+          onfocus={() => request('desktop.focusControl', { control: 'window-menu' })}
+          onclick={() => request(viewState.windowMenuOpen ? 'menu.close' : 'menu.open', { menuId: 'window' })}
           onkeydown={menuButtonKeydown}
         >Window</button>
-        {#if windowMenuOpen}
-          <div class="window-menu-panel" id="window-menu" bind:this={windowMenuPanel} role="menu" tabindex="-1" aria-labelledby="window-menu-button" style:left={`clamp(4px, ${windowMenuLeft}px, calc(100vw - min(260px, calc(100vw - 8px)) - 4px))`} onkeydown={menuKeydown}>
-            <button type="button" role="menuitem" disabled={!activeWindow} onclick={() => operateWindow(onclose)}>Close</button>
-            <button type="button" role="menuitem" disabled={!activeWindow} onclick={() => operateWindow(onminimize)}>Minimize</button>
-            <button type="button" role="menuitem" disabled={!activeWindow} onclick={() => operateWindow(onzoom)}>Zoom</button>
+        {#if viewState.windowMenuOpen}
+          <div class="window-menu-panel" id="window-menu" bind:this={windowMenuPanel} role="menu" tabindex="-1" aria-labelledby="window-menu-button" style:left={`clamp(4px, ${windowMenuLeft}px, calc(100vw - min(260px, calc(100vw - 8px)) - 4px))`} onkeydown={menuKeydown} onscroll={observeMenuScroll}>
+            <button type="button" role="menuitem" data-menu-item-id="close" disabled={!activeWindow} onfocus={() => observeMenuItem('close')} onclick={() => executeMenuItem('close')}>Close</button>
+            <button type="button" role="menuitem" data-menu-item-id="minimize" disabled={!activeWindow} onfocus={() => observeMenuItem('minimize')} onclick={() => executeMenuItem('minimize')}>Minimize</button>
+            <button type="button" role="menuitem" data-menu-item-id="zoom" disabled={!activeWindow} onfocus={() => observeMenuItem('zoom')} onclick={() => executeMenuItem('zoom')}>Zoom</button>
             {#if windows.length}
               <div class="window-menu-separator" role="separator"></div>
               {#each windows as window (window.id)}
-                <button type="button" role="menuitem" aria-label={`${window.title}${window.minimized ? ', minimized' : ''}`} onclick={() => activateWindow(window.id)}>
+                <button type="button" role="menuitem" data-menu-item-id={`window:${window.id}`} aria-label={`${window.title}${window.minimized ? ', minimized' : ''}`} onfocus={() => observeMenuItem(`window:${window.id}`)} onclick={() => executeMenuItem(`window:${window.id}`)}>
                   <span class="window-menu-check" aria-hidden="true">{window.id === activeWindowId ? '✓' : ''}</span>
                   <span class="window-menu-title">{window.title}</span>
                   {#if window.minimized}<span class="window-menu-minimized" aria-hidden="true">Minimized</span>{/if}
@@ -188,12 +251,13 @@
         <button
           type="button"
           class="desktop-file"
-          class:selected={selectedFileId === file.id}
+          class:selected={viewState.selectedFileId === file.id}
           aria-label={file.name}
-          aria-pressed={selectedFileId === file.id}
+          aria-pressed={viewState.selectedFileId === file.id}
           data-file-id={file.id}
-          onclick={() => selectFile(file)}
-          ondblclick={() => onopen(file.appId, file.name)}
+          onfocus={() => request('desktop.focusControl', { control: 'file', fileId: file.id })}
+          onclick={() => request('desktop.select', { fileId: file.id })}
+          ondblclick={() => request('desktop.open', { fileId: file.id })}
           onkeydown={(event) => fileKeydown(event, file)}
         ><AppIcon name={file.icon}/><span class="desktop-file-label">{file.name}</span></button>
       {/each}
@@ -213,7 +277,8 @@
               aria-describedby={app.id === 'finder' || runningApps.has(app.id) ? `app-running-${app.id}` : undefined}
               title={app.name}
               data-app-id={app.id}
-              onclick={() => onopen(app.id)}
+              onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })}
+              onclick={() => request('app.open', { appId: app.id })}
           ><AppIcon name={app.icon}/>{#if app.id === 'finder' || runningApps.has(app.id)}<span class="active-dot" aria-hidden="true"></span><span class="sr-only" id={`app-running-${app.id}`}>Running</span>{/if}</button>
         </li>
       {/each}
@@ -222,14 +287,14 @@
     <ul class="dock-apps dock-recents" aria-label="Recent applications">
       {#each recentApps as app (app.id)}
         <li class="dock-item">
-          <button type="button" class="dock-button" class:is-active={activeApp.id === app.id && activeWindowId !== null} aria-label={app.name} aria-describedby={runningApps.has(app.id) ? `app-running-${app.id}` : undefined} title={app.name} data-app-id={app.id} onclick={() => onopen(app.id)}>
+          <button type="button" class="dock-button" class:is-active={activeApp.id === app.id && activeWindowId !== null} aria-label={app.name} aria-describedby={runningApps.has(app.id) ? `app-running-${app.id}` : undefined} title={app.name} data-app-id={app.id} onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })} onclick={() => request('app.open', { appId: app.id })}>
             <AppIcon name={app.icon}/>{#if runningApps.has(app.id)}<span class="active-dot" aria-hidden="true"></span><span class="sr-only" id={`app-running-${app.id}`}>Running</span>{/if}
           </button>
         </li>
       {/each}
     </ul>
     <div class="dock-separator" aria-hidden="true"></div>
-    <div class="dock-item"><button type="button" class="dock-button" aria-label="Downloads" title="Downloads" onclick={() => onopen('finder', 'Downloads')}><AppIcon name="downloads"/></button></div>
-    <div class="dock-item"><button type="button" class="dock-button" aria-label="Trash" title="Trash" onclick={() => onopen('finder', 'Trash')}><AppIcon name="trash"/></button></div>
+    <div class="dock-item"><button type="button" class="dock-button" aria-label="Downloads" title="Downloads" data-dock-item-id="downloads" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'downloads' })} onclick={() => request('app.open', { appId: 'finder' }, { title: 'Downloads' })}><AppIcon name="downloads"/></button></div>
+    <div class="dock-item"><button type="button" class="dock-button" aria-label="Trash" title="Trash" data-dock-item-id="trash" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'trash' })} onclick={() => request('app.open', { appId: 'finder' }, { title: 'Trash' })}><AppIcon name="trash"/></button></div>
   </footer>
 </div>

@@ -6,7 +6,7 @@ This is the live command inventory, not the list of planned commands. Requiremen
 
 The mounted desktop exposes `globalThis.jesteros` with:
 
-- `execute(request)`: asynchronous command invocation. Resolves to an applied/rejected result. Applied results wait for the Svelte DOM flush; they do not claim completion of future media/progress animations.
+- `execute(request)`: asynchronous command invocation. Resolves to an applied/rejected result. Applied results wait for the Svelte DOM flush and capture live scroll positions after focus/anchoring/layout effects; they do not claim completion of future media/progress animations. Await each result when sequencing dependent commands.
 - `inspect()`: a detached snapshot of supported command names and current window/application state. Changing this snapshot does not change the scene.
 
 This is the browser-local feature interface intended for a future transport adapter. It is not a WebSocket endpoint or controller UI. Current support is the Mojave profile only. The interface is removed when its owning App component is destroyed.
@@ -17,11 +17,61 @@ Results are `{ status: 'applied', target: ... }` or `{ status: 'rejected', error
 
 ## Inventory
 
-| Command | Target | Payload | Behavior and result |
-| --- | --- | --- | --- |
-| `app.open` | `{ appId: string }` | `{ title?: string }` | Opens the registered app, or restores/focuses its existing window. Optional title updates the contextual window title. Returns appId/windowId. Unknown apps are `not_found`; unmeasured workspace is `unavailable`; unexpected fields/types are `invalid_arguments`. |
+All 31 commands below support the current Mojave scene. Unexpected target/payload fields and invalid types are rejected. Window IDs currently equal app IDs; callers should use returned IDs rather than depend on that single-window convention.
 
-`app.open` is used by Dock app activation, Downloads/Trash activation, and desktop-file Enter/double-click. Existing close/minimize/zoom/drag/Window-menu/Notes commands are not yet in the inventory; their retrofit is `CORE-02`.
+### Apps and windows
+
+| Command | Target | Payload | Behavior |
+| --- | --- | --- | --- |
+| `app.open` | `{ appId }` | `{ title?: string }` | Opens or restores/activates a registered app and focuses its root after rendering. Optional title updates contextual titles. Returns appId/windowId. |
+| `window.focus` | `{ windowId }` | `{ keyboard?: boolean }` | Restores/activates the window. Keyboard focus goes to its root unless keyboard:false; native child-focus observations use false to preserve caret/input focus. |
+| `window.close` | `{ windowId }` | `{}` | Removes the window, preserving application data; chooses the last remaining visible window as active. |
+| `window.setMinimized` | `{ windowId }` | `{ minimized: boolean }` | Minimizes or restores/activates/focuses the root. Minimized Notes rejects presentation commands but retains its data and scroll offsets. |
+| `window.setZoomed` | `{ windowId }` | `{ zoomed: boolean }` | Sets workspace zoom/restore and focuses the root; minimized targets are unavailable. |
+| `window.move` | `{ windowId }` | `{ x: number, y: number }` | Moves a visible normal window, clamped to the work area; physical workspace pixels, finite numbers only. Does not activate a background window. |
+
+### Desktop and Window menu
+
+| Command | Target | Payload | Behavior |
+| --- | --- | --- | --- |
+| `desktop.refreshLayout` | `{}` | `{}` | Remeasures actual workspace/Dock and refits windows, also used by ResizeObserver. Does not set a fake host resolution. |
+| `desktop.select` | `{ fileId: string\|null }` | `{}` | Selects a real desktop item and activates the desktop; null deselects without changing the active app, matching Escape. |
+| `desktop.open` | `{ fileId }` | `{}` | Opens the desktop item's app/contextual title through app.open. |
+| `desktop.focus` | `{}` | `{}` | Clears selection, deactivates app windows, dismisses menus, and blurs a window control. |
+| `desktop.focusControl` | `{ control:'file', fileId }`, `{ control:'dock', appId }`, `{ control:'dock', itemId:'downloads'\|'trash' }`, `{ control:'window-menu' }`, or `{ control:null }` | `{}` | Focuses an existing semantic control; null records native focus outside desktop controls without moving it. |
+| `desktop.scroll` | `{ region:'window-menu' }` | `{ top: number }` | Scrolls an open popup and records the actual clamped offset; finite nonnegative pixels. |
+| `menu.open` | `{ menuId:'window' }` | `{ position?:'first'\|'last', itemId?:string }` | Opens at its menu-bar anchor and focuses first/last/specified enabled item. Position/itemId are mutually exclusive. Empty-disabled menus have a null item. |
+| `menu.close` | `{ menuId:'window' }` | `{ restoreFocus?:boolean }` | Closes and returns focus to its button by default; false preserves outside/native focus. |
+| `menu.select` | `{ menuId:'window', itemId }` | `{}` | Selects/focuses an enabled item in the open popup. Null is allowed only when no enabled items remain. |
+| `menu.execute` | `{ menuId:'window', itemId }` | `{}` | Executes a currently available item through shared window handlers, even without opening the popup, then focuses the Window button. |
+
+Window-menu item IDs are `close`, `minimize`, `zoom`, and `window:<windowId>`. Disabled operations reject with `disabled`; removed windows/items reject with `not_found`. File/Dock controls use the current application/desktop registry, not arbitrary DOM selectors.
+
+### Notes data and presentation
+
+| Command | Target | Payload | Behavior |
+| --- | --- | --- | --- |
+| `notes.create` | `{}` | `{ focus?:boolean }` | Creates/selects an empty active note, clears search, returns noteId. Focus:true requests title focus and requires the window already visible. |
+| `notes.edit` | `{ noteId }` | `{ text:string }` | Edits the selected, search-visible active note, clearing search before editing to keep the editor mounted. Deleted notes are read-only. |
+| `notes.setPinned` | `{ noteId }` | `{ pinned:boolean, focus?:boolean }` | Sets an explicit value for an active visible record, without changing timestamps. |
+| `notes.trash` | `{ noteId }` | `{ focus?:boolean }` | Moves an active visible record to Recently Deleted and reconciles selection. |
+| `notes.restore` | `{ noteId }` | `{ focus?:boolean }` | Restores a visible deleted record, remaining in Recently Deleted; empty-result focus goes to New note when requested. |
+| `notes.select` | `{ noteId }` | `{ focus?:boolean }` | Selects a record in the current filtered collection; optional row focus. |
+| `notes.selectFolder` | `{ folder:'notes'\|'deleted' }` | `{}` | Changes the collection, preserves search, reconciles selection, and dismisses context. |
+| `notes.search` | `{}` | `{ query:string }` | Sets normalized case-insensitive title/body search and reconciles selection. |
+| `notes.setSidebarVisible` | `{}` | `{ visible:boolean }` | Shows/hides folders and dismisses context; preserves existing native toolbar focus. |
+| `notes.context.open` | `{ noteId }` | `{ x?:number, y?:number, focus?:boolean }` | Opens for a current record. Default row anchoring reveals an offscreen row. Optional finite x/y are paired logical-window coordinates for pointer placement; popup is clamped. |
+| `notes.context.close` | `{}` | `{ focus?:boolean }` | Closes the live context menu; optional row/New note focus return. |
+| `notes.context.select` | `{ item:'pin'\|'delete'\|'restore' }` | `{ focus?:boolean }` | Chooses a valid live context item; optional keyboard focus/highlight. |
+| `notes.context.execute` | `{ noteId, item:'pin'\|'delete'\|'restore' }` | `{ focus?:boolean, pinned?:boolean }` | Requires matching live context. Pin requires pinned:boolean; other items reject that field. Uses the same data handlers and closes the menu. |
+| `notes.focus` | `{ control, noteId?, folder?, item? }` | `{ observe?:boolean, select?:boolean }` | Focuses a semantic control and activates Notes, with optional text selection. Observe:true records native focus without activation or caret changes. |
+| `notes.scroll` | `{ area:'list'\|'editor' }` | `{ top?:number, left?:number, observe?:boolean }` | Applies finite nonnegative offsets, or observes native scrolling; at least one coordinate required. Editor means the body textarea. Records clamped actual offsets. |
+
+Notes controls are `title`, `body`, `search`, `new-note`, `sidebar`, `delete`, `restore`, `row` (+noteId), `folder` (+folder), and `context` (+item). `none` is accepted only for an observe:true focus report. Identity fields are accepted only for the corresponding control; select applies to text controls. Notes records must be in the current folder/search results; editing additionally requires the current selection. These data constraints apply even when the window is closed.
+
+Data-only Notes commands work without opening/activating a window. Focus/context/scroll operations require an existing non-minimized Notes view; they never reopen it implicitly. Hidden-folder controls are unavailable as focus targets. Explicit presentation failures do not create records or change data first. After row removal/reordering, actor context actions focus the remaining row/New note; toolbar actions preserve their native focus.
+
+App/Dock/desktop actions, traffic lights, title-bar dragging, Window-menu navigation, Notes editing/search/sidebar/folder/row/context actions, shortcuts, native focus, and scroll observations all use this interface. Rendering refs, pointer capture, popup geometry, and physical viewport measurement remain internal view mechanics.
 
 ```js
 await jesteros.execute({
@@ -41,3 +91,8 @@ No CSS selectors, pixel clicks, credentials, network requests, or host settings 
 2. **Initial smoke.** Direct app.open created Notes, echoed the request ID, and exposed its state. Unknown commands and the prototype-named app `__proto__` were rejected. Dock reopen and direct restore retained an edited title and produced only one Notes window. No page errors were observed.
 3. **Explicit-null argument correction.** The initial smoke found null payload accepted as omitted payload. Omission and explicit null are now distinguished, so null is rejected rather than normalized into a valid request.
 4. **Final CORE-01 verification.** The corrected production build rejected explicit-null payloads, array targets, wrong title types, conflicting target fields, unknown commands/apps, and unexpected envelope fields without changing scene state. Actor Dock/desktop actions and direct calls shared app.open; Notes close/direct-reopen retained its edited title, repeated opening did not duplicate windows, and Finder switched Personal → Downloads. Mutating an inspection snapshot did not mutate the scene. The rebuilt Rust-served default desktop was visually inspected at 1440×900/DPR 1; no page errors or build component warnings were observed.
+5. **CORE-02 implementation.** Added shared desktop/window/Notes handlers and parent-owned semantic presentation state. Components now invoke commands instead of mutating their application/menu models. Registered view helpers perform actual DOM focus, anchoring, and scrolling; direct callers use stable control/record IDs. Background Notes data commands do not activate windows; explicit presentation requests reject hidden/minimized views before mutation.
+6. **CORE-02 production proof.** Actor/direct checks covered filtered editing and zero results, keyboard new/search, sidebar visibility, pin idempotency/timestamps, context Home/End/pin/delete/restore, deleted/read-only rejection, empty Recently Deleted focus, retained editor/list scrolling, hidden data creation versus focused-create rejection, and remote keyboard focus transfer. Desktop file selection/Enter, Downloads/Dock activation, Window-menu navigation/minimize/restore/selection/Escape/outside dismissal, empty-disabled menus, and short-popup scrolling were exercised. Twelve invalid/stale/disabled payload/target paths were rejected without state mutation.
+7. **Window and viewport proof.** Actor dragging changed Notes from (200,100) to (290,140); direct out-of-bounds movement clamped to workspace. Zoomed move was rejected. A zoomed/minimized window restored after resizing to 390×844 stayed above the Dock (bottom 800, Dock top 800.671875); normal restore geometry fit the new area. 800×350 popup scrolling reported the same actual/model offset and stayed in the viewport. All eleven registered app windows opened through the shared command path.
+8. **Semantic anchoring and settled-snapshot corrections.** A default context request for an offscreen note initially left its row hidden and anchored at the toolbar. Default anchoring now reveals the row before measuring; pointer-positioned menus retain their requested placement. Browser scroll events arrive after DOM focus/scrolling, so completed-command settlement captures live offsets. Final proof showed the row visible and list DOM/model scroll both 28. Editor scroll 360 survived minimize/direct reopen, with equal DOM/model offsets. Final context delete/restore retained “Final CORE-02 note.” Default/Notes surfaces were visually inspected; production build had no component warnings and final page-error list was empty.
+9. **Final clean-cutover smoke.** Removed duplicate gesture-side boundary decisions: pointer capture computes raw movement, and the shared window handler alone clamps it. An actor drag beyond the viewport reached exactly (672,312), matching the maximum workspace bounds. Final close/direct-reopen retained “Verified final cutover.” All 31 documented command rows matched runtime names and the Markdown tables had valid columns. The final page had zero errors, zero broken images, no external resources, and no document overflow.
