@@ -12,13 +12,13 @@ JesterOS will support multiple operating-system families and versions:
 
 - **macOS across different years/releases**, with Mojave 10.14 as the first profile. Additional releases must reproduce their own era, not apply new colors to Mojave.
 - **Windows 11**, with a researched release/build and its own desktop shell, applications, menus, dialogs, terminology, keyboard conventions, and assets.
-- **Linux possibly later**. Choose a specific distribution, desktop environment, and version when that work starts; “Linux” alone does not define one UI.
+- **Linux remains conditional**. [`CORE-07` research](ubuntu-24.04-profile.md) chooses Ubuntu Desktop 24.04 LTS (Noble Numbat), original [April 25, 2024 release](https://documentation.ubuntu.com/release-notes/24.04/schedule/), with Ubuntu's GNOME 46 session, before inventorying UI. This is a research candidate, not an installed profile or a commitment to implementation. Ubuntu extensions/defaults and minimal/extended app membership must not be replaced with vanilla GNOME, another distribution or later point releases.
 
 An OS profile defines the shell and app inventory, supported capabilities, version-specific presentation and behavior, shortcuts, local assets, and relevant hardware/region configuration. Its identity is part of the scene. Version/build distinctions matter when they change visible interfaces or available features.
 
 Share genuinely common simulation data and operations—virtual files, contacts, scene time, notifications, app/window identities—where semantics match. Keep OS-specific shell behavior, app interfaces, and adapters separate. For example, Finder and File Explorer can use the same virtual files without sharing their menus or window layout. Do not assume every Windows/Linux profile has a Dock, Finder, iCloud, or Mojave-style preferences.
 
-Select a profile at URL setup or through `scene.selectProfile`. Selecting another installed ID starts a fresh native scene; selecting the current ID retains state. Live conversion of open windows/documents is not implemented, and incompatible app/view state never carries across profiles. Windows targets [23H2 build 22631.2428](windows11-profile.md); Linux remains conditional and requires an exact distribution/desktop/version before implementation.
+Select a profile at URL setup or through `scene.selectProfile`. Selecting another installed ID starts a fresh native scene; selecting the current ID retains state. Live conversion of open windows/documents is not implemented, and incompatible app/view state never carries across profiles. Windows targets [23H2 build 22631.2428](windows11-profile.md). Conditional Ubuntu 24.04/GNOME 46 research installs no profile: `ubuntu-24.04-gnome-46` remains unsupported and absent from runtime discovery.
 
 ### Implemented profile boundaries
 

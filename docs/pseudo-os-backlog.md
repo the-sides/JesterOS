@@ -22,7 +22,7 @@ The default Mojave Messages scene is unchanged. High Sierra 10.13 (2017), Sonoma
 
 Browser-local typed discovery exposes 32 commands in each macOS profile and 151 in Windows (`CORE-01` through `CORE-06`). Fresh profile selection resets incompatible data/view state behind a stable controller reference. Implemented contracts, native coverage and verification notes are in [the command inventory](feature-commands.md); remaining applications/menus are queued.
 
-Evidence: [README](../README.md), [Mojave fidelity notes](mojave-fidelity.md), [Notes research and working notes](notes-mojave.md).
+Evidence: [README](../README.md), [Mojave fidelity](mojave-fidelity.md), [Notes working notes](notes-mojave.md), [Windows shell](windows11-profile.md), [Windows apps](windows11-apps.md), and [conditional Ubuntu research](ubuntu-24.04-profile.md). The future Ubuntu 24.04/GNOME 46 candidate is source-inventoried but not installed or advertised; Default/minimal and extended/optional apps remain distinct.
 
 ### Iteration order
 
@@ -37,7 +37,7 @@ Use this order unless a scene requirement changes priority. Section order is a g
 7. **Remaining bundled apps and utilities:** Launchpad, Mission Control, Dashboard, Maps, Calculator, creative/office add-ons, and diagnostic interfaces.
 8. **Completion pass:** finish every researched app menu and secondary dialog; verify cross-app workflows and visual/state consistency.
 
-**Next sequential item: `CORE-07` — investigate a specific distribution, desktop environment and version for a conditional future Linux profile before inventorying its UI.** This research does not install a Linux profile or change platform scope. Rust/WebSocket transport remains deferred.
+**Next sequential item: `OS-05` — edge/corner window resizing with app-specific minimum sizes and stable restore geometry.** Linux research is complete but implementation remains conditional. Rust/WebSocket transport remains deferred.
 
 ## Architecture foundations and future OS profiles
 
@@ -47,7 +47,7 @@ Use this order unless a scene requirement changes priority. Section order is a g
 - [x] `CORE-04` — Establish explicit OS-profile identity and capability boundaries around the current Mojave scene, app registry, shell, assets, and behavior; share simulation operations where semantics genuinely match rather than imposing Mojave conventions on every OS.
 - [x] `CORE-05` — Research and add further macOS releases across years as separate profiles, each with a version-specific app/menu/sub-interface inventory and researched assets/behavior.
 - [x] `CORE-06` — Research a specific Windows 11 release/build and add its shell, applications, menus, settings, dialogs, and profile command adapters using the same feature-contract principles.
-- [ ] `CORE-07` — Investigate a future Linux profile: choose distribution, desktop environment, and version before making its UI inventory. Conditional future scope, not a required next platform.
+- [x] `CORE-07` — Investigate a future Linux profile: choose distribution, desktop environment, and version before making its UI inventory. Conditional future scope, not a required next platform.
 
 ## 1. Desktop, Dock, windows, and session behavior
 
@@ -519,3 +519,4 @@ Rust controller UI, paired screens, WebSocket transport/wire protocol, shared se
 | 2026-10-05 | Completed `CORE-04`: immutable Mojave identity/stock coverage/assets/defaults, named native adapter and policy, guarded direct/composed handlers, detached metadata, and explicit no-fallback setup rejection. Default extraction measured zero changed pixels. Browser actor/resize/retention/file/menu workflows passed; real-domain regression and comparison suite 2 pass; no final component/page errors. | `CORE-05` |
 | 2026-10-05 | Completed `CORE-05`: separate High Sierra 10.13 and Sonoma 14.0 native profiles, version-specific stock/menu/sub-interface research and local assets. Stable scene.selectProfile remounts fresh state, preserves same-ID state and rejects unknown/concurrent transition writes. Browser exercised all 32 commands in each profile (43 applied calls each), strict actual request/result schemas, actor edits/keyboard/context/menu/drag/chrome, period clocks, retained scroll/data and 390×844 refit. Corrected desktop.open result schema to include its real fileId. Final default comparison zero changed pixels; build clean, 3 regression tests pass/27 assertions, final browser errors empty. Native/rights approximations remain disclosed. | `CORE-06` |
 | 2026-10-05 | Completed `CORE-06`: Windows 11 Pro 23H2 build 22631.2428 native shell/chrome and ten functional local apps; 151 typed commands with live native discovery and strict actual request/result validation. Browser proof covered shared filesystem/media, offline Edge, Calculator, Settings/Quick authority, Clock transitions/teardown, dialogs, keyboard, drag/chrome, retained scroll and narrow/short layouts. Fixed disposed-editor selection events, global-modal false focus and invisible minimized dirty-close prompts. Terminal rejects compound syntax before filesystem mutation and preserves quoted operators. Final build clean; five regressions pass/59 assertions; fresh diagnostics empty; all local assets load. All macOS command paths re-exercised and default comparison zero changed pixels. Authored artwork/font/Store-version limits remain explicit. | `CORE-07` |
+| 2026-10-05 | Completed `CORE-07` research: chose Ubuntu Desktop 24.04 LTS original GA (April 25, 2024), amd64 Ubuntu GNOME 46, Default/minimal selection and light Yaru before native inventory. Primary archived manifest/source packages and frozen seeds establish package/snap versions, Ubuntu overrides and minimal/extended/live membership. Source-linked shell/app/menu/dialog/Settings inventory records hardware, exact-visual, font/artwork and trademark limits. No Linux runtime/profile/assets/contracts or host changes; actual candidate selection rejected unsupported_profile without mutation and installed discovery remained the four macOS/Windows IDs. Linux implementation stays conditional. | `OS-05` |

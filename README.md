@@ -26,6 +26,8 @@ await jesteros.execute({
 
 A different profile starts a **fresh native scene**, resetting fictional records, windows, menus, focus and scroll; selecting the current ID retains state. The stable `jesteros` object follows the new scene, including cached controller references. Await selection before issuing dependent commands. Notes timestamps and Windows Clock use fictional profile-local time, never host time. See [profile boundaries](docs/pseudo-os-architecture.md#implemented-profile-boundaries), [High Sierra research](docs/high-sierra-profile.md), [Sonoma research](docs/sonoma-profile.md), [Windows shell research](docs/windows11-profile.md), and [Windows application workflows](docs/windows11-apps.md). Further app coverage and Linux remain queued.
 
+Conditional [Linux research](docs/ubuntu-24.04-profile.md) selects **Ubuntu Desktop 24.04 LTS (original April 25, 2024 release), Ubuntu GNOME 46 session**, not generic Linux or vanilla GNOME. No Linux desktop, app registry, runtime assets or commands are installed; its candidate ID `ubuntu-24.04-gnome-46` is deliberately absent from discovery and rejects as unsupported. The inventory separates Default/minimal, extended and optional apps; exact GA package/snap evidence and visual/rights limits are recorded.
+
 ## macOS desktop interactions
 
 - Click a Dock icon, or focus it and press Enter/Space, to open, raise, or restore its application's single window. Repeated activation does not create duplicates.
