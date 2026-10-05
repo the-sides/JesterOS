@@ -7,6 +7,8 @@
   import { desktopContextItems } from './desktop-context-model.js';
   import MacDesktopStack from './MacDesktopStack.svelte';
   import { desktopStackLayout } from './desktop-stacks-model.js';
+  import MacDockContextMenu from './MacDockContextMenu.svelte';
+  import { createMacDockView } from './mac-dock-view.js';
 
   let {
     profile,
@@ -14,6 +16,8 @@
     desktopItems,
     desktopStacks = [],
     desktopDetails = {},
+    dockApplications,
+    dockMenuItems = [],
     windows = [],
     runningAppIds = [],
     activeWindowId = null,
@@ -53,11 +57,14 @@
   });
   const options = $derived(viewState.viewOptions);
   const customView = $derived(options.iconSize !== 64 || options.gridSpacing !== 24 || options.textSize !== 12 || options.labelPosition !== 'bottom');
-  const dockApps = $derived(Object.values(applications).filter((app) => app.dock === 'main'));
-  const recentApps = $derived(Object.values(applications).filter((app) => app.dock === 'recent'));
+  const dockApps = $derived(dockApplications.main);
+  const recentApps = $derived(dockApplications.recent);
   // Retained popup state can precede workspace and Dock bindings during remount.
   let workspace = $state();
   let dock = $state();
+  const dockView = createMacDockView({ getWorkspace: () => workspace, getDock: () => dock,
+    getState: () => viewState.dock, getActiveApp: () => activeApp, execute: command => execute(command) });
+  $effect(() => { dockApps; recentApps; if (dock?.isConnected) dockView.fitDock(); });
   let windowMenuContainer;
   let windowMenuButton;
   let windowMenuPanel = $state(null);
@@ -372,6 +379,7 @@
 
   onMount(() => {
     const unregisterView = registerView({
+      ...dockView,
       prepareWindowMenu,
       enabledMenuItemIds,
       focusMenuItem,
@@ -395,6 +403,7 @@
     let previousWidth;
     let previousHeight;
     function reportLayout() {
+      dockView.fitDock();
       const { width, height } = measureWorkspace();
       layoutWidth = width;
       if (viewState.rename) measureRename();
@@ -406,6 +415,7 @@
       }
     }
     function dismissOutside(event) {
+      dockView.dismissOutside(event);
       if (viewState.context && !event.target?.closest?.('[data-desktop-context-menu]')) {
         request('desktop.context.close', {}, { restoreFocus: false });
       }
@@ -416,7 +426,7 @@
     function observeFocus(event) {
       dismissOutside(event);
       const target = event.target;
-      if (target?.closest?.('[data-desktop-context-menu]')) return;
+      if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu]')) return;
       if (!windowMenuContainer.contains(target)
         && !dock.contains(target)
         && !(target instanceof Element && (target.matches('[data-desktop-rename]')
@@ -430,12 +440,14 @@
     observer.observe(dock);
     document.addEventListener('pointerdown', dismissOutside);
     document.addEventListener('focusin', observeFocus);
+    document.addEventListener('keydown', dockView.shortcut, true);
     return () => {
       interactions.dispose();
       unregisterView();
       observer.disconnect();
       document.removeEventListener('pointerdown', dismissOutside);
       document.removeEventListener('focusin', observeFocus);
+      document.removeEventListener('keydown', dockView.shortcut, true);
     };
   });
 
@@ -605,16 +617,17 @@
         style:width={`${viewState.marquee.width}px`} style:height={`${viewState.marquee.height}px`}></div>
     {/if}
     {#if viewState.context && workspace?.isConnected && dock?.isConnected}<MacDesktopContextMenu {profile} context={viewState.context} items={contextItems} area={contextArea()} {execute}/>{/if}
+    {#if viewState.dock?.context && workspace?.isConnected && dock?.isConnected}<MacDockContextMenu {profile} context={viewState.dock.context} items={dockMenuItems} area={contextArea()} {execute}/>{/if}
     {@render children()}
   </main>
   <footer class="sonoma-dock" bind:this={dock} aria-label="Application dock">
     <ul class="sonoma-dock-apps">
       {#each dockApps as app (app.id)}
-        <li class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label={app.name} aria-describedby={app.id === 'finder' || runningApps.has(app.id) ? `sonoma-running-${app.id}` : undefined} title={app.name} data-app-id={app.id} onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })} onclick={() => request('app.open', { appId: app.id })}><SonomaIcon name={app.icon} assets={profile.assets}/>{#if app.id === 'finder' || runningApps.has(app.id)}<span class="sonoma-running-dot" aria-hidden="true"></span><span class="sr-only" id={`sonoma-running-${app.id}`}>Running</span>{/if}</button></li>
+        <li class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label={app.name} aria-describedby={app.id === 'finder' || runningApps.has(app.id) ? `sonoma-running-${app.id}` : undefined} title={app.name} data-app-id={app.id} onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })} onpointerdown={event => dockView.pointerdown(event, app.id)} oncontextmenu={event => dockView.contextmenu(event, app.id)} onkeydown={event => dockView.keydown(event, app.id)} onclick={event => dockView.click(event, app.id)}><SonomaIcon name={app.icon} assets={profile.assets}/>{#if app.id === 'finder' || runningApps.has(app.id)}<span class="sonoma-running-dot" aria-hidden="true"></span><span class="sr-only" id={`sonoma-running-${app.id}`}>Running</span>{/if}</button></li>
       {/each}
     </ul>
     {#if recentApps.length}<div class="sonoma-dock-separator" aria-hidden="true"></div><ul class="sonoma-dock-apps" aria-label="Recent applications">
-      {#each recentApps as app (app.id)}<li class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label={app.name} title={app.name} data-app-id={app.id} onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })} onclick={() => request('app.open', { appId: app.id })}><SonomaIcon name={app.icon} assets={profile.assets}/>{#if runningApps.has(app.id)}<span class="sonoma-running-dot" aria-hidden="true"></span>{/if}</button></li>{/each}
+      {#each recentApps as app (app.id)}<li class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label={app.name} title={app.name} data-app-id={app.id} onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })} onpointerdown={event => dockView.pointerdown(event, app.id)} oncontextmenu={event => dockView.contextmenu(event, app.id)} onkeydown={event => dockView.keydown(event, app.id)} onclick={event => dockView.click(event, app.id)}><SonomaIcon name={app.icon} assets={profile.assets}/>{#if runningApps.has(app.id)}<span class="sonoma-running-dot" aria-hidden="true"></span>{/if}</button></li>{/each}
     </ul>{/if}
     <div class="sonoma-dock-separator" aria-hidden="true"></div>
     <div class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label="Downloads" title="Downloads" data-dock-item-id="downloads" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'downloads' })} onclick={() => request('desktop.open', { fileId: 'downloads' })}><SonomaIcon name="downloads" assets={profile.assets}/></button></div>

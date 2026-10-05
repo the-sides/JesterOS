@@ -10,6 +10,10 @@
   import { desktopStacks as buildDesktopStacks, desktopStackLayout, desktopStacksDefaults, reconcileDesktopStacks } from './desktop-stacks-model.js';
   import { desktopViewDefaults, desktopContextItems, sortDesktopItems, readDesktopFileInfo, desktopFileSize } from './desktop-context-model.js';
   import { createMacDesktopFileStore, macDesktopItems, validMacDesktopName, nextMacFileTimestamp } from './desktop-file-state.js';
+  import { createMacDockCommands } from './mac-dock-commands.js';
+  import { macDockDefaults, macDockApps, macDockContextItems, macDockWindowCards } from './mac-dock-model.js';
+  import { createMacApplicationFiles, applicationBundleId } from './mac-application-files.js';
+  import MacDockAppWindows from './MacDockAppWindows.svelte';
   import { createFileCommands, moveVirtualFiles, trashVirtualFiles } from './windows11-explorer.js';
   import { windows11DesktopFiles } from './windows11-shell-state.js';
   import { liveFile, isTrashed } from './windows11-app-helpers.js';
@@ -34,6 +38,7 @@
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu');
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
+  const hasDockContext = profile.capabilities.includes('shell.dock-context');
   const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
   const desktopUtilityApps = macDesktop ? {
     'desktop-info': { ...applications.finder, width: 360, height: 560, minimumSize: { width: 300, height: 300 } },
@@ -53,17 +58,40 @@
   const initialData = adapter.createSceneData();
   let notesState = $state(initialData.notes);
   let nativeState = $state(initialData.native);
-  let macFiles = $state(macDesktop ? createMacDesktopFileStore(profile, initialData.notes.timeBase + 42 * 60_000) : undefined);
+  let macFiles = $state(macDesktop ? createMacSceneFiles() : undefined);
   const desktopFileStore = macDesktop ? macFiles : nativeState.apps;
   const desktopFilePolicy = macDesktop ? { validateName: validMacDesktopName } : {};
   const desktopFileCommands = createFileCommands(desktopFileStore, desktopFilePolicy);
   let desktopState = $state({ selectedFileIds: [], selectionAnchorId: null, rename: null, marquee: null, positions: {},
     context: null, sortBy: 'none', viewOptions: desktopViewDefaults(profile.family, profile.renderer),
     focusedControl: null, ...(hasDesktopStacks ? { stacks: desktopStacksDefaults() } : {}),
+    ...(hasDockContext ? { dock: macDockDefaults(profile) } : {}),
     ...(hasWindowMenu ? { windowMenuOpen: false, windowMenuItem: null, windowMenuScrollTop: 0 } : {}) });
   const desktopItems = $derived(getDesktopItems());
   const desktopDetails = $derived(getDesktopDetails());
   const desktopStacks = $derived(getDesktopStacks());
+  const dockApplications = $derived(hasDockContext ? macDockApps(profile, desktopState.dock, runningAppIds) : undefined);
+  const dockMenuItems = $derived(hasDockContext ? getDockMenuItems() : []);
+  const dockWindowCards = $derived(desktopState.dock?.appWindows ? macDockWindowCards(windows, desktopState.dock.appWindows.appId, area) : []);
+  const dockWindowBounds = $derived(Object.fromEntries(dockWindowCards.map(card => [card.windowId, card.rect])));
+  $effect(() => {
+    if (!hasDockContext) return;
+    const dock = desktopState.dock, pinned = new Set(dock.pinnedAppIds), running = new Set(runningAppIds);
+    const order = dock.mainOrderAppIds.filter(id => pinned.has(id) || running.has(id));
+    for (const app of dockApplications.main) if (!order.includes(app.id)) order.push(app.id);
+    if (order.length !== dock.mainOrderAppIds.length || order.some((id, index) => id !== dock.mainOrderAppIds[index]))
+      dock.mainOrderAppIds = order;
+    if (dock.context && ![...dockApplications.main, ...dockApplications.recent].some(app => app.id === dock.context.appId)) dock.context = null;
+    const menu = dock.context;
+    if (menu && menu.itemId && !getDockMenuItems().flatMap(item => [item, ...(item.children ?? [])]).some(item => item.id === menu.itemId && item.enabled)) {
+      const entry = getDockMenuItems().find(item => item.enabled);
+      menu.itemId = entry?.id ?? null; menu.submenuId = null;
+      tick().then(() => { if (dock.context === menu) desktopView?.focusDockMenuItem(menu.itemId); });
+    }
+    if (dock.appWindows?.selectedWindowId && !windows.some(window => window.id === dock.appWindows.selectedWindowId && window.appId === dock.appWindows.appId)) {
+      dock.appWindows.selectedWindowId = windows.find(window => window.appId === dock.appWindows.appId)?.id ?? null;
+    }
+  });
   let notesViewState = $state(initialData.notes ? { context: null, contextItem: null, focusedControl: null, scroll: { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } } : undefined);
   let desktopView = null;
   let notesView = null;
@@ -146,6 +174,7 @@
       const folder = liveFile(macFiles, target.folderId);
       if (!window || !folder || folder.kind !== 'folder') return rejected('not_found', 'The Finder window or folder no longer exists.');
       window.folderId = folder.id; window.title = folder.name;
+      window.finderSelectedFileIds = [];
       const result = await handlers['window.focus']({ windowId: window.id }, {});
       return result.status === 'applied' ? { status: 'applied', target: { windowId: window.id, folderId: folder.id } } : result;
     },
@@ -153,6 +182,15 @@
   if (hasDesktopStacks) Object.assign(handlers, createDesktopStacksCommands(desktopState, {
     getGroups: getDesktopStacks, getView: () => desktopView, available: windowInteractionsAvailable,
     focusDesktop, invoke: (command, target, payload) => handlers[command](target, payload),
+  }));
+  if (hasDockContext) Object.assign(handlers, createMacDockCommands(desktopState, {
+    profile, available: sceneInteractionsAvailable, getView: () => desktopView,
+    getItems: getDockMenuItems, getDockApps: () => [...dockApplications.main, ...dockApplications.recent],
+    getWindows: () => windows, getActiveWindowId: () => activeWindowId,
+    invoke: (command, target, payload) => handlers[command](target, payload),
+    reveal: revealMacApplication, focusDock, restoreOverviewFocus,
+    isQuitting: appId => pendingQuitAppIds.includes(appId),
+    dismissAppMenus: clearNotesPresentation,
   }));
   Object.assign(handlers,
     createWindowCommands(() => windows, {
@@ -171,6 +209,7 @@
         if (!macDesktop) return;
         const window = windows.find(window => window.id === windowId);
         liveFile(macFiles, file.id).lastOpenedAt = nextMacFileTimestamp(macFiles);
+        if (file.kind === 'application') return;
         if (file.kind === 'folder') window.folderId = file.id;
         else window.fileId = file.id;
       },
@@ -181,7 +220,7 @@
   );
   if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
     getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes').id),
-    isVisible: () => windows.some((window) => window.appId === 'notes' && !window.minimized),
+    isVisible: () => !desktopState.dock?.appWindows && windows.some((window) => window.appId === 'notes' && !window.minimized),
   }));
   if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
     native: nativeState,
@@ -212,7 +251,11 @@
         appId: id, name, coverage, minimumSize, multipleWindows, quitAllowed,
         running: runningAppIds.includes(id), active: activeAppId === id, quitting: pendingQuitAppIds.includes(id),
         windowIds: windows.filter(window => window.appId === id).map(window => window.id),
-        ...(dock ? { dock } : {}), ...(taskbar ? { taskbar } : {}),
+        ...(hasDockContext ? {
+          ...(dockApplications.main.some(app => app.id === id) ? { dock: 'main' }
+            : dockApplications.recent.some(app => app.id === id) ? { dock: 'recent' } : {}),
+          dockPinned: desktopState.dock.pinnedAppIds.includes(id),
+        } : dock ? { dock } : {}), ...(taskbar ? { taskbar } : {}),
       })),
       desktopFiles: getVisibleDesktopItems().map(({ id, name, appId, folderId, renameable, movable }) => ({ fileId: id, name, appId, folderId, renameable, movable })),
       ...(macFiles ? { desktop: {
@@ -229,11 +272,19 @@
             ({ stackId: id, name, fileIds: [...fileIds], topFileId, topIndex, expanded, browsing })),
           itemBounds: desktopView?.stackRects() ?? [],
         } } : {}),
-        locations: macFiles.files.filter(file => file.kind === 'folder' && !isTrashed(macFiles, file)).map(({ id, name, parentId }) => ({ folderId: id, name, parentId, dropAllowed: id !== 'trash' })),
+        locations: macFiles.files.filter(file => file.kind === 'folder' && !isTrashed(macFiles, file)).map(({ id, name, parentId, readOnly }) => ({ folderId: id, name, parentId, dropAllowed: id !== 'trash' && !readOnly })),
         files: macFiles.files.filter(file => !isTrashed(macFiles, file)).map(({ id, name, parentId, kind, createdAt, modifiedAt, addedAt, lastOpenedAt, tags }) =>
           ({ fileId: id, name, parentId, kind, createdAt: createdAt ?? null, modifiedAt: modifiedAt ?? null,
             addedAt: addedAt ?? null, lastOpenedAt: lastOpenedAt ?? null, tags: [...(tags ?? [])] })),
         itemBounds: desktopView?.itemRects() ?? [],
+      } } : {}),
+      ...(hasDockContext ? { dock: {
+        pinnedAppIds: [...desktopState.dock.pinnedAppIds], mainOrderAppIds: [...desktopState.dock.mainOrderAppIds],
+        mainAppIds: dockApplications.main.map(app => app.id), recentAppIds: dockApplications.recent.map(app => app.id),
+        context: desktopState.dock.context ? { ...desktopState.dock.context, scroll: { ...desktopState.dock.context.scroll } } : null,
+        menuItems: getDockMenuItems(), menuBounds: desktopView?.dockMenuBounds() ?? [],
+        appWindows: desktopState.dock.appWindows ? { ...desktopState.dock.appWindows, cards: dockWindowCards.map(card => ({ ...card, rect: { ...card.rect } })) } : null,
+        bundles: macFiles.files.filter(file => file.bundleAppId).map(file => ({ appId: file.bundleAppId, fileId: file.id, folderId: file.parentId })),
       } } : {}),
       windows: windows.map((window) => ({
         windowId: window.id, appId: window.appId, minimized: window.minimized, [expandedProperty]: window[expandedProperty],
@@ -242,6 +293,9 @@
         ...(window.fileId ? { fileId: window.fileId } : {}),
         ...(window.utilityKind ? { utilityKind: window.utilityKind } : {}),
         ...(window.infoSections ? { infoSections: { ...window.infoSections } } : {}),
+        ...(window.finderSelectedFileIds ? { selectedFileIds: [...window.finderSelectedFileIds] } : {}),
+        ...(desktopState.dock?.appWindows ? { presentationVisible: Boolean(dockWindowBounds[window.id]),
+          ...(dockWindowBounds[window.id] ? { overviewBounds: { ...dockWindowBounds[window.id] } } : {}) } : {}),
         resize: { available: hasWindowResize && !window.minimized && !window[expandedProperty] && windowInteractionsAvailable(), edges: resizeEdges, minimumSize: windowApplication(window).minimumSize },
       })),
       ...(hasWindowMenu ? { menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }] } : {}),
@@ -268,6 +322,12 @@
       }
     }
     if (desktopView && hasWindowMenu) desktopState.windowMenuScrollTop = desktopView.windowMenuScrollTop();
+    if (desktopView && desktopState.dock?.context) {
+      for (const region of ['main', 'submenu']) {
+        const top = desktopView.dockMenuScrollTop(region);
+        if (top !== null) desktopState.dock.context.scroll[region] = top;
+      }
+    }
   }
 
   function registerDesktopView(view) {
@@ -285,8 +345,11 @@
     return () => { if (applicationViews.get(windowId) === view) applicationViews.delete(windowId); };
   }
 
-  function windowInteractionsAvailable() {
+  function sceneInteractionsAvailable() {
     return !disposed && (adapter.windowInteractionsAvailable?.(nativeState) ?? true);
+  }
+  function windowInteractionsAvailable() {
+    return sceneInteractionsAvailable() && !desktopState.dock?.appWindows;
   }
 
   function getApplicationView(windowId) {
@@ -299,6 +362,47 @@
   async function focusKeyboardWindow(id) {
     await tick();
     [...document.querySelectorAll('[data-window-id]')].find((element) => element.dataset.windowId === id)?.focus({ preventScroll: true });
+  }
+  function createMacSceneFiles() {
+    const store = createMacDesktopFileStore(profile, initialData.notes.timeBase + 42 * 60_000);
+    store.files.push(...createMacApplicationFiles(profile, initialData.notes.timeBase + 42 * 60_000));
+    return store;
+  }
+  function getDockMenuItems() {
+    return macDockContextItems(profile, desktopState.dock, windows, runningAppIds, activeWindowId, pendingQuitAppIds);
+  }
+  async function focusDock(appId) {
+    const current = [...dockApplications.main, ...dockApplications.recent].find(app => app.id === appId)
+      ?? dockApplications.main[0];
+    if (current) await handlers['desktop.focusControl']({ control: 'dock', appId: current.id }, {});
+    else await handlers['desktop.focus']({}, {});
+  }
+  async function restoreOverviewFocus(appId) {
+    const window = windows.find(window => window.id === activeWindowId && !window.minimized);
+    if (window) await focusKeyboardWindow(window.id);
+    else await focusDock(appId);
+  }
+  async function revealMacApplication(appId) {
+    const file = liveFile(macFiles, applicationBundleId(appId));
+    const folder = file && liveFile(macFiles, file.parentId);
+    if (!file || !folder) return rejected('not_found', 'The simulated application bundle or containing directory no longer exists.');
+    let window = windows.findLast(window => window.appId === 'finder' && !window.utilityKind && window.folderId === folder.id);
+    if (!window) {
+      const created = await handlers['window.create']({ appId: 'finder' }, { title: folder.name });
+      if (created.status !== 'applied') return created;
+      window = windows.find(window => window.id === created.target.windowId);
+    }
+    window.folderId = folder.id; window.title = folder.name; window.finderSelectedFileIds = [file.id];
+    const focused = await handlers['window.focus']({ windowId: window.id }, {});
+    if (focused.status !== 'applied') return focused;
+    await tick();
+    const root = [...document.querySelectorAll('[data-window-id]')].find(element => element.dataset.windowId === window.id);
+    const target = [...(root?.querySelectorAll('[data-folder-item-id]') ?? [])].find(element => element.dataset.folderItemId === file.id);
+    if (!target) throw new Error('The real Finder application bundle did not render after reveal.');
+    const pane = target.closest('.folder-contents'), bounds = target.getBoundingClientRect(), area = pane.getBoundingClientRect();
+    if (bounds.top < area.top) pane.scrollTop += bounds.top - area.top;
+    else if (bounds.bottom > area.bottom) pane.scrollTop += bounds.bottom - area.bottom;
+    return { status: 'applied', target: { appId, fileId: file.id, folderId: folder.id, windowId: window.id } };
   }
 
   function nativeDesktopItems() {
@@ -396,6 +500,8 @@
   }
 
   function moveDesktopItems(fileIds, folderId) {
+    if (macDesktop && liveFile(macFiles, folderId)?.readOnly)
+      return rejected('disabled', 'The simulated installed-application location is read-only.');
     if (macDesktop && folderId === 'trash') return rejected('disabled', 'Trash deletion and restoration belong to the simulated filesystem lifecycle; this desktop slice moves to ordinary folders only.');
     const moves = fileIds.map(fileId => {
       const file = liveFile(desktopFileStore, fileId);
@@ -466,6 +572,7 @@
   function focusDesktop() {
     activeWindowId = null;
     activeAppId = profile.defaults.desktopAppId;
+    if (hasDockContext) { desktopState.dock.context = null; desktopState.dock.appWindows = null; }
     if (hasDesktopStacks) desktopState.stacks.focusedStackId = null;
     if (hasWindowMenu) {
       desktopState.windowMenuOpen = false;
@@ -508,6 +615,7 @@
     activeWindowId = id;
     activeAppId = window.appId;
     desktopState.context = null;
+    if (hasDockContext) { desktopState.dock.context = null; desktopState.dock.appWindows = null; }
     if (hasDesktopStacks) desktopState.stacks.focusedStackId = null;
     if (hasWindowMenu) {
       desktopState.windowMenuOpen = false;
@@ -539,6 +647,7 @@
     if (!runningAppIds.includes(appId)) runningAppIds.push(appId);
     activeWindowId = id;
     activeAppId = appId;
+    if (hasDockContext) { desktopState.dock.context = null; desktopState.dock.appWindows = null; }
     if (hasDesktopStacks) desktopState.stacks.focusedStackId = null;
     return id;
   }
@@ -695,17 +804,22 @@
   {desktopItems}
   {desktopDetails}
   {desktopStacks}
+  {dockApplications}
+  {dockMenuItems}
   native={nativeState}
   execute={commands.execute}
   registerView={registerDesktopView}
   onlayout={() => commands.execute({ command: 'desktop.refreshLayout' })}
 >
   {#each windows as window, index (window.id)}
-    {#if !window.minimized}
+    {#if !window.minimized || dockWindowBounds[window.id]}
       <Window
         {window}
         active={activeWindowId === window.id}
-        zIndex={index + 1}
+        zIndex={dockWindowBounds[window.id] ? 7001 : index + 1}
+        presentationBounds={dockWindowBounds[window.id]}
+        interactive={!desktopState.dock?.appWindows}
+        visible={!desktopState.dock?.appWindows || Boolean(dockWindowBounds[window.id])}
         onfocus={() => windowCommand('window.focus', window.id, { keyboard: false })}
         onclose={() => windowCommand('window.close', window.id)}
         onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
@@ -743,9 +857,12 @@
         {:else if window.utilityKind === 'desktop-view-options'}
           <MacDesktopViewOptions {profile} options={desktopState.viewOptions} sortBy={desktopState.sortBy} stacks={desktopState.stacks} execute={commands.execute} />
         {:else if macDesktop && window.appId === 'finder'}
-          <MacDesktopFolder {profile} windowId={window.id} folderId={window.folderId} files={macFiles.files} execute={commands.execute} />
+          <MacDesktopFolder {profile} windowId={window.id} folderId={window.folderId} files={macFiles.files} selectedFileIds={window.finderSelectedFileIds ?? []} execute={commands.execute} />
         {/if}
       </Window>
     {/if}
   {/each}
+  {#if desktopState.dock?.appWindows}
+    <MacDockAppWindows {profile} app={applications[desktopState.dock.appWindows.appId]} state={desktopState.dock.appWindows} cards={dockWindowCards} {area} execute={commands.execute} />
+  {/if}
 </Desktop>

@@ -57,3 +57,9 @@ A derived presentation group of real desktop document IDs, not a folder or synth
 
 **Fictional file time**:
 A monotonic scene timestamp in the selected OS era, advanced by actual simulated file events rather than host time. Null metadata is unknown, not Unix epoch zero.
+
+**Dock alias**:
+A session-local launcher reference to an installed simulated application. Keeping/removing an alias changes neither application lifetime nor its readonly bundle; a running unpinned alias survives until quit.
+
+**App Exposé**:
+A browser-contained overview of one application's actual managed windows, including minimized windows. It projects original live surfaces without rewriting normal/restore geometry; overview selection is distinct from actual window activation.

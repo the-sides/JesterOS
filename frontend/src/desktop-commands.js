@@ -85,7 +85,7 @@ export function createDesktopCommands(viewState, {
       const file = getFiles().find((entry) => entry.id === target.fileId);
       if (!file) return rejected('not_found', 'Desktop file does not exist.');
       if (!getView()) return rejected('unavailable', 'The desktop is not mounted.');
-      const result = await openApp({ appId: file.appId }, { title: file.name });
+      const result = await openApp({ appId: file.appId }, file.kind === 'application' ? {} : { title: file.name });
       if (result.status === 'applied') openedFile(result.target.windowId, file);
       return result.status === 'applied' ? applied({ ...result.target, fileId: file.id }) : result;
     },

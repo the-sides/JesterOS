@@ -4,7 +4,7 @@
   import SonomaIcon from './SonomaIcon.svelte';
   import { isTrashed } from './windows11-app-helpers.js';
 
-  let { profile, windowId, folderId, files, execute } = $props();
+  let { profile, windowId, folderId, files, selectedFileIds = [], execute } = $props();
   const Icon = $derived(profile.renderer === 'sonoma' ? SonomaIcon
     : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   const store = $derived({ files });
@@ -31,13 +31,19 @@
   </nav>
   <div class="folder-contents" role="list" aria-label="Items in folder">
     {#each contents as file (file.id)}
-      <div class="folder-item" role="listitem" data-folder-item-id={file.id}>
+      <div class="folder-item" class:selected={selectedFileIds.includes(file.id)} role="listitem" data-folder-item-id={file.id} aria-current={selectedFileIds.includes(file.id) ? 'true' : undefined}>
         {#if file.kind === 'folder'}
           <button class="folder-directory" type="button" aria-label={`Open ${file.name}`} disabled={folderId === 'trash'} onclick={() => navigate(file.id)}>
             <Icon name={file.icon ?? 'folder'} assets={profile.assets}/><span class="folder-label">{file.name}</span>
           </button>
         {:else}
-          <div class="folder-file"><Icon name={file.icon ?? 'pdf'} assets={profile.assets}/><span class="folder-label">{file.name}</span></div>
+          {#if file.kind === 'application'}
+            <button class="folder-file" type="button" aria-label={`Open ${file.name}`} onclick={() => execute({ command: 'desktop.open', target: { fileId: file.id }, payload: {} })}>
+              <Icon name={file.icon} assets={profile.assets}/><span class="folder-label">{file.name}</span>
+            </button>
+          {:else}
+            <div class="folder-file"><Icon name={file.icon ?? 'pdf'} assets={profile.assets}/><span class="folder-label">{file.name}</span></div>
+          {/if}
         {/if}
       </div>
     {:else}
@@ -60,6 +66,7 @@
   .folder-directory, .folder-file { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; line-height: 16px; text-align: center; }
   .folder-item :global(.app-icon), .folder-item :global(.sonoma-icon) { display: block; width: 64px; height: 64px; }
   .folder-label { max-width: 100%; padding: 0 2px; overflow-wrap: anywhere; }
+  .selected .folder-label { background: #3875cc; color: white; border-radius: 3px; }
   .folder-directory:focus-visible { outline: 2px solid #73a6e6; outline-offset: 4px; border-radius: 3px; }
   .folder-navigation button:focus-visible { outline: 2px solid #73a6e6; outline-offset: 1px; }
   .folder-empty { grid-column: 1 / -1; margin: 50px 0; color: #777; text-align: center; }

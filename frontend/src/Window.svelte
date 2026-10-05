@@ -4,7 +4,9 @@
   import WindowResizeHandles from './WindowResizeHandles.svelte';
   import './windows.css';
 
-  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onmove, resizable = false, onresize, children } = $props();
+  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onmove, resizable = false, onresize, presentationBounds, interactive = true, visible = true, children } = $props();
+  const bounds = $derived(presentationBounds ?? window.bounds);
+  $effect(() => { if (!interactive) endDrag(); });
   let element;
   let drag = null;
 
@@ -52,10 +54,12 @@
   role="dialog"
   aria-label={window.title}
   tabindex="-1"
-  style:left="{window.bounds.x}px"
-  style:top="{window.bounds.y}px"
-  style:width="{window.bounds.width}px"
-  style:height="{window.bounds.height}px"
+  inert={!interactive}
+  style:visibility={visible ? undefined : 'hidden'}
+  style:left="{bounds.x}px"
+  style:top="{bounds.y}px"
+  style:width="{bounds.width}px"
+  style:height="{bounds.height}px"
   style:z-index={zIndex}
   onpointerdown={startDrag}
   onpointermove={moveDrag}
@@ -68,7 +72,7 @@
     class="window-surface"
     style:width="{window.bounds.width / window.bounds.scale}px"
     style:height="{window.bounds.height / window.bounds.scale}px"
-    style:transform="scale({window.bounds.scale})"
+    style:transform="scale({bounds.scale})"
   >
     {#if window.appId === 'messages' || window.appId === 'notes'}
       {@render children()}
