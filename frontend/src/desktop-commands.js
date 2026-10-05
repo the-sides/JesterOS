@@ -1,7 +1,6 @@
 import { isRecord, rejected } from './feature-commands.js';
 
 const windowOperations = ['close', 'minimize', 'zoom'];
-const dockItems = ['downloads', 'trash'];
 
 function fields(value, allowed) {
   return isRecord(value) && Object.keys(value).every((key) => allowed.includes(key));
@@ -16,15 +15,14 @@ function applied(target) {
  * ('close'/'minimize'/'zoom'/'window:<windowId>') targets. Empty payloads are
  * required except menu.open {position?:'first'|'last', itemId?:string},
  * menu.close {restoreFocus?:boolean}, and desktop.scroll {top:number}.
- * desktop.focusControl targets control:'file' + fileId, 'dock' + appId/itemId,
- * 'window-menu', or null (an observed focus outside desktop controls).
+ * desktop.focusControl targets control:'file' + fileId, 'window-menu',
+ * or null (an observed focus outside desktop controls). Native Dock focus is dock.focus.
  * menu.select also accepts itemId:null only when no enabled menu items remain.
  * The mounted view supplies placement, enabled IDs, focus and scroll helpers;
  * callbacks invoke shared app/window handlers directly, never global execute.
  */
 export function createDesktopCommands(viewState, {
   getView,
-  getProfile,
   getFiles,
   getItems,
   openedFile,
@@ -197,18 +195,9 @@ export function createDesktopCommands(viewState, {
       } else if (target?.control === 'file') {
         valid = fields(target, ['control', 'fileId']) && typeof target.fileId === 'string';
         exists = getItems().some((file) => file.id === target.fileId);
-      } else if (target?.control === 'dock') {
-        if (Object.hasOwn(target, 'appId')) {
-          valid = fields(target, ['control', 'appId']) && typeof target.appId === 'string';
-          const applications = getProfile().applications;
-          exists = Object.hasOwn(applications, target.appId) && ['main', 'recent'].includes(applications[target.appId].dock);
-        } else {
-          valid = fields(target, ['control', 'itemId']) && typeof target.itemId === 'string';
-          exists = dockItems.includes(target.itemId);
-        }
       }
       if (!valid || !fields(payload, [])) {
-        return rejected('invalid_arguments', 'desktop.focusControl requires a file, Dock app/item, Window menu button, or null control target and an empty payload.');
+        return rejected('invalid_arguments', 'desktop.focusControl requires a file, Window menu button, or null control target and an empty payload.');
       }
       if (!exists) return rejected('not_found', 'Desktop control does not exist.');
       const view = getView();

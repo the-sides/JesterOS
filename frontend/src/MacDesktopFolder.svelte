@@ -4,7 +4,7 @@
   import SonomaIcon from './SonomaIcon.svelte';
   import { isTrashed } from './windows11-app-helpers.js';
 
-  let { profile, windowId, folderId, files, selectedFileIds = [], execute } = $props();
+  let { profile, windowId, folderId, files, selectedFileIds = [], dockState, execute } = $props();
   const Icon = $derived(profile.renderer === 'sonoma' ? SonomaIcon
     : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   const store = $derived({ files });
@@ -18,6 +18,19 @@
   function navigate(destination) {
     return execute({ command: 'desktop.folder.navigate',
       target: { windowId, folderId: destination }, payload: {} });
+  }
+  let bundleDragStart = null;
+  function dragBundle(event, file) {
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('application/x-jesteros-application', file.bundleAppId);
+    bundleDragStart = execute({ command: 'dock.drag.begin', target: { itemId: `app:${file.bundleAppId}` },
+      payload: { x: event.clientX, y: event.clientY, source: 'bundle' } });
+  }
+  async function endBundleDrag(event, file) {
+    if (event.dataTransfer.dropEffect !== 'none') return;
+    await bundleDragStart;
+    if (dockState?.drag?.source === 'bundle' && dockState.drag.itemId === `app:${file.bundleAppId}`)
+      await execute({ command: 'dock.drag.end', target: {}, payload: { cancel: true } });
   }
 </script>
 
@@ -38,7 +51,9 @@
           </button>
         {:else}
           {#if file.kind === 'application'}
-            <button class="folder-file" type="button" aria-label={`Open ${file.name}`} onclick={() => execute({ command: 'desktop.open', target: { fileId: file.id }, payload: {} })}>
+            <button class="folder-file" type="button" aria-label={`Open ${file.name}`} draggable={!!dockState}
+              ondragstart={event => dragBundle(event, file)} ondragend={event => endBundleDrag(event, file)}
+              onclick={() => execute({ command: 'desktop.open', target: { fileId: file.id }, payload: {} })}>
               <Icon name={file.icon} assets={profile.assets}/><span class="folder-label">{file.name}</span>
             </button>
           {:else}

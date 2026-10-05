@@ -15,7 +15,7 @@ export const sonomaProfile = {
   capabilities: [
     'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
     'shell.window-create', 'app.lifecycle',
-    'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.window-menu', 'scene.profile-selection',
+    'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management', 'shell.dock-recents', 'shell.window-menu', 'scene.profile-selection',
     'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {
@@ -31,7 +31,7 @@ export const sonomaProfile = {
     contacts: launchOnly('contacts', 'Contacts', 'main'),
     reminders: launchOnly('reminders', 'Reminders', 'main'),
     notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 720, minimumSize: { width: 960, height: 420 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
-    settings: launchOnly('settings', 'System Settings', 'main'),
+    settings: { ...launchOnly('settings', 'System Settings', 'main'), coverage: 'dock-preferences' },
     music: launchOnly('music', 'Music', 'recent'),
     appstore: launchOnly('appstore', 'App Store'),
     automator: launchOnly('automator', 'Automator'),

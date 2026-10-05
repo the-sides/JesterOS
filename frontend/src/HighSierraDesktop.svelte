@@ -7,6 +7,7 @@
 
   import MacDockContextMenu from './MacDockContextMenu.svelte';
   import { createMacDockView } from './mac-dock-view.js';
+  import MacDock from './MacDock.svelte';
   let {
     profile,
     children,
@@ -14,6 +15,8 @@
     desktopDetails = {},
     dockApplications,
     dockMenuItems = [],
+    dockTiles = [],
+    renderWindowTile,
     windows = [],
     runningAppIds = [],
     activeWindowId = null,
@@ -53,17 +56,19 @@
   });
   const options = $derived(viewState.viewOptions);
   const customView = $derived(options.iconSize !== 64 || options.gridSpacing !== 23 || options.textSize !== 12 || options.labelPosition !== 'bottom');
-  const dockApps = $derived(dockApplications.main);
   let workspace = $state();
   let dock = $state();
-  const dockView = createMacDockView({ getWorkspace: () => workspace, getDock: () => dock,
+  let dockControls;
+  const dockView = createMacDockView({ getWorkspace: () => workspace, getDock: () => dock, getDockControls: () => dockControls,
     getState: () => viewState.dock, getActiveApp: () => activeApp, execute: command => execute(command) });
-  $effect(() => { dockApps; if (dock?.isConnected) dockView.fitDock(); });
+  $effect(() => {
+    viewState.dock.preferences.autoHide;
+    tick().then(() => { if (workspace?.isConnected && dock?.isConnected) { filesHeight = measureWorkspace().height; onlayout?.(); } });
+  });
   let windowMenuContainer;
   let windowMenuButton;
   let windowMenuPanel = $state(null);
   let windowMenuLeft = $state(0);
-  const runningApps = $derived(new Set(runningAppIds));
   const activeWindow = $derived(windows.find((window) => window.id === activeWindowId));
   let renameBounds = $state(null);
   const interactions = createDesktopItemInteractions({
@@ -264,11 +269,6 @@
     else if (target.control === 'file') {
       element = desktopButtons()
         .find((file) => file.dataset.fileId === target.fileId);
-    } else if (target.control === 'dock') {
-      element = [...dock.querySelectorAll('[data-app-id], [data-dock-item-id]')]
-        .find((item) => target.appId !== undefined
-          ? item.dataset.appId === target.appId
-          : item.dataset.dockItemId === target.itemId);
     }
     element?.focus();
   }
@@ -286,7 +286,7 @@
   function measureWorkspace() {
     const width = workspace.clientWidth;
     // Reserve fractional Dock pixels too; offsetHeight can round them down.
-    const height = Math.max(0, workspace.clientHeight - Math.ceil(dock.getBoundingClientRect().height));
+    const height = Math.max(0, workspace.clientHeight - (viewState.dock.preferences.autoHide ? 0 : Math.ceil(dock.getBoundingClientRect().height)));
     return { width, height };
   }
 
@@ -314,7 +314,6 @@
     let previousWidth;
     let previousHeight;
     function reportLayout() {
-      dockView.fitDock();
       const { width, height } = measureWorkspace();
       layoutWidth = width;
       if (viewState.rename) measureRename();
@@ -338,6 +337,7 @@
       dismissOutside(event);
       const target = event.target;
       if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu]')) return;
+      if (!dock.contains(target) && viewState.dock.focusedItemId) request('dock.focus', { itemId: null }, { observe: true });
       if (!windowMenuContainer.contains(target)
         && !dock.contains(target)
         && !(target instanceof Element && (target.matches('[data-desktop-rename]')
@@ -538,31 +538,8 @@
     {@render children()}
   </main>
 
-  <footer class="dock" bind:this={dock} aria-label="Application dock">
-    <ul class="dock-apps">
-      {#each dockApps as app (app.id)}
-        <li class="dock-item">
-          <button
-              type="button"
-              class="dock-button"
-              class:is-active={activeApp.id === app.id && (app.id === 'finder' || activeWindowId !== null)}
-              aria-label={app.name}
-              aria-describedby={app.id === 'finder' || runningApps.has(app.id) ? `app-running-${app.id}` : undefined}
-              title={app.name}
-              data-app-id={app.id}
-              onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })}
-              onpointerdown={event => dockView.pointerdown(event, app.id)}
-              oncontextmenu={event => dockView.contextmenu(event, app.id)}
-              onkeydown={event => dockView.keydown(event, app.id)}
-              onclick={event => dockView.click(event, app.id)}
-          ><AppIcon name={app.icon} assets={profile.assets}/>{#if app.id === 'finder' || runningApps.has(app.id)}<span class="active-dot" aria-hidden="true"></span><span class="sr-only" id={`app-running-${app.id}`}>Running</span>{/if}</button>
-        </li>
-      {/each}
-    </ul>
-    <div class="dock-separator" aria-hidden="true"></div>
-    <div class="dock-item"><button type="button" class="dock-button" aria-label="Downloads" title="Downloads" data-dock-item-id="downloads" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'downloads' })} onclick={() => request('desktop.open', { fileId: 'downloads' })}><AppIcon name="downloads" assets={profile.assets}/></button></div>
-    <div class="dock-item"><button type="button" class="dock-button" aria-label="Trash" title="Trash" data-dock-item-id="trash" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'trash' })} onclick={() => request('desktop.open', { fileId: 'trash' })}><AppIcon name="trash" assets={profile.assets}/></button></div>
-  </footer>
+  <MacDock {profile} state={viewState.dock} applications={dockApplications} tiles={dockTiles} {runningAppIds}
+    activeAppId={activeApp.id} {execute} {renderWindowTile} bind:element={dock} bind:this={dockControls} />
 </div>
 
 <style>

@@ -95,12 +95,10 @@ export const commandCatalog = {
     ['Clear selection and active window, dismiss menus, blur managed-window controls.']),
   define('desktop.focusControl', 'shell.desktop', { oneOf: [
     object({ control: { const: 'file' }, fileId: identity }),
-    object({ control: { const: 'dock' }, appId: identity }),
-    object({ control: { const: 'dock' }, itemId: choice('downloads', 'trash') }),
     object({ control: { const: 'window-menu' } }),
     object({ control: { const: null } }),
   ] }, empty,
-    ['Mounted desktop control; file/app identity must be in the actual desktop/Dock registry.'],
+    ['Mounted desktop control; file identity must be in the actual desktop registry. Native Dock uses dock.focus.'],
     ['Focus semantic control; null only records focus outside desktop controls without moving it.']),
   define('desktop.scroll', 'shell.window-menu', object({ region: { const: 'window-menu' } }), object({ top: offset }),
     ['Window popup is open; mounted desktop view.'],

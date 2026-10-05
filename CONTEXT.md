@@ -61,5 +61,14 @@ A monotonic scene timestamp in the selected OS era, advanced by actual simulated
 **Dock alias**:
 A session-local launcher reference to an installed simulated application. Keeping/removing an alias changes neither application lifetime nor its readonly bundle; a running unpinned alias survives until quit.
 
+**Dock recent history**:
+A newest-first, unique application-use sequence advanced by successful scene app opens/new windows, never host time. Mojave/Sonoma display up to three unpinned recent aliases; High Sierra does not expose that presentation. Initial entries are fictional scene seeds, not a claim of observed host usage.
+
+**Minimized Dock tile**:
+A presentation of an actual minimized managed window, with its live inert interior and an independent exact-window restore control. It is not another application instance, a screenshot, or an app-running marker. Minimize-into-app and App Exposé can own presentation instead without changing retained window data/geometry.
+
+**Dock preferences**:
+Scene-local size, magnification, auto-hide, minimize-into-app and supported recent-app values shared by native controls and commands. An auto-hidden Dock reserves zero workspace even while temporarily revealed; magnification never changes base workspace reservation or host settings.
+
 **App Exposé**:
 A browser-contained overview of one application's actual managed windows, including minimized windows. It projects original live surfaces without rewriting normal/restore geometry; overview selection is distinct from actual window activation.

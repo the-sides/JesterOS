@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { macDockApps, macDockDefaults, macDockWindowCards } from '../frontend/src/mac-dock-model.js';
+import { macDockApps, macDockDefaults, macDockWindowCards, macDockItems, macDockTiles, recordMacAppUse } from '../frontend/src/mac-dock-model.js';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 
 const intersects = (a, b) => a.x < b.x + b.width - 0.001 && a.x + a.width > b.x + 0.001
@@ -36,4 +36,51 @@ test('removing a pin retains running aliases, removes closed aliases, and does n
   const unpinnedRecent = macDockApps(profile, state, ['finder']);
   expect(unpinnedRecent.main.map(app => app.id)).not.toContain('photos');
   expect(unpinnedRecent.recent.map(app => app.id)).toContain('photos');
+});
+
+test('successful app use orders unique recent aliases, excludes pins, and keeps older running apps reachable', () => {
+  const profile = getOSProfile('macos-mojave-10.14'), state = macDockDefaults(profile);
+  const ids = ['safari', 'mail', 'contacts', 'calendar'];
+  state.pinnedAppIds = state.pinnedAppIds.filter(id => !ids.includes(id));
+  for (const id of ids) recordMacAppUse(state, id);
+  let apps = macDockApps(profile, state, ['finder', ...ids]);
+  expect(apps.recent.map(app => app.id)).toEqual(['calendar', 'contacts', 'mail']);
+  expect(apps.main.map(app => app.id)).toContain('safari');
+  expect(apps.main.map(app => app.id)).not.toContain('mail');
+  recordMacAppUse(state, 'mail');
+  expect(state.recentHistory.filter(entry => entry.appId === 'mail')).toEqual([{ appId: 'mail', sequence: state.usageSequence }]);
+  expect(macDockApps(profile, state, ids).recent.map(app => app.id)).toEqual(['mail', 'calendar', 'contacts']);
+  state.pinnedAppIds.push('calendar');
+  expect(macDockApps(profile, state, ids).recent.map(app => app.id)).toEqual(['mail', 'contacts', 'safari']);
+  state.preferences.showRecent = false;
+  apps = macDockApps(profile, state, ids);
+  expect(apps.recent).toEqual([]);
+  for (const id of ids) expect(apps.main.map(app => app.id)).toContain(id);
+  const legacy = getOSProfile('macos-high-sierra-10.13'), legacyState = macDockDefaults(legacy);
+  legacyState.pinnedAppIds = legacyState.pinnedAppIds.filter(id => id !== 'safari');
+  recordMacAppUse(legacyState, 'safari');
+  legacyState.preferences.showRecent = true;
+  expect(macDockApps(legacy, legacyState, ['safari']).recent).toEqual([]);
+  expect(macDockApps(legacy, legacyState, ['safari']).main.map(app => app.id)).toContain('safari');
+});
+
+test('minimized tiles project actual live records in file-side order and disappear on restore or app minimization', () => {
+  const profile = getOSProfile('macos-mojave-10.14'), state = macDockDefaults(profile);
+  const a = { id: 'a', appId: 'safari', title: 'A', minimized: true, bounds: { x: 9, y: 12, width: 500, height: 300, scale: 0.75 } };
+  const b = { id: 'b', appId: 'safari', title: 'B', minimized: true, bounds: { x: 17, y: 21, width: 400, height: 250, scale: 0.5 } };
+  const windows = [a, b], geometry = windows.map(window => ({ ...window.bounds }));
+  state.secondaryOrderItemIds = ['window:b', 'downloads', 'window:a'];
+  expect(macDockTiles(state, windows)).toEqual([b, a]);
+  expect(macDockItems(profile, state, ['finder', 'safari'], windows).filter(item => item.kind !== 'app').map(item => item.itemId))
+    .toEqual(['separator', 'window:b', 'downloads', 'window:a', 'trash']);
+  b.minimized = false;
+  expect(macDockTiles(state, windows)).toEqual([a]);
+  state.preferences.minimizeIntoApp = true;
+  expect(macDockTiles(state, windows)).toEqual([]);
+  state.preferences.minimizeIntoApp = false;
+  state.appWindows = { appId: 'safari' };
+  expect(macDockTiles(state, windows)).toEqual([]);
+  state.appWindows = null;
+  expect(macDockTiles(state, windows)).toEqual([a]);
+  expect(windows.map(window => window.bounds)).toEqual(geometry);
 });

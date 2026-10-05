@@ -11,7 +11,7 @@ export const highSierraProfile = {
   capabilities: [
     'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
     'shell.window-create', 'app.lifecycle',
-    'shell.desktop', 'shell.dock-context', 'shell.window-menu',
+    'shell.desktop', 'shell.dock-context', 'shell.dock-management', 'shell.window-menu',
     'scene.profile-selection',
     'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
@@ -25,7 +25,7 @@ export const highSierraProfile = {
     notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 660, minimumSize: { width: 1060, height: 420 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
     photos: { id: 'photos', name: 'Photos', icon: 'photos', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'launch-only' },
     messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 928, height: 710, minimumSize: { width: 928, height: 710 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'sample' },
-    settings: { id: 'settings', name: 'System Preferences', icon: 'settings', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'launch-only' },
+    settings: { id: 'settings', name: 'System Preferences', icon: 'settings', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'dock-preferences' },
     preview: { id: 'preview', name: 'Preview', icon: 'pdf', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: true, quitAllowed: true, coverage: 'launch-only' },
   },
   desktopFiles: [

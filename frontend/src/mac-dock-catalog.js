@@ -10,8 +10,42 @@ const pairedPoints = ['x', 'y'].map((key, index) => ({
   if: match({ payload: match({ [key]: offset }, [key]) }, ['payload']),
   then: match({ payload: match({ [index ? 'x' : 'y']: offset }, [index ? 'x' : 'y']) }, ['payload']),
 }));
+const nullableIdentity = { oneOf: [identity, { type: 'null' }] };
+const itemTarget = object({ itemId: identity }), optionalItem = object({ itemId: nullableIdentity });
+const coordinate = { type: 'number' };
+const preferenceProperties = { size: { type: 'number', minimum: 16, maximum: 128 }, magnification: flag,
+  magnificationSize: { type: 'number', minimum: 32, maximum: 192 }, autoHide: flag, minimizeIntoApp: flag, showRecent: flag };
+const preferences = object(preferenceProperties);
+const management = 'shell.dock-management';
 
 export const macDockCatalog = Object.fromEntries([
+  define('dock.place', management, itemTarget, object({ beforeItemId: nullableIdentity }), [available, 'Use installed app keys or live Downloads/minimized-window keys; own-section beforeItemId or null for its end. Finder remains first and Trash last.'],
+    ['Add/pin/place an app alias atomically or reorder a live file-side item; never move an application bundle, cross native sections or change window/app lifetime.'],
+    ['Change canonical pin/main/secondary order only.'], NONE, object({ itemId: identity, beforeItemId: nullableIdentity, index: { type: 'integer', minimum: 0 } })),
+  define('dock.drag.begin', management, itemTarget, object({ x: coordinate, y: coordinate, source: choice('dock', 'bundle') }, ['x', 'y']),
+    [available, 'No active Dock gesture. Actual movable alias or installed application-bundle source; fixed Finder/Trash reject.'],
+    ['Begin observable native drag with real source identity and physical pointer origin; dismiss competing presentations and reveal Dock.'], NONE, NONE,
+    object({ itemId: identity, source: choice('dock', 'bundle') })),
+  define('dock.drag.update', management, empty, object({ x: coordinate, y: coordinate }), [available, 'Canonical Dock drag is active.'],
+    ['Record raw pointer and actual DOM drop plan, including section/protected/removal validity; do not apply order or pin changes before end.'], NONE, NONE,
+    object({ itemId: identity, beforeItemId: nullableIdentity, remove: flag, valid: flag })),
+  define('dock.drag.end', management, empty, object({ cancel: flag }, []), [available, 'Canonical Dock drag is active.'],
+    ['Apply the current valid real place/unpin plan, or end cancellation without moving aliases/bundles; release canonical drag and unused auto-hide reveal.'], NONE, NONE,
+    object({ itemId: identity, cancelled: flag, removed: flag })),
+  define('dock.focus', management, optionalItem, object({ observe: flag }, []), [available, 'Non-null itemId is a current actual Dock control.'],
+    ['Reveal and focus semantic app/window/folder/separator control, or observe native focus without moving it; null clears Dock focus.'], NONE, NONE, optionalItem),
+  define('dock.hover', management, optionalItem, object({ x: offset }, []), [available, 'Non-null itemId is a current actual Dock control; null clears with an empty payload.'],
+    ['Record physical magnification point, defaulting to actual icon anchor, and reveal native Dock; adjacent icons/layout reflect canonical preference/hover.'], NONE, [{
+      if: match({ target: match({ itemId: { const: null } }) }), then: match({ payload: empty }),
+    }], optionalItem),
+  define('dock.visibility', management, empty, object({ visible: flag }), [available, 'Hiding requires auto-hide enabled and no active context, drag, hover or focused Dock control.'],
+    ['Reveal or dismiss actual native Dock; pointer edge/keyboard/focus and direct cues share this state. Auto-hide reserves no workspace even during temporary reveal.'], NONE, NONE, object({ visible: flag })),
+  define('dock.preferences.open', management, empty, empty, [available, 'The actual Settings application is not quitting.'],
+    ['Open/restore its single real managed Dock preference pane, not an operator overlay or copied Settings window.'], NONE, NONE, object({ appId: { const: 'settings' }, windowId: identity })),
+  define('dock.preferences.set', management, empty, { ...object(preferenceProperties, []), minProperties: 1 },
+    [available, 'Closed partial actual preferences; showRecent additionally requires shell.dock-recents and rejects in High Sierra.'],
+    ['Update real size/magnification/auto-hide/minimize-into-app/recent presentation and native controls; refit only base workspace changes, not magnification hover.'],
+    ['Retain canonical session preferences independently of window/app lifetime and immutable profiles.'], [match({ payload: true })], object({ preferences })),
   define('dock.activate', capability, app, empty, [available, 'appId is an installed application.'],
     ['Leave app overview and desktop/Dock menus, then use real app.open to launch/restore/focus the application.'], NONE, NONE,
     object({ appId: identity, windowId: identity })),
@@ -21,9 +55,10 @@ export const macDockCatalog = Object.fromEntries([
   define('dock.reveal', capability, app, empty, [available, 'The application has a real readonly simulated bundle record.'],
     ['Open/focus an ordinary Finder destination for the actual containing directory, select/reveal the exact application bundle and retain independent other Finder locations.'],
     NONE, NONE, object({ appId: identity, fileId: identity, folderId: identity, windowId: identity })),
-  define('dock.context.open', capability, app, object({ x: offset, y: offset }, []), [available, 'The application has a currently rendered Dock alias.'],
-    ['Open the canonical native app/window/Options tree above its real icon by default, or at the paired viewport anchor. Close other desktop menus/overview; focus the first enabled entry.'],
-    NONE, pairedPoints, object({ menuId: { const: 'dock-context' }, appId: identity })),
+  define('dock.context.open', capability, { oneOf: [app, object({ itemId: { const: 'separator' } })] }, object({ x: offset, y: offset }, []),
+    [available, 'Application has a rendered Dock alias, or itemId is the actual native separator.'],
+    ['Reveal/open the canonical app/window/Options or native Dock-options tree above its real visual anchor; close competing presentation and focus first enabled entry.'],
+    NONE, pairedPoints, object({ menuId: { const: 'dock-context' }, appId: nullableIdentity })),
   define('dock.context.close', capability, empty, object({ restoreFocus: flag }, []), [available],
     ['Dismiss the native Dock tree, returning to its real alias by default; false preserves outside/native focus.'], NONE, NONE,
     object({ menuId: { const: 'dock-context' } })),
@@ -32,7 +67,7 @@ export const macDockCatalog = Object.fromEntries([
     NONE, NONE, object({ menuId: { const: 'dock-context' }, itemId: identity })),
   define('dock.context.execute', capability, item, empty, [available, menu],
     ['Execute the exact current enabled leaf via real application/window/alias/Finder/App Expose commands. Disabled or parent entries reject before mutation; successful actions close the originating tree.'],
-    NONE, NONE, object({ menuId: { const: 'dock-context' }, itemId: identity, appId: identity })),
+    NONE, NONE, object({ menuId: { const: 'dock-context' }, itemId: identity, appId: nullableIdentity })),
   define('dock.context.scroll', capability, object({ region: choice('main', 'submenu') }), object({ top: offset, observe: flag }, ['top']), [available, menu, 'The requested menu pane is rendered.'],
     ['Set a clamped real menu-pane scroll offset, or observe actual DOM scrolling with observe:true. Retain the actual value through highlight/refit.'],
     NONE, NONE, object({ region: choice('main', 'submenu'), top: offset })),

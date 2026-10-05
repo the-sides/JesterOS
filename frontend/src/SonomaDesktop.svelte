@@ -9,6 +9,7 @@
   import { desktopStackLayout } from './desktop-stacks-model.js';
   import MacDockContextMenu from './MacDockContextMenu.svelte';
   import { createMacDockView } from './mac-dock-view.js';
+  import MacDock from './MacDock.svelte';
 
   let {
     profile,
@@ -18,6 +19,8 @@
     desktopDetails = {},
     dockApplications,
     dockMenuItems = [],
+    dockTiles = [],
+    renderWindowTile,
     windows = [],
     runningAppIds = [],
     activeWindowId = null,
@@ -57,19 +60,20 @@
   });
   const options = $derived(viewState.viewOptions);
   const customView = $derived(options.iconSize !== 64 || options.gridSpacing !== 24 || options.textSize !== 12 || options.labelPosition !== 'bottom');
-  const dockApps = $derived(dockApplications.main);
-  const recentApps = $derived(dockApplications.recent);
   // Retained popup state can precede workspace and Dock bindings during remount.
   let workspace = $state();
   let dock = $state();
-  const dockView = createMacDockView({ getWorkspace: () => workspace, getDock: () => dock,
+  let dockControls;
+  const dockView = createMacDockView({ getWorkspace: () => workspace, getDock: () => dock, getDockControls: () => dockControls,
     getState: () => viewState.dock, getActiveApp: () => activeApp, execute: command => execute(command) });
-  $effect(() => { dockApps; recentApps; if (dock?.isConnected) dockView.fitDock(); });
+  $effect(() => {
+    viewState.dock.preferences.autoHide;
+    tick().then(() => { if (workspace?.isConnected && dock?.isConnected) { filesHeight = measureWorkspace().height; onlayout?.(); } });
+  });
   let windowMenuContainer;
   let windowMenuButton;
   let windowMenuPanel = $state(null);
   let windowMenuLeft = $state(0);
-  const runningApps = $derived(new Set(runningAppIds));
   const activeWindow = $derived(windows.find((window) => window.id === activeWindowId));
   let renameBounds = $state(null);
   const interactions = createDesktopItemInteractions({
@@ -351,11 +355,6 @@
     else if (target.control === 'file') {
       element = desktopButtons()
         .find((file) => file.dataset.fileId === target.fileId);
-    } else if (target.control === 'dock') {
-      element = [...dock.querySelectorAll('[data-app-id], [data-dock-item-id]')]
-        .find((item) => target.appId !== undefined
-          ? item.dataset.appId === target.appId
-          : item.dataset.dockItemId === target.itemId);
     }
     element?.focus();
   }
@@ -373,7 +372,8 @@
   function measureWorkspace() {
     const width = workspace.clientWidth;
     // Floating Dock bottom inset and fractional pixels belong to native geometry.
-    const height = Math.max(0, Math.floor(dock.getBoundingClientRect().top - workspace.getBoundingClientRect().top - 7));
+    const height = Math.max(0, workspace.clientHeight - (viewState.dock.preferences.autoHide ? 0
+      : Math.ceil(dock.getBoundingClientRect().height) + 2 * (parseFloat(getComputedStyle(dock).bottom) || 0)));
     return { width, height };
   }
 
@@ -403,7 +403,6 @@
     let previousWidth;
     let previousHeight;
     function reportLayout() {
-      dockView.fitDock();
       const { width, height } = measureWorkspace();
       layoutWidth = width;
       if (viewState.rename) measureRename();
@@ -427,6 +426,7 @@
       dismissOutside(event);
       const target = event.target;
       if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu]')) return;
+      if (!dock.contains(target) && viewState.dock.focusedItemId) request('dock.focus', { itemId: null }, { observe: true });
       if (!windowMenuContainer.contains(target)
         && !dock.contains(target)
         && !(target instanceof Element && (target.matches('[data-desktop-rename]')
@@ -620,19 +620,8 @@
     {#if viewState.dock?.context && workspace?.isConnected && dock?.isConnected}<MacDockContextMenu {profile} context={viewState.dock.context} items={dockMenuItems} area={contextArea()} {execute}/>{/if}
     {@render children()}
   </main>
-  <footer class="sonoma-dock" bind:this={dock} aria-label="Application dock">
-    <ul class="sonoma-dock-apps">
-      {#each dockApps as app (app.id)}
-        <li class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label={app.name} aria-describedby={app.id === 'finder' || runningApps.has(app.id) ? `sonoma-running-${app.id}` : undefined} title={app.name} data-app-id={app.id} onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })} onpointerdown={event => dockView.pointerdown(event, app.id)} oncontextmenu={event => dockView.contextmenu(event, app.id)} onkeydown={event => dockView.keydown(event, app.id)} onclick={event => dockView.click(event, app.id)}><SonomaIcon name={app.icon} assets={profile.assets}/>{#if app.id === 'finder' || runningApps.has(app.id)}<span class="sonoma-running-dot" aria-hidden="true"></span><span class="sr-only" id={`sonoma-running-${app.id}`}>Running</span>{/if}</button></li>
-      {/each}
-    </ul>
-    {#if recentApps.length}<div class="sonoma-dock-separator" aria-hidden="true"></div><ul class="sonoma-dock-apps" aria-label="Recent applications">
-      {#each recentApps as app (app.id)}<li class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label={app.name} title={app.name} data-app-id={app.id} onfocus={() => request('desktop.focusControl', { control: 'dock', appId: app.id })} onpointerdown={event => dockView.pointerdown(event, app.id)} oncontextmenu={event => dockView.contextmenu(event, app.id)} onkeydown={event => dockView.keydown(event, app.id)} onclick={event => dockView.click(event, app.id)}><SonomaIcon name={app.icon} assets={profile.assets}/>{#if runningApps.has(app.id)}<span class="sonoma-running-dot" aria-hidden="true"></span>{/if}</button></li>{/each}
-    </ul>{/if}
-    <div class="sonoma-dock-separator" aria-hidden="true"></div>
-    <div class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label="Downloads" title="Downloads" data-dock-item-id="downloads" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'downloads' })} onclick={() => request('desktop.open', { fileId: 'downloads' })}><SonomaIcon name="downloads" assets={profile.assets}/></button></div>
-    <div class="sonoma-dock-item"><button type="button" class="sonoma-dock-button" aria-label="Trash" title="Trash" data-dock-item-id="trash" onfocus={() => request('desktop.focusControl', { control: 'dock', itemId: 'trash' })} onclick={() => request('desktop.open', { fileId: 'trash' })}><SonomaIcon name="trash" assets={profile.assets}/></button></div>
-  </footer>
+  <MacDock {profile} state={viewState.dock} applications={dockApplications} tiles={dockTiles} {runningAppIds}
+    activeAppId={activeApp.id} {execute} {renderWindowTile} bind:element={dock} bind:this={dockControls} />
 </div>
 
 <style>

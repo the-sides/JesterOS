@@ -11,9 +11,10 @@
   import { desktopViewDefaults, desktopContextItems, sortDesktopItems, readDesktopFileInfo, desktopFileSize } from './desktop-context-model.js';
   import { createMacDesktopFileStore, macDesktopItems, validMacDesktopName, nextMacFileTimestamp } from './desktop-file-state.js';
   import { createMacDockCommands } from './mac-dock-commands.js';
-  import { macDockDefaults, macDockApps, macDockContextItems, macDockWindowCards } from './mac-dock-model.js';
+  import { macDockDefaults, macDockApps, macDockContextItems, macDockWindowCards, macDockItems, macDockTiles, recordMacAppUse } from './mac-dock-model.js';
   import { createMacApplicationFiles, applicationBundleId } from './mac-application-files.js';
   import MacDockAppWindows from './MacDockAppWindows.svelte';
+  import MacDockPreferences from './MacDockPreferences.svelte';
   import { createFileCommands, moveVirtualFiles, trashVirtualFiles } from './windows11-explorer.js';
   import { windows11DesktopFiles } from './windows11-shell-state.js';
   import { liveFile, isTrashed } from './windows11-app-helpers.js';
@@ -74,14 +75,23 @@
   const dockMenuItems = $derived(hasDockContext ? getDockMenuItems() : []);
   const dockWindowCards = $derived(desktopState.dock?.appWindows ? macDockWindowCards(windows, desktopState.dock.appWindows.appId, area) : []);
   const dockWindowBounds = $derived(Object.fromEntries(dockWindowCards.map(card => [card.windowId, card.rect])));
+  const dockTiles = $derived(hasDockContext ? macDockTiles(desktopState.dock, windows) : []);
   $effect(() => {
     if (!hasDockContext) return;
-    const dock = desktopState.dock, pinned = new Set(dock.pinnedAppIds), running = new Set(runningAppIds);
-    const order = dock.mainOrderAppIds.filter(id => pinned.has(id) || running.has(id));
+    const dock = desktopState.dock, mainIds = new Set(dockApplications.main.map(app => app.id));
+    const order = dock.mainOrderAppIds.filter(id => mainIds.has(id));
     for (const app of dockApplications.main) if (!order.includes(app.id)) order.push(app.id);
     if (order.length !== dock.mainOrderAppIds.length || order.some((id, index) => id !== dock.mainOrderAppIds[index]))
       dock.mainOrderAppIds = order;
-    if (dock.context && ![...dockApplications.main, ...dockApplications.recent].some(app => app.id === dock.context.appId)) dock.context = null;
+    const secondaryIds = ['downloads', ...windows.filter(window => window.minimized).map(window => `window:${window.id}`)];
+    const secondaryOrder = dock.secondaryOrderItemIds.filter(id => secondaryIds.includes(id));
+    for (const id of secondaryIds) if (!secondaryOrder.includes(id)) secondaryOrder.push(id);
+    if (secondaryOrder.length !== dock.secondaryOrderItemIds.length || secondaryOrder.some((id, index) => id !== dock.secondaryOrderItemIds[index]))
+      dock.secondaryOrderItemIds = secondaryOrder;
+    const itemIds = new Set(macDockItems(profile, dock, runningAppIds, windows).map(item => item.itemId));
+    if (dock.hover && !itemIds.has(dock.hover.itemId)) dock.hover = null;
+    if (dock.focusedItemId && !itemIds.has(dock.focusedItemId)) dock.focusedItemId = null;
+    if (dock.context?.kind === 'app' && ![...dockApplications.main, ...dockApplications.recent].some(app => app.id === dock.context.appId)) dock.context = null;
     const menu = dock.context;
     if (menu && menu.itemId && !getDockMenuItems().flatMap(item => [item, ...(item.children ?? [])]).some(item => item.id === menu.itemId && item.enabled)) {
       const entry = getDockMenuItems().find(item => item.enabled);
@@ -187,6 +197,10 @@
     profile, available: sceneInteractionsAvailable, getView: () => desktopView,
     getItems: getDockMenuItems, getDockApps: () => [...dockApplications.main, ...dockApplications.recent],
     getWindows: () => windows, getActiveWindowId: () => activeWindowId,
+    getDockItems: () => macDockItems(profile, desktopState.dock, runningAppIds, windows),
+    getDockSections: () => dockApplications,
+    hasBundle: appId => !!liveFile(macFiles, applicationBundleId(appId)),
+    openPreferences: openDockPreferences,
     invoke: (command, target, payload) => handlers[command](target, payload),
     reveal: revealMacApplication, focusDock, restoreOverviewFocus,
     isQuitting: appId => pendingQuitAppIds.includes(appId),
@@ -201,7 +215,6 @@
     }, expandedProperty),
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
-      getProfile: () => profile,
       getFiles: () => macDesktop ? macFiles.files.filter(file => !isTrashed(macFiles, file))
         .map(file => ({ ...file, appId: file.appId ?? (file.kind === 'folder' ? 'finder' : 'preview') })) : getDesktopItems(),
       getItems: getDesktopItems,
@@ -281,6 +294,11 @@
       ...(hasDockContext ? { dock: {
         pinnedAppIds: [...desktopState.dock.pinnedAppIds], mainOrderAppIds: [...desktopState.dock.mainOrderAppIds],
         mainAppIds: dockApplications.main.map(app => app.id), recentAppIds: dockApplications.recent.map(app => app.id),
+        recentHistory: desktopState.dock.recentHistory.map(entry => ({ ...entry })), usageSequence: desktopState.dock.usageSequence,
+        secondaryOrderItemIds: [...desktopState.dock.secondaryOrderItemIds], preferences: { ...desktopState.dock.preferences },
+        hover: desktopState.dock.hover ? { ...desktopState.dock.hover } : null, focusedItemId: desktopState.dock.focusedItemId,
+        revealed: desktopState.dock.revealed, drag: desktopState.dock.drag ? { ...desktopState.dock.drag } : null,
+        items: macDockItems(profile, desktopState.dock, runningAppIds, windows), itemBounds: desktopView?.dockItemBounds() ?? [],
         context: desktopState.dock.context ? { ...desktopState.dock.context, scroll: { ...desktopState.dock.context.scroll } } : null,
         menuItems: getDockMenuItems(), menuBounds: desktopView?.dockMenuBounds() ?? [],
         appWindows: desktopState.dock.appWindows ? { ...desktopState.dock.appWindows, cards: dockWindowCards.map(card => ({ ...card, rect: { ...card.rect } })) } : null,
@@ -294,6 +312,7 @@
         ...(window.utilityKind ? { utilityKind: window.utilityKind } : {}),
         ...(window.infoSections ? { infoSections: { ...window.infoSections } } : {}),
         ...(window.finderSelectedFileIds ? { selectedFileIds: [...window.finderSelectedFileIds] } : {}),
+        ...(window.settingsPane ? { settingsPane: window.settingsPane } : {}),
         ...(desktopState.dock?.appWindows ? { presentationVisible: Boolean(dockWindowBounds[window.id]),
           ...(dockWindowBounds[window.id] ? { overviewBounds: { ...dockWindowBounds[window.id] } } : {}) } : {}),
         resize: { available: hasWindowResize && !window.minimized && !window[expandedProperty] && windowInteractionsAvailable(), edges: resizeEdges, minimumSize: windowApplication(window).minimumSize },
@@ -374,13 +393,22 @@
   async function focusDock(appId) {
     const current = [...dockApplications.main, ...dockApplications.recent].find(app => app.id === appId)
       ?? dockApplications.main[0];
-    if (current) await handlers['desktop.focusControl']({ control: 'dock', appId: current.id }, {});
+    if (current) await handlers['dock.focus']({ itemId: `app:${current.id}` }, {});
     else await handlers['desktop.focus']({}, {});
   }
   async function restoreOverviewFocus(appId) {
     const window = windows.find(window => window.id === activeWindowId && !window.minimized);
     if (window) await focusKeyboardWindow(window.id);
     else await focusDock(appId);
+  }
+  async function openDockPreferences() {
+    const result = await handlers['app.open']({ appId: 'settings' }, {});
+    if (result.status !== 'applied') return result;
+    const window = windows.find(window => window.id === result.target.windowId);
+    window.settingsPane = 'dock';
+    window.title = profile.renderer === 'sonoma' ? 'Desktop & Dock' : 'Dock';
+    await tick();
+    return { status: 'applied', target: { appId: 'settings', windowId: window.id } };
   }
   async function revealMacApplication(appId) {
     const file = liveFile(macFiles, applicationBundleId(appId));
@@ -569,10 +597,16 @@
     await focusKeyboardWindow(window.id);
     return { status: 'applied', target: { windowId: window.id, ...(fileId ? { fileId } : {}) } };
   }
+  function dismissDockPresentation() {
+    if (!hasDockContext) return;
+    const dock = desktopState.dock;
+    dock.context = null; dock.appWindows = null; dock.focusedItemId = null;
+    if (dock.preferences.autoHide && !dock.hover && !dock.drag) dock.revealed = false;
+  }
   function focusDesktop() {
     activeWindowId = null;
     activeAppId = profile.defaults.desktopAppId;
-    if (hasDockContext) { desktopState.dock.context = null; desktopState.dock.appWindows = null; }
+    dismissDockPresentation();
     if (hasDesktopStacks) desktopState.stacks.focusedStackId = null;
     if (hasWindowMenu) {
       desktopState.windowMenuOpen = false;
@@ -615,7 +649,7 @@
     activeWindowId = id;
     activeAppId = window.appId;
     desktopState.context = null;
-    if (hasDockContext) { desktopState.dock.context = null; desktopState.dock.appWindows = null; }
+    dismissDockPresentation();
     if (hasDesktopStacks) desktopState.stacks.focusedStackId = null;
     if (hasWindowMenu) {
       desktopState.windowMenuOpen = false;
@@ -631,6 +665,7 @@
     if (existing) {
       if (title !== undefined) existing.title = title;
       focusWindow(existing.id);
+      if (hasDockContext) recordMacAppUse(desktopState.dock, appId);
       return existing.id;
     }
     const id = nextWindowId === 1 && appId === profile.defaults.startupAppId
@@ -643,11 +678,15 @@
       bounds: adapter.initialBounds(app, area, windows.length, globalThis.innerHeight),
       restoreBounds: null,
       ...(macDesktop && appId === 'finder' ? { folderId: 'desktop' } : {}),
+      ...(hasDockContext && appId === 'settings' ? { settingsPane: 'dock' } : {}),
     });
     if (!runningAppIds.includes(appId)) runningAppIds.push(appId);
     activeWindowId = id;
     activeAppId = appId;
-    if (hasDockContext) { desktopState.dock.context = null; desktopState.dock.appWindows = null; }
+    if (hasDockContext) {
+      recordMacAppUse(desktopState.dock, appId);
+      dismissDockPresentation();
+    }
     if (hasDesktopStacks) desktopState.stacks.focusedStackId = null;
     return id;
   }
@@ -794,6 +833,68 @@
   }
 </script>
 
+{#snippet managedWindow(window, active, zIndex, presentationBounds, interactive, visible)}
+      <Window
+        {window}
+        {active}
+        {zIndex}
+        {presentationBounds}
+        {interactive}
+        {visible}
+        onfocus={() => windowCommand('window.focus', window.id, { keyboard: false })}
+        onclose={() => windowCommand('window.close', window.id)}
+        onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
+        onzoom={() => toggleWindowZoom(window.id)}
+        onmaximize={() => toggleWindowMaximize(window.id)}
+        onmove={(x, y) => windowCommand('window.move', window.id, { x, y })}
+        resizable={interactive && hasWindowResize && !window[expandedProperty] && windowInteractionsAvailable()}
+        onresize={(edge, coordinates) => windowCommand('window.resize', window.id, { edge, ...coordinates })}
+      >
+        {#if Applications}
+          <Applications appId={window.appId} windowId={window.id} {profile} native={adapter.nativeForWindow(nativeState, window.id)} execute={commands.execute} registerView={registerApplicationView} />
+        {:else if window.appId === 'messages'}
+          <MessagesWindow
+            assets={profile.assets}
+            {active}
+            zoomed={window.zoomed}
+            onclose={() => windowCommand('window.close', window.id)}
+            onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
+            onzoom={() => toggleWindowZoom(window.id)}
+          />
+        {:else if window.appId === 'notes'}
+          <NotesWindow
+            state={notesState}
+            viewState={notesViewState}
+            execute={commands.execute}
+            registerView={registerNotesView}
+            {active}
+            zoomed={window.zoomed}
+            onclose={() => windowCommand('window.close', window.id)}
+            onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
+            onzoom={() => toggleWindowZoom(window.id)}
+          />
+        {:else if hasDockContext && window.appId === 'settings'}
+          <MacDockPreferences {profile} preferences={desktopState.dock.preferences} execute={commands.execute} />
+        {:else if window.utilityKind === 'desktop-info'}
+          <MacDesktopInfo {profile} info={desktopDetails[window.fileId]} windowId={window.id} sections={window.infoSections} execute={commands.execute} />
+        {:else if window.utilityKind === 'desktop-view-options'}
+          <MacDesktopViewOptions {profile} options={desktopState.viewOptions} sortBy={desktopState.sortBy} stacks={desktopState.stacks} execute={commands.execute} />
+        {:else if macDesktop && window.appId === 'finder'}
+          <MacDesktopFolder {profile} windowId={window.id} folderId={window.folderId} files={macFiles.files} selectedFileIds={window.finderSelectedFileIds ?? []} dockState={desktopState.dock} execute={commands.execute} />
+        {/if}
+      </Window>
+{/snippet}
+
+{#snippet renderWindowTile(windowId, width, height)}
+  {@const window = windows.find(window => window.id === windowId)}
+  {#if window}
+    {@const scale = Math.min(width / window.bounds.width, height / window.bounds.height)}
+    {@const tileWidth = window.bounds.width * scale}
+    {@const tileHeight = window.bounds.height * scale}
+    {@render managedWindow(window, false, 1, { x: (width - tileWidth) / 2, y: (height - tileHeight) / 2, width: tileWidth, height: tileHeight, scale: window.bounds.scale * scale }, false, true)}
+  {/if}
+{/snippet}
+
 <Desktop
   {profile}
   {windows}
@@ -806,6 +907,8 @@
   {desktopStacks}
   {dockApplications}
   {dockMenuItems}
+  {dockTiles}
+  {renderWindowTile}
   native={nativeState}
   execute={commands.execute}
   registerView={registerDesktopView}
@@ -813,53 +916,8 @@
 >
   {#each windows as window, index (window.id)}
     {#if !window.minimized || dockWindowBounds[window.id]}
-      <Window
-        {window}
-        active={activeWindowId === window.id}
-        zIndex={dockWindowBounds[window.id] ? 7001 : index + 1}
-        presentationBounds={dockWindowBounds[window.id]}
-        interactive={!desktopState.dock?.appWindows}
-        visible={!desktopState.dock?.appWindows || Boolean(dockWindowBounds[window.id])}
-        onfocus={() => windowCommand('window.focus', window.id, { keyboard: false })}
-        onclose={() => windowCommand('window.close', window.id)}
-        onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
-        onzoom={() => toggleWindowZoom(window.id)}
-        onmaximize={() => toggleWindowMaximize(window.id)}
-        onmove={(x, y) => windowCommand('window.move', window.id, { x, y })}
-        resizable={hasWindowResize && !window[expandedProperty] && windowInteractionsAvailable()}
-        onresize={(edge, coordinates) => windowCommand('window.resize', window.id, { edge, ...coordinates })}
-      >
-        {#if Applications}
-          <Applications appId={window.appId} windowId={window.id} {profile} native={adapter.nativeForWindow(nativeState, window.id)} execute={commands.execute} registerView={registerApplicationView} />
-        {:else if window.appId === 'messages'}
-          <MessagesWindow
-            assets={profile.assets}
-            active={activeWindowId === window.id}
-            zoomed={window.zoomed}
-            onclose={() => windowCommand('window.close', window.id)}
-            onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
-            onzoom={() => toggleWindowZoom(window.id)}
-          />
-        {:else if window.appId === 'notes'}
-          <NotesWindow
-            state={notesState}
-            viewState={notesViewState}
-            execute={commands.execute}
-            registerView={registerNotesView}
-            active={activeWindowId === window.id}
-            zoomed={window.zoomed}
-            onclose={() => windowCommand('window.close', window.id)}
-            onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
-            onzoom={() => toggleWindowZoom(window.id)}
-          />
-        {:else if window.utilityKind === 'desktop-info'}
-          <MacDesktopInfo {profile} info={desktopDetails[window.fileId]} windowId={window.id} sections={window.infoSections} execute={commands.execute} />
-        {:else if window.utilityKind === 'desktop-view-options'}
-          <MacDesktopViewOptions {profile} options={desktopState.viewOptions} sortBy={desktopState.sortBy} stacks={desktopState.stacks} execute={commands.execute} />
-        {:else if macDesktop && window.appId === 'finder'}
-          <MacDesktopFolder {profile} windowId={window.id} folderId={window.folderId} files={macFiles.files} selectedFileIds={window.finderSelectedFileIds ?? []} execute={commands.execute} />
-        {/if}
-      </Window>
+      {@render managedWindow(window, activeWindowId === window.id, dockWindowBounds[window.id] ? 7001 : index + 1,
+        dockWindowBounds[window.id], !desktopState.dock?.appWindows, !desktopState.dock?.appWindows || Boolean(dockWindowBounds[window.id]))}
     {/if}
   {/each}
   {#if desktopState.dock?.appWindows}

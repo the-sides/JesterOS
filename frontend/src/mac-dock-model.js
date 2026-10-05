@@ -1,23 +1,60 @@
 export function macDockDefaults(profile) {
   const main = Object.values(profile.applications).filter(app => app.dock === 'main').map(app => app.id);
+  const recent = Object.values(profile.applications).filter(app => app.dock === 'recent').map(app => app.id);
+  const supportsRecent = profile.capabilities.includes('shell.dock-recents');
   return {
     pinnedAppIds: [...main], mainOrderAppIds: main,
-    recentAppIds: Object.values(profile.applications).filter(app => app.dock === 'recent').map(app => app.id),
+    recentHistory: recent.map((appId, index) => ({ appId, sequence: recent.length - index })),
+    usageSequence: recent.length, secondaryOrderItemIds: ['downloads'],
+    preferences: { size: profile.renderer === 'sonoma' ? 53 : 55, magnification: false,
+      magnificationSize: 96, autoHide: false, minimizeIntoApp: false, showRecent: supportsRecent },
+    hover: null, focusedItemId: null, revealed: true, drag: null,
     context: null, appWindows: null,
   };
 }
 
 export function macDockApps(profile, state, runningAppIds) {
   const pinned = new Set(state.pinnedAppIds), running = new Set(runningAppIds);
-  const mainIds = state.mainOrderAppIds.filter(id => Object.hasOwn(profile.applications, id) && (pinned.has(id) || running.has(id)));
+  const recentIds = profile.capabilities.includes('shell.dock-recents') && state.preferences.showRecent
+    ? state.recentHistory.filter(entry => Object.hasOwn(profile.applications, entry.appId) && !pinned.has(entry.appId)).slice(0, 3).map(entry => entry.appId) : [];
+  const mainIds = state.mainOrderAppIds.filter(id => Object.hasOwn(profile.applications, id)
+    && (pinned.has(id) || (running.has(id) && !recentIds.includes(id))));
   for (const id of runningAppIds) {
-    if (Object.hasOwn(profile.applications, id) && !mainIds.includes(id) && !state.recentAppIds.includes(id)) mainIds.push(id);
+    if (Object.hasOwn(profile.applications, id) && !mainIds.includes(id) && !recentIds.includes(id)) mainIds.push(id);
   }
-  const recentIds = state.recentAppIds.filter(id => Object.hasOwn(profile.applications, id) && !pinned.has(id) && !mainIds.includes(id));
   return { main: mainIds.map(id => profile.applications[id]), recent: recentIds.map(id => profile.applications[id]) };
 }
 
+export function recordMacAppUse(state, appId) {
+  state.usageSequence++;
+  state.recentHistory = [{ appId, sequence: state.usageSequence }, ...state.recentHistory.filter(entry => entry.appId !== appId)];
+}
+
+export function macDockTiles(state, windows) {
+  if (state.preferences.minimizeIntoApp || state.appWindows) return [];
+  const minimized = windows.filter(window => window.minimized), byId = new Map(minimized.map(window => [`window:${window.id}`, window]));
+  const result = state.secondaryOrderItemIds.filter(id => byId.has(id)).map(id => byId.get(id));
+  for (const window of minimized) if (!state.secondaryOrderItemIds.includes(`window:${window.id}`)) result.push(window);
+  return result;
+}
+
+export function macDockItems(profile, state, runningAppIds, windows) {
+  const apps = macDockApps(profile, state, runningAppIds), tiles = macDockTiles(state, windows);
+  const applicationItems = [...apps.main, ...apps.recent].map(app => ({ itemId: `app:${app.id}`, appId: app.id, name: app.name, kind: 'app' }));
+  const secondary = [{ itemId: 'downloads', name: 'Downloads', kind: 'folder' },
+    ...tiles.map(window => ({ itemId: `window:${window.id}`, windowId: window.id, appId: window.appId, name: window.title, kind: 'window' }))];
+  const ordered = state.secondaryOrderItemIds.filter(id => secondary.some(item => item.itemId === id)).map(id => secondary.find(item => item.itemId === id));
+  for (const item of secondary) if (!ordered.some(entry => entry.itemId === item.itemId)) ordered.push(item);
+  return [...applicationItems, { itemId: 'separator', name: 'Dock options', kind: 'separator' }, ...ordered,
+    { itemId: 'trash', name: 'Trash', kind: 'folder' }];
+}
+
 export function macDockContextItems(profile, state, windows, runningAppIds, activeWindowId, quittingAppIds = []) {
+  if (state.context?.kind === 'dock') return [
+    { id: 'auto-hide', label: state.preferences.autoHide ? 'Turn Hiding Off' : 'Turn Hiding On', enabled: true },
+    { id: 'magnification', label: state.preferences.magnification ? 'Turn Magnification Off' : 'Turn Magnification On', enabled: true },
+    { id: 'dock-preferences', label: profile.renderer === 'sonoma' ? 'Dock Settings…' : 'Dock Preferences…', enabled: true, separatorBefore: true },
+  ];
   const appId = state.context?.appId;
   if (!appId || !Object.hasOwn(profile.applications, appId)) return [];
   const app = profile.applications[appId], running = runningAppIds.includes(appId);
