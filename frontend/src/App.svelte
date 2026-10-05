@@ -4,12 +4,13 @@
   import { createWindowCommands } from './window-commands.js';
   import { createDesktopCommands } from './desktop-commands.js';
   import { createNotesCommands } from './notes-commands.js';
+  import { commandCatalog } from './command-catalog.js';
   import Desktop from './Desktop.svelte';
   import MessagesWindow from './MessagesWindow.svelte';
   import NotesWindow from './NotesWindow.svelte';
-  import { createNotesState } from './notes-state.js';
+  import { createNotesState, visibleNotes } from './notes-state.js';
   import Window from './Window.svelte';
-  import { applications } from './applications.js';
+  import { applications, desktopFiles } from './applications.js';
   import { clampPosition, fitNormalBounds, initialBounds, zoomBounds } from './window-state.js';
 
   let windows = $state([]);
@@ -66,7 +67,17 @@
     }),
   );
   const commands = createFeatureCommands(handlers,
-    () => $state.snapshot({ windows, activeWindowId, area, notes: notesState, desktop: desktopState, notesView: notesViewState }), settleCommands);
+    () => $state.snapshot({ windows, activeWindowId, area, notes: notesState, desktop: desktopState, notesView: notesViewState }),
+    settleCommands, commandCatalog, () => ({
+      applications: Object.values(applications).map(({ id, name, dock }) => ({ appId: id, name, dock: dock ?? null })),
+      desktopFiles: desktopFiles.map(({ id, name, appId }) => ({ fileId: id, name, appId })),
+      windows: windows.map(({ id, appId, minimized, zoomed }) => ({ windowId: id, appId, minimized, zoomed })),
+      menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }],
+      notes: {
+        records: notesState.notes.map(({ id, deleted }) => ({ noteId: id, deleted })),
+        eligibleIds: visibleNotes(notesState).map(({ id }) => id),
+      },
+    }));
 
   async function settleCommands() {
     await tick();

@@ -8,12 +8,34 @@ The mounted desktop exposes `globalThis.jesteros` with:
 
 - `execute(request)`: asynchronous command invocation. Resolves to an applied/rejected result. Applied results wait for the Svelte DOM flush and capture live scroll positions after focus/anchoring/layout effects; they do not claim completion of future media/progress animations. Await each result when sequencing dependent commands.
 - `inspect()`: a detached snapshot of supported command names and current window/application state. Changing this snapshot does not change the scene.
+- `describe(command?)`: detached, JSON-serializable version-1 catalog for every command, or one requested command. Includes supported profile IDs, capability, request/success-result JSON Schemas, runtime requirements, data/presentation effects, completion semantics, and current target identities. Unknown names reject with unsupported_command; non-string arguments reject with invalid_arguments. Querying never activates a window or changes the scene.
 
 This is the browser-local feature interface intended for a future transport adapter. It is not a WebSocket endpoint or controller UI. Current support is the Mojave profile only. The interface is removed when its owning App component is destroyed.
 
 Requests contain `command`, optional `requestId`, `target`, and `payload`. Command targets/payloads are plain JSON objects; omitted target/payload become empty objects. Explicit null, arrays, unrecognized request fields, unknown commands, and invalid command arguments are rejected. A supplied requestId must be a nonempty string and is echoed in results.
 
 Results are `{ status: 'applied', target: ... }` or `{ status: 'rejected', error: { code, message } }`, plus requestId when supplied. Validation/unavailable-target failures do not apply a scene mutation. Programming errors are not silently translated into successful cues.
+
+## Machine-readable catalog
+
+`frontend/src/command-catalog.js` is the canonical typed inventory. Registration fails if any handler lacks a descriptor or any descriptor lacks a handler; the registered handler map is sealed. Adding a slice therefore requires publishing its contract in the same change. Keep the human behavior table and working notes below current as well.
+
+`jesteros.describe()` returns `{ version:1, profiles, commands, targets }`. Profiles currently contain only `macos-mojave-10.14`; this identifies supported presentation, not an implemented profile-switching interface. Each commands entry has:
+
+- `requestSchema`: [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/schema) for the complete command envelope, including closed target/payload objects and conditional argument rules. [Conditional schemas](https://json-schema.org/understanding-json-schema/reference/conditionals) capture paired context coordinates, mutually exclusive menu positioning, explicit pin payloads, and observational focus constraints.
+- `resultSchema`: successful applied-response schema. Returned identities are inside **result.target**, never flattened beside status. app.open/desktop.open return target.appId/windowId; notes.create returns target.noteId. Rejected responses use the shared error envelope above.
+- `profiles`, `capability`, `requires`: current profile support and descriptive runtime prerequisites. Schemas validate JSON shape, not current record/menu availability; handlers remain authoritative for scene-dependent rejection.
+- `effects.data`, `effects.presentation`, `completion`: record mutation versus selection/focus/menu/window effects, with promise completion after handler state, Svelte DOM flush, and retained native scroll bookkeeping. No current command promises completion of future media/animation.
+
+Targets contain actual registered app and desktop-file IDs, current window IDs and minimized/zoomed flags, Window-menu IDs, all note IDs/deleted flags, and current folder/search-eligible note IDs. Fixed control choices are in schemas. Targets are live: opening/closing windows and changing Notes search/folder/trash state change discovery. Use inspect().state for the corresponding scene values. Changing returned schemas/IDs does not change the registry or scene.
+
+```js
+const catalog = jesteros.describe('app.open');
+const appId = catalog.targets.applications.find((app) => app.name === 'Notes').appId;
+const result = await jesteros.execute({ command: 'app.open', target: { appId } });
+if (result.status !== 'applied') throw new Error(result.error.message);
+const windowId = result.target.windowId;
+```
 
 ## Inventory
 
@@ -96,3 +118,4 @@ No CSS selectors, pixel clicks, credentials, network requests, or host settings 
 7. **Window and viewport proof.** Actor dragging changed Notes from (200,100) to (290,140); direct out-of-bounds movement clamped to workspace. Zoomed move was rejected. A zoomed/minimized window restored after resizing to 390×844 stayed above the Dock (bottom 800, Dock top 800.671875); normal restore geometry fit the new area. 800×350 popup scrolling reported the same actual/model offset and stayed in the viewport. All eleven registered app windows opened through the shared command path.
 8. **Semantic anchoring and settled-snapshot corrections.** A default context request for an offscreen note initially left its row hidden and anchored at the toolbar. Default anchoring now reveals the row before measuring; pointer-positioned menus retain their requested placement. Browser scroll events arrive after DOM focus/scrolling, so completed-command settlement captures live offsets. Final proof showed the row visible and list DOM/model scroll both 28. Editor scroll 360 survived minimize/direct reopen, with equal DOM/model offsets. Final context delete/restore retained “Final CORE-02 note.” Default/Notes surfaces were visually inspected; production build had no component warnings and final page-error list was empty.
 9. **Final clean-cutover smoke.** Removed duplicate gesture-side boundary decisions: pointer capture computes raw movement, and the shared window handler alone clamps it. An actor drag beyond the viewport reached exactly (672,312), matching the maximum workspace bounds. Final close/direct-reopen retained “Verified final cutover.” All 31 documented command rows matched runtime names and the Markdown tables had valid columns. The final page had zero errors, zero broken images, no external resources, and no document overflow.
+10. **CORE-03 catalog proof.** Published all 31 typed contracts and live IDs through describe(). Strict AJV 2020 validation compiled 31 request and 31 success-result schemas; nine invalid coupled-field/number cases were rejected and eight valid cases accepted. Corrected conditional subschemas without suppressing strict checks, then corrected a flat-ID assumption to the actual nested result.target envelope. A real catalog-driven consumer discovered Notes, opened it, created note-5, edited “Catalog-driven cue,” moved the window to (150,90), and selected title text (0,18); request/result schemas accepted the actual responses. Queries were pure, detached and filterable; inherited command names/non-string queries rejected. Eligible IDs followed search → trash → deleted-folder → restore as [note-5] → [] → [note-5] → [], matching record flags. Production build and browser had no component/page errors; the default Mojave/Messages surface was visually inspected and unchanged.

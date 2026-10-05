@@ -8,7 +8,15 @@ export function rejected(code, message) {
   return { status: 'rejected', error: { code, message } };
 }
 
-export function createFeatureCommands(handlers, readState, afterApply) {
+export function createFeatureCommands(handlers, readState, afterApply, catalog, readTargets) {
+  const commandNames = Object.keys(handlers);
+  if (!isRecord(catalog)
+    || commandNames.some((name) => !Object.hasOwn(catalog, name))
+    || Object.keys(catalog).some((name) => !Object.hasOwn(handlers, name))) {
+    throw new Error('Every feature handler needs exactly one command catalog descriptor.');
+  }
+  Object.freeze(handlers);
+  const profiles = [...new Set(commandNames.flatMap((name) => catalog[name].profiles))];
   function finish(request, result) {
     return typeof request?.requestId === 'string'
       ? { ...result, requestId: request.requestId }
@@ -36,7 +44,20 @@ export function createFeatureCommands(handlers, readState, afterApply) {
       return finish(request, result);
     },
     inspect() {
-      return { commands: Object.keys(handlers), state: readState() };
+      return { commands: [...commandNames], state: readState() };
+    },
+    describe(command) {
+      if (command !== undefined && typeof command !== 'string') {
+        return rejected('invalid_arguments', 'Expected an optional command name.');
+      }
+      if (command !== undefined && !Object.hasOwn(catalog, command)) {
+        return rejected('unsupported_command', `Unsupported command: ${command}`);
+      }
+      return structuredClone({
+        version: 1, profiles,
+        commands: command === undefined ? catalog : { [command]: catalog[command] },
+        targets: readTargets(),
+      });
     },
   });
 }
