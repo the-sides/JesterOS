@@ -3,9 +3,10 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import MacDockTrash from './MacDockTrash.svelte';
 
   let {
-    profile, state: dockState, applications, tiles = [], runningAppIds = [], activeAppId,
+    profile, state: dockState, applications, tiles = [], folders = [], trash, runningAppIds = [], activeAppId,
     execute, renderWindowTile, element = $bindable(),
   } = $props();
 
@@ -16,15 +17,17 @@
   const recent = $derived(profile.renderer === 'high-sierra' || !preferences.showRecent ? [] : applications.recent);
   const running = $derived(new Set(runningAppIds));
   const secondary = $derived.by(() => {
-    const items = new Map([['downloads', { id: 'downloads', name: 'Downloads', icon: 'downloads' }],
+    const items = new Map([...folders.map(folder => [folder.itemId, { id: folder.itemId, name: folder.name,
+      icon: folder.fileId === 'downloads' ? 'downloads' : folder.icon, folder }]),
       ...tiles.map(tile => [`window:${tile.id}`, { id: `window:${tile.id}`, tile }])]);
     return dockState.secondaryOrderItemIds.filter(id => items.has(id)).map(id => items.get(id));
   });
-  const visible = $derived(!preferences.autoHide || dockState.revealed || Boolean(dockState.context || dockState.drag || dockState.focusedItemId));
+  const visible = $derived(!preferences.autoHide || dockState.revealed || Boolean(dockState.context || dockState.folderStack || dockState.drag || dockState.focusedItemId));
   const keys = $derived([...main.map(app => `app:${app.id}`), ...recent.map(app => `app:${app.id}`),
     'separator', ...secondary.map(item => item.id), 'trash']);
   const iconKeys = $derived(keys.filter(key => key !== 'separator'));
   const dragApp = $derived(dockState.drag?.itemId.startsWith('app:') ? profile.applications[dockState.drag.itemId.slice(4)] : null);
+  const dragFolder = $derived(folders.find(folder => folder.itemId === dockState.drag?.itemId) ?? null);
 
   // These measurements and raw event queues have no authority over Dock state.
   let viewport = $state({ width: 1280, center: 640 });
@@ -134,17 +137,18 @@
 
   export function dropPlan(itemId, source, x, y) {
     const invalid = { beforeItemId: null, remove: false, valid: false };
-    if (!element?.isConnected || !['dock', 'bundle'].includes(source) || !Number.isFinite(x) || !Number.isFinite(y)
+    if (!element?.isConnected || !['dock', 'bundle', 'folder'].includes(source) || !Number.isFinite(x) || !Number.isFinite(y)
       || ['app:finder', 'trash', 'separator'].includes(itemId)) return invalid;
     const appId = itemId.startsWith('app:') ? itemId.slice(4) : null;
-    if (appId ? !profile.applications[appId] || (source === 'dock' && !control(itemId))
-      : source !== 'dock' || !secondary.some(item => item.id === itemId)) return invalid;
+    if (appId ? !profile.applications[appId] || (source === 'dock' && !control(itemId)) || source === 'folder'
+      : source === 'bundle' || (source === 'dock' && !secondary.some(item => item.id === itemId))
+        || (source === 'folder' && (dockState.drag?.source !== 'folder' || dockState.drag.itemId !== itemId))) return invalid;
     const root = element.getBoundingClientRect();
     const row = controls().map(button => button.getBoundingClientRect());
     const top = Math.min(root.top, ...row.map(rect => rect.top));
     const bottom = Math.max(root.bottom, ...row.map(rect => rect.bottom));
     const distance = Math.hypot(Math.max(root.left - x, 0, x - root.right), Math.max(top - y, 0, y - bottom));
-    if (source === 'dock' && appId && dockState.pinnedAppIds.includes(appId) && distance >= 50)
+    if (source === 'dock' && (appId && dockState.pinnedAppIds.includes(appId) || dragFolder?.itemId === itemId) && distance >= 50)
       return { beforeItemId: null, remove: true, valid: true };
     if (x < root.left - 12 || x > root.right + 12 || y < top - 24 || y > bottom + 16) return invalid;
     if (appId) {
@@ -171,7 +175,7 @@
 
   function focusOut() {
     queue(() => {
-      if (element?.contains(document.activeElement) || document.activeElement?.closest?.('[data-dock-context-menu]')) return;
+      if (element?.contains(document.activeElement) || document.activeElement?.closest?.('[data-dock-context-menu], [data-dock-stack]')) return;
       return request('dock.focus', { itemId: null }, { observe: true });
     });
   }
@@ -201,7 +205,7 @@
       const tile = tiles.find(tile => `window:${tile.id}` === itemId);
       return tile ? { appId: tile.appId } : null;
     }
-    return itemId === 'separator' ? { itemId } : null;
+    return itemId === 'separator' || folders.some(folder => folder.itemId === itemId) ? { itemId } : null;
   }
 
   function openContext(event, itemId) {
@@ -214,6 +218,11 @@
     if (itemId.startsWith('app:')) return request(commandReveal ? 'dock.reveal' : 'dock.activate', { appId: itemId.slice(4) });
     if (itemId.startsWith('window:')) return request('window.focus', { windowId: itemId.slice(7) });
     if (itemId === 'separator') return request('dock.preferences.open');
+    const folder = folders.find(folder => folder.itemId === itemId);
+    if (folder) {
+      if (commandReveal) return request('desktop.open', { fileId: folder.fileId });
+      return dockState.folderStack?.rootFileId === folder.fileId ? request('dock.stack.close') : request('dock.stack.open', { itemId });
+    }
     return request('desktop.open', { fileId: itemId });
   }
 
@@ -325,40 +334,42 @@
     if (event.pointerId === gesture?.pointerId) finish(true);
   }
 
-  function bundleTransfer(event, requireKey = false) {
-    const itemId = dockState.drag?.itemId;
-    const appId = itemId?.startsWith('app:') ? itemId.slice(4) : null;
-    const supplied = event.dataTransfer?.getData?.('application/x-jesteros-application') ?? '';
-    return dockState.drag?.source === 'bundle' && appId
-      && Boolean(profile.applications[appId])
-      && [...(event.dataTransfer?.types ?? [])].includes('application/x-jesteros-application')
-      && (requireKey ? supplied === appId : !supplied || supplied === appId);
+  function externalTransfer(event, requireKey = false) {
+    const drag = dockState.drag;
+    if (!drag || !['bundle', 'folder'].includes(drag.source)) return false;
+    const application = drag.source === 'bundle';
+    const value = application ? (drag.itemId.startsWith('app:') ? drag.itemId.slice(4) : null)
+      : drag.itemId === 'downloads' ? 'downloads' : drag.itemId.startsWith('folder:') ? drag.itemId.slice(7) : null;
+    const mime = application ? 'application/x-jesteros-application' : 'application/x-jesteros-folder';
+    const supplied = event.dataTransfer?.getData?.(mime) ?? '';
+    return Boolean(value && (!application || profile.applications[value])
+      && [...(event.dataTransfer?.types ?? [])].includes(mime)
+      && (requireKey ? supplied === value : !supplied || supplied === value));
   }
 
   function dragover(event) {
-    if (!bundleTransfer(event)) return;
-    const { itemId } = dockState.drag;
+    if (!externalTransfer(event)) return;
+    const { itemId, source } = dockState.drag;
     const point = { x: event.clientX, y: event.clientY };
-    const plan = dropPlan(itemId, 'bundle', point.x, point.y);
+    const plan = dropPlan(itemId, source, point.x, point.y);
     event.dataTransfer.dropEffect = plan.valid ? 'copy' : 'none';
-    // Invalid app-side positions still accept a drop event so the canonical gesture can cancel honestly.
     event.preventDefault(); event.stopPropagation();
-    queue(() => dockState.drag?.source === 'bundle' && dockState.drag.itemId === itemId
+    queue(() => dockState.drag?.source === source && dockState.drag.itemId === itemId
       ? request('dock.drag.update', {}, point) : undefined);
   }
 
   function drop(event) {
-    if (!bundleTransfer(event, true)) return;
+    if (!externalTransfer(event, true)) return;
     event.preventDefault(); event.stopPropagation();
-    const itemId = dockState.drag.itemId;
-    const appId = event.dataTransfer.getData('application/x-jesteros-application');
+    const { itemId, source } = dockState.drag;
     const point = { x: event.clientX, y: event.clientY };
-    const valid = itemId === `app:${appId}` && Boolean(profile.applications[appId])
-      && dropPlan(itemId, 'bundle', point.x, point.y).valid;
+    const valid = dropPlan(itemId, source, point.x, point.y).valid;
     queue(async () => {
-      if (dockState.drag?.source !== 'bundle' || dockState.drag.itemId !== itemId) return;
+      if (dockState.drag?.source !== source || dockState.drag.itemId !== itemId) return;
       if (valid) await request('dock.drag.update', {}, point);
-      await request('dock.drag.end', {}, valid ? {} : { cancel: true });
+      const result = await request('dock.drag.end', {}, valid ? {} : { cancel: true });
+      if (result.status !== 'applied' && dockState.drag?.source === source && dockState.drag.itemId === itemId)
+        await request('dock.drag.end', {}, { cancel: true });
     });
   }
 
@@ -425,6 +436,25 @@
   </li>
 {/snippet}
 
+{#snippet folderArtwork(folder, icon)}
+  {#if dockState.folderStack?.rootFileId === folder.fileId}
+    <svg class="stack-marker" viewBox="0 0 128 128" aria-hidden="true">
+      <rect x="14" y="14" width="100" height="100" rx="12" fill="none" stroke="currentColor" stroke-width="4"/>
+      <path d="m40 52 24 26 24-26Z" fill="currentColor"/>
+    </svg>
+  {:else if folder.preferences.display === 'stack' && folder.entries.length}
+    <span class="folder-stack-artwork" aria-hidden="true">
+      {#each folder.entries.slice(0, 3).reverse() as file, index (file.id)}
+        <span class="stack-cover" style:transform={`translate(${(2 - index) * 3}%, ${(2 - index) * -7}%) rotate(${(2 - index) * 3}deg)`}>
+          <Icon name={file.icon ?? (file.kind === 'folder' ? 'folder' : 'pdf')} assets={profile.assets}/>
+        </span>
+      {/each}
+    </span>
+  {:else}
+    <Icon name={icon} assets={profile.assets}/>
+  {/if}
+{/snippet}
+
 <footer bind:this={element} class={modern ? 'sonoma-dock managed-dock' : 'dock managed-dock'}
   class:modern class:hidden-dock={!visible} data-dock-root data-dock-visible={visible}
   data-dock-base-height={layout.height} data-dock-auto-hide={preferences.autoHide}
@@ -478,19 +508,23 @@
         {:else}
           <button type="button" class={modern ? 'sonoma-dock-button' : 'dock-button'}
             data-dock-item-key={item.id} data-dock-item-id={item.id} data-dock-section="secondary"
+            data-dock-folder-id={item.folder.fileId} aria-expanded={dockState.folderStack?.rootFileId === item.folder.fileId}
             aria-label={item.name} title={item.name} tabindex={tabIndex(item.id)}
             onfocus={() => observeFocus(item.id)} onpointerdown={event => pointerdown(event, item.id)}
             oncontextmenu={event => openContext(event, item.id)} onkeydown={event => keydown(event, item.id)}
-            onclick={event => click(event, item.id)}><Icon name={item.icon} assets={profile.assets}/></button>
+            onclick={event => click(event, item.id)}>{@render folderArtwork(item.folder, item.icon)}</button>
         {/if}
       </li>
     {/each}
     <li class={modern ? 'sonoma-dock-item managed-item' : 'dock-item managed-item'} style={itemStyle('trash')}>
       <button type="button" class={modern ? 'sonoma-dock-button' : 'dock-button'} data-dock-item-key="trash"
-        data-dock-item-id="trash" data-dock-section="fixed" aria-label="Trash" title="Trash" tabindex={tabIndex('trash')}
+        data-dock-item-id="trash" data-dock-section="fixed" data-trash-empty={trash.empty} data-trash-count={trash.count}
+        aria-label="Trash" aria-describedby={`dock-trash-state-${profile.renderer}`} title="Trash" tabindex={tabIndex('trash')}
         onfocus={() => observeFocus('trash')} onpointerdown={event => pointerdown(event, 'trash')}
         oncontextmenu={event => openContext(event, 'trash')} onkeydown={event => keydown(event, 'trash')}
-        onclick={event => click(event, 'trash')}><Icon name="trash" assets={profile.assets}/></button>
+        onclick={event => click(event, 'trash')}><MacDockTrash {profile} full={!trash.empty}/>
+        <span class="sr-only" id={`dock-trash-state-${profile.renderer}`}>{trash.empty ? 'Empty' : `${trash.count} ${trash.count === 1 ? 'item' : 'items'}`}</span>
+      </button>
     </li>
   </ul>
 </footer>
@@ -500,15 +534,15 @@
     tabindex={visible ? -1 : 0} onpointerenter={() => send('dock.visibility', {}, { visible: true })}
     onpointerleave={leaveEdge}
     onfocus={() => send('dock.focus', { itemId: keys[0] })} onclick={() => send('dock.focus', { itemId: keys[0] })}
-    ondragover={event => { if (bundleTransfer(event)) { event.preventDefault(); send('dock.visibility', {}, { visible: true }); } }}
+    ondragover={event => { if (externalTransfer(event)) { event.preventDefault(); send('dock.visibility', {}, { visible: true }); } }}
     ondrop={drop}></button>
 {/if}
 
-{#if dockState.drag && dragApp}
+{#if dockState.drag && (dragApp || dragFolder)}
   <div class="drag-alias" class:invalid={!dockState.drag.valid && !dockState.drag.remove} aria-hidden="true"
     data-dock-drag-alias={dockState.drag.itemId} style:left={`${dockState.drag.x}px`} style:top={`${dockState.drag.y}px`}
     style:width={`${layout.base}px`} style:height={`${layout.base}px`}>
-    <Icon name={dragApp.icon} assets={profile.assets}/>
+    {#if dragApp}<Icon name={dragApp.icon} assets={profile.assets}/>{:else}<Icon name={dragFolder.fileId === 'downloads' ? 'downloads' : dragFolder.icon} assets={profile.assets}/>{/if}
     {#if dockState.drag.remove}<span class="remove-label">Remove</span>{/if}
   </div>
 {/if}
@@ -520,6 +554,9 @@
   .managed-item { flex-shrink: 0; touch-action: none; }
   .managed-item :global(.app-icon), .managed-item :global(.sonoma-icon) { display: block; width: 100%; height: 100%; filter: drop-shadow(0 2px 1px rgb(0 0 0 / 33%)); }
   .modern .managed-item :global(.sonoma-icon) { filter: drop-shadow(0 2px 1px rgb(0 0 0 / 22%)); }
+  .folder-stack-artwork { position: relative; display: block; width: 100%; height: 100%; }
+  .stack-cover { position: absolute; inset: 0; }
+  .stack-marker { display: block; width: 100%; height: 100%; color: #292929; }
   .is-dragging { opacity: .4; }
   .managed-divider { position: relative; box-sizing: border-box; flex: 0 0 var(--separator-width); width: var(--separator-width); height: max(1px, calc(var(--base-size) - 6px)); padding: 0; border: 0; margin: 0; background: transparent; }
   .managed-divider::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgb(58 58 58 / 24%); box-shadow: 1px 0 rgb(255 255 255 / 24%); }

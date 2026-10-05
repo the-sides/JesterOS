@@ -3,6 +3,7 @@
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
   import { isTrashed } from './windows11-app-helpers.js';
+  import { dockFolderItemId } from './mac-dock-folders.js';
 
   let { profile, windowId, folderId, files, selectedFileIds = [], dockState, execute } = $props();
   const Icon = $derived(profile.renderer === 'sonoma' ? SonomaIcon
@@ -19,17 +20,21 @@
     return execute({ command: 'desktop.folder.navigate',
       target: { windowId, folderId: destination }, payload: {} });
   }
-  let bundleDragStart = null;
-  function dragBundle(event, file) {
+  let dockDragStart = null;
+  function dragShortcut(event, file) {
+    const application = file.kind === 'application', source = application ? 'bundle' : 'folder';
+    const itemId = application ? `app:${file.bundleAppId}` : dockFolderItemId(file.id);
     event.dataTransfer.effectAllowed = 'copy';
-    event.dataTransfer.setData('application/x-jesteros-application', file.bundleAppId);
-    bundleDragStart = execute({ command: 'dock.drag.begin', target: { itemId: `app:${file.bundleAppId}` },
-      payload: { x: event.clientX, y: event.clientY, source: 'bundle' } });
+    event.dataTransfer.setData(application ? 'application/x-jesteros-application' : 'application/x-jesteros-folder', application ? file.bundleAppId : file.id);
+    dockDragStart = execute({ command: 'dock.drag.begin', target: { itemId },
+      payload: { x: event.clientX, y: event.clientY, source } });
   }
-  async function endBundleDrag(event, file) {
+  async function endShortcutDrag(event, file) {
     if (event.dataTransfer.dropEffect !== 'none') return;
-    await bundleDragStart;
-    if (dockState?.drag?.source === 'bundle' && dockState.drag.itemId === `app:${file.bundleAppId}`)
+    await dockDragStart;
+    const application = file.kind === 'application', source = application ? 'bundle' : 'folder';
+    const itemId = application ? `app:${file.bundleAppId}` : dockFolderItemId(file.id);
+    if (dockState?.drag?.source === source && dockState.drag.itemId === itemId)
       await execute({ command: 'dock.drag.end', target: {}, payload: { cancel: true } });
   }
 </script>
@@ -46,13 +51,16 @@
     {#each contents as file (file.id)}
       <div class="folder-item" class:selected={selectedFileIds.includes(file.id)} role="listitem" data-folder-item-id={file.id} aria-current={selectedFileIds.includes(file.id) ? 'true' : undefined}>
         {#if file.kind === 'folder'}
-          <button class="folder-directory" type="button" aria-label={`Open ${file.name}`} disabled={folderId === 'trash'} onclick={() => navigate(file.id)}>
+          <button class="folder-directory" type="button" aria-label={`Open ${file.name}`} disabled={folderId === 'trash'}
+            draggable={!!dockState && folderId !== 'trash' && file.id !== 'disk'}
+            ondragstart={event => dragShortcut(event, file)} ondragend={event => endShortcutDrag(event, file)}
+            onclick={() => navigate(file.id)}>
             <Icon name={file.icon ?? 'folder'} assets={profile.assets}/><span class="folder-label">{file.name}</span>
           </button>
         {:else}
           {#if file.kind === 'application'}
             <button class="folder-file" type="button" aria-label={`Open ${file.name}`} draggable={!!dockState}
-              ondragstart={event => dragBundle(event, file)} ondragend={event => endBundleDrag(event, file)}
+              ondragstart={event => dragShortcut(event, file)} ondragend={event => endShortcutDrag(event, file)}
               onclick={() => execute({ command: 'desktop.open', target: { fileId: file.id }, payload: {} })}>
               <Icon name={file.icon} assets={profile.assets}/><span class="folder-label">{file.name}</span>
             </button>

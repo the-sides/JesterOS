@@ -1,6 +1,8 @@
 import { test, expect } from 'bun:test';
 import { macDockApps, macDockDefaults, macDockWindowCards, macDockItems, macDockTiles, recordMacAppUse } from '../frontend/src/mac-dock-model.js';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
+import { createMacDesktopFileStore } from '../frontend/src/desktop-file-state.js';
+import { macDockFolders } from '../frontend/src/mac-dock-folders.js';
 
 const intersects = (a, b) => a.x < b.x + b.width - 0.001 && a.x + a.width > b.x + 0.001
   && a.y < b.y + b.height - 0.001 && a.y + a.height > b.y + 0.001;
@@ -71,7 +73,7 @@ test('minimized tiles project actual live records in file-side order and disappe
   const windows = [a, b], geometry = windows.map(window => ({ ...window.bounds }));
   state.secondaryOrderItemIds = ['window:b', 'downloads', 'window:a'];
   expect(macDockTiles(state, windows)).toEqual([b, a]);
-  expect(macDockItems(profile, state, ['finder', 'safari'], windows).filter(item => item.kind !== 'app').map(item => item.itemId))
+  expect(macDockItems(profile, state, ['finder', 'safari'], windows, macDockFolders(state, createMacDesktopFileStore(profile))).filter(item => item.kind !== 'app').map(item => item.itemId))
     .toEqual(['separator', 'window:b', 'downloads', 'window:a', 'trash']);
   b.minimized = false;
   expect(macDockTiles(state, windows)).toEqual([a]);

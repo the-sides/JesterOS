@@ -20,6 +20,8 @@
     dockApplications,
     dockMenuItems = [],
     dockTiles = [],
+    dockFolders = [],
+    dockTrash,
     renderWindowTile,
     windows = [],
     runningAppIds = [],
@@ -425,7 +427,7 @@
     function observeFocus(event) {
       dismissOutside(event);
       const target = event.target;
-      if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu]')) return;
+      if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu], [data-dock-stack]')) return;
       if (!dock.contains(target) && viewState.dock.focusedItemId) request('dock.focus', { itemId: null }, { observe: true });
       if (!windowMenuContainer.contains(target)
         && !dock.contains(target)
@@ -620,7 +622,7 @@
     {#if viewState.dock?.context && workspace?.isConnected && dock?.isConnected}<MacDockContextMenu {profile} context={viewState.dock.context} items={dockMenuItems} area={contextArea()} {execute}/>{/if}
     {@render children()}
   </main>
-  <MacDock {profile} state={viewState.dock} applications={dockApplications} tiles={dockTiles} {runningAppIds}
+  <MacDock {profile} state={viewState.dock} applications={dockApplications} tiles={dockTiles} folders={dockFolders} trash={dockTrash} {runningAppIds}
     activeAppId={activeApp.id} {execute} {renderWindowTile} bind:element={dock} bind:this={dockControls} />
 </div>
 

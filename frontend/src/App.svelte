@@ -15,6 +15,9 @@
   import { createMacApplicationFiles, applicationBundleId } from './mac-application-files.js';
   import MacDockAppWindows from './MacDockAppWindows.svelte';
   import MacDockPreferences from './MacDockPreferences.svelte';
+  import MacDockStack from './MacDockStack.svelte';
+  import { createMacDockFolderCommands, dockFolderItemId, folderSource, macDockFolders, macDockFolderContextItems,
+    macDockStackItems, macDockStackView, reconcileMacDockFolders } from './mac-dock-folders.js';
   import { createFileCommands, moveVirtualFiles, trashVirtualFiles } from './windows11-explorer.js';
   import { windows11DesktopFiles } from './windows11-shell-state.js';
   import { liveFile, isTrashed } from './windows11-app-helpers.js';
@@ -76,22 +79,32 @@
   const dockWindowCards = $derived(desktopState.dock?.appWindows ? macDockWindowCards(windows, desktopState.dock.appWindows.appId, area) : []);
   const dockWindowBounds = $derived(Object.fromEntries(dockWindowCards.map(card => [card.windowId, card.rect])));
   const dockTiles = $derived(hasDockContext ? macDockTiles(desktopState.dock, windows) : []);
+  const dockFolders = $derived(hasDockContext ? macDockFolders(desktopState.dock, macFiles) : []);
+  const dockStackItems = $derived(hasDockContext ? macDockStackItems(desktopState.dock, macFiles) : []);
+  const dockStackView = $derived(desktopState.dock?.folderStack ? macDockStackView(desktopState.dock, macFiles) : null);
+  const dockStackFolder = $derived(desktopState.dock?.folderStack ? liveFile(macFiles, desktopState.dock.folderStack.folderId) : null);
+  const dockTrash = $derived.by(() => {
+    const fileIds = macDesktop ? macFiles.files.filter(file => file.deleted).map(file => file.id) : [];
+    return { empty: fileIds.length === 0, count: fileIds.length, fileIds };
+  });
   $effect(() => {
     if (!hasDockContext) return;
     const dock = desktopState.dock, mainIds = new Set(dockApplications.main.map(app => app.id));
+    reconcileMacDockFolders(dock, macFiles);
     const order = dock.mainOrderAppIds.filter(id => mainIds.has(id));
     for (const app of dockApplications.main) if (!order.includes(app.id)) order.push(app.id);
     if (order.length !== dock.mainOrderAppIds.length || order.some((id, index) => id !== dock.mainOrderAppIds[index]))
       dock.mainOrderAppIds = order;
-    const secondaryIds = ['downloads', ...windows.filter(window => window.minimized).map(window => `window:${window.id}`)];
+    const secondaryIds = [...dockFolders.map(folder => folder.itemId), ...windows.filter(window => window.minimized).map(window => `window:${window.id}`)];
     const secondaryOrder = dock.secondaryOrderItemIds.filter(id => secondaryIds.includes(id));
     for (const id of secondaryIds) if (!secondaryOrder.includes(id)) secondaryOrder.push(id);
     if (secondaryOrder.length !== dock.secondaryOrderItemIds.length || secondaryOrder.some((id, index) => id !== dock.secondaryOrderItemIds[index]))
       dock.secondaryOrderItemIds = secondaryOrder;
-    const itemIds = new Set(macDockItems(profile, dock, runningAppIds, windows).map(item => item.itemId));
+    const itemIds = new Set(macDockItems(profile, dock, runningAppIds, windows, dockFolders).map(item => item.itemId));
     if (dock.hover && !itemIds.has(dock.hover.itemId)) dock.hover = null;
     if (dock.focusedItemId && !itemIds.has(dock.focusedItemId)) dock.focusedItemId = null;
     if (dock.context?.kind === 'app' && ![...dockApplications.main, ...dockApplications.recent].some(app => app.id === dock.context.appId)) dock.context = null;
+    if (dock.context?.kind === 'folder' && !dockFolders.some(folder => folder.itemId === dock.context.dockItemId)) dock.context = null;
     const menu = dock.context;
     if (menu && menu.itemId && !getDockMenuItems().flatMap(item => [item, ...(item.children ?? [])]).some(item => item.id === menu.itemId && item.enabled)) {
       const entry = getDockMenuItems().find(item => item.enabled);
@@ -104,6 +117,30 @@
   });
   let notesViewState = $state(initialData.notes ? { context: null, contextItem: null, focusedControl: null, scroll: { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } } : undefined);
   let desktopView = null;
+  let dockStackControls = $state();
+  let dockStackAnchor = $state(null);
+  const dockFolderView = {
+    dockAvailable: () => desktopView?.dockAvailable() ?? false,
+    prepareDock: () => desktopView?.prepareDock(),
+    dockItemAnchor: itemId => desktopView?.dockItemAnchor(itemId) ?? null,
+    focusDockStackItem: async itemId => { await tick(); return dockStackControls?.focus(itemId) ?? false; },
+    dockStackItemIds: () => dockStackControls?.itemIds() ?? [],
+    dockStackBounds: () => dockStackControls?.bounds() ?? null,
+    scrollDockStack: (top, left) => dockStackControls?.scroll(top, left) ?? null,
+    dockStackScrollPosition: () => dockStackControls?.scrollPosition() ?? null,
+  };
+  $effect(() => {
+    const stack = desktopState.dock?.folderStack;
+    if (!stack) { dockStackAnchor = null; return; }
+    area.width; area.height; dockFolders; dockTiles; dockApplications;
+    desktopState.dock.preferences.size; desktopState.dock.preferences.magnification;
+    desktopState.dock.preferences.magnificationSize; desktopState.dock.hover;
+    tick().then(() => {
+      if (disposed || desktopState.dock?.folderStack !== stack) return;
+      const point = desktopView?.dockItemAnchor(dockFolderItemId(stack.rootFileId));
+      if (point && (dockStackAnchor?.x !== point.x || dockStackAnchor?.y !== point.y)) dockStackAnchor = point;
+    });
+  });
   let notesView = null;
   const applicationViews = new Map();
   let initialized = false;
@@ -197,14 +234,26 @@
     profile, available: sceneInteractionsAvailable, getView: () => desktopView,
     getItems: getDockMenuItems, getDockApps: () => [...dockApplications.main, ...dockApplications.recent],
     getWindows: () => windows, getActiveWindowId: () => activeWindowId,
-    getDockItems: () => macDockItems(profile, desktopState.dock, runningAppIds, windows),
+    getDockItems: () => macDockItems(profile, desktopState.dock, runningAppIds, windows, dockFolders),
     getDockSections: () => dockApplications,
     hasBundle: appId => !!liveFile(macFiles, applicationBundleId(appId)),
+    getFolderSource: itemId => folderSource(macFiles, itemId),
     openPreferences: openDockPreferences,
     invoke: (command, target, payload) => handlers[command](target, payload),
     reveal: revealMacApplication, focusDock, restoreOverviewFocus,
     isQuitting: appId => pendingQuitAppIds.includes(appId),
     dismissAppMenus: clearNotesPresentation,
+  }));
+  if (hasDockContext) Object.assign(handlers, createMacDockFolderCommands(desktopState, {
+    getStore: () => macFiles, available: sceneInteractionsAvailable, getView: () => dockFolderView,
+    invoke: (command, target, payload) => handlers[command](target, payload),
+    dismissMenus: () => {
+      desktopState.context = null; desktopState.rename = null;
+      desktopState.windowMenuOpen = false; desktopState.windowMenuItem = null;
+      desktopState.dock.context = null; desktopState.dock.appWindows = null;
+      if (desktopState.stacks) desktopState.stacks.focusedStackId = null;
+      clearNotesPresentation();
+    },
   }));
   Object.assign(handlers,
     createWindowCommands(() => windows, {
@@ -298,7 +347,16 @@
         secondaryOrderItemIds: [...desktopState.dock.secondaryOrderItemIds], preferences: { ...desktopState.dock.preferences },
         hover: desktopState.dock.hover ? { ...desktopState.dock.hover } : null, focusedItemId: desktopState.dock.focusedItemId,
         revealed: desktopState.dock.revealed, drag: desktopState.dock.drag ? { ...desktopState.dock.drag } : null,
-        items: macDockItems(profile, desktopState.dock, runningAppIds, windows), itemBounds: desktopView?.dockItemBounds() ?? [],
+        items: macDockItems(profile, desktopState.dock, runningAppIds, windows, dockFolders), itemBounds: desktopView?.dockItemBounds() ?? [],
+        folderFileIds: [...desktopState.dock.folderFileIds],
+        folderPreferences: Object.fromEntries(Object.entries(desktopState.dock.folderPreferences).map(([fileId, preferences]) => [fileId, { ...preferences }])),
+        folders: dockFolders.map(folder => ({ itemId: folder.itemId, fileId: folder.fileId, name: folder.name,
+          preferences: { ...folder.preferences }, fileIds: folder.entries.map(file => file.id) })),
+        folderStack: desktopState.dock.folderStack ? { ...desktopState.dock.folderStack,
+          pathFileIds: [...desktopState.dock.folderStack.pathFileIds], scroll: { ...desktopState.dock.folderStack.scroll },
+          view: dockStackView, items: dockStackItems.map(file => ({ fileId: file.id, name: file.name, kind: file.kind, icon: file.icon })),
+          renderedItemIds: dockStackControls?.itemIds() ?? [], bounds: dockStackControls?.bounds() ?? null } : null,
+        trash: { ...dockTrash, fileIds: [...dockTrash.fileIds] },
         context: desktopState.dock.context ? { ...desktopState.dock.context, scroll: { ...desktopState.dock.context.scroll } } : null,
         menuItems: getDockMenuItems(), menuBounds: desktopView?.dockMenuBounds() ?? [],
         appWindows: desktopState.dock.appWindows ? { ...desktopState.dock.appWindows, cards: dockWindowCards.map(card => ({ ...card, rect: { ...card.rect } })) } : null,
@@ -388,6 +446,8 @@
     return store;
   }
   function getDockMenuItems() {
+    if (desktopState.dock.context?.kind === 'folder')
+      return macDockFolderContextItems(desktopState.dock, macFiles, desktopState.dock.context.dockItemId);
     return macDockContextItems(profile, desktopState.dock, windows, runningAppIds, activeWindowId, pendingQuitAppIds);
   }
   async function focusDock(appId) {
@@ -600,7 +660,7 @@
   function dismissDockPresentation() {
     if (!hasDockContext) return;
     const dock = desktopState.dock;
-    dock.context = null; dock.appWindows = null; dock.focusedItemId = null;
+    dock.context = null; dock.appWindows = null; dock.folderStack = null; dock.focusedItemId = null;
     if (dock.preferences.autoHide && !dock.hover && !dock.drag) dock.revealed = false;
   }
   function focusDesktop() {
@@ -908,6 +968,8 @@
   {dockApplications}
   {dockMenuItems}
   {dockTiles}
+  {dockFolders}
+  {dockTrash}
   {renderWindowTile}
   native={nativeState}
   execute={commands.execute}
@@ -922,5 +984,9 @@
   {/each}
   {#if desktopState.dock?.appWindows}
     <MacDockAppWindows {profile} app={applications[desktopState.dock.appWindows.appId]} state={desktopState.dock.appWindows} cards={dockWindowCards} {area} execute={commands.execute} />
+  {/if}
+  {#if desktopState.dock?.folderStack && dockStackFolder && dockStackAnchor}
+    <MacDockStack {profile} state={desktopState.dock.folderStack} folder={dockStackFolder}
+      items={dockStackItems} view={dockStackView} anchor={dockStackAnchor} execute={commands.execute} bind:this={dockStackControls} />
   {/if}
 </Desktop>

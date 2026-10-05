@@ -59,7 +59,7 @@ A derived presentation group of real desktop document IDs, not a folder or synth
 A monotonic scene timestamp in the selected OS era, advanced by actual simulated file events rather than host time. Null metadata is unknown, not Unix epoch zero.
 
 **Dock alias**:
-A session-local launcher reference to an installed simulated application. Keeping/removing an alias changes neither application lifetime nor its readonly bundle; a running unpinned alias survives until quit.
+A session-local launcher reference to an installed simulated application or a real simulated folder. Keeping/removing an alias changes neither source records nor application/window lifetime; a running unpinned app alias survives until quit. Folder aliases occupy the file side and reference existing directory IDs, not copied contents.
 
 **Dock recent history**:
 A newest-first, unique application-use sequence advanced by successful scene app opens/new windows, never host time. Mojave/Sonoma display up to three unpinned recent aliases; High Sierra does not expose that presentation. Initial entries are fictional scene seeds, not a claim of observed host usage.
@@ -72,3 +72,9 @@ Scene-local size, magnification, auto-hide, minimize-into-app and supported rece
 
 **App Exposé**:
 A browser-contained overview of one application's actual managed windows, including minimized windows. It projects original live surfaces without rewriting normal/restore geometry; overview selection is distinct from actual window activation.
+
+**Dock folder stack**:
+A fan/grid/list popup showing one real folder's current immediate children, with a root alias, actual parent path, focused control and retained physical scroll. It is distinct from a Desktop Stack: nested navigation uses real folders, and file opening invokes the existing file command. More changes only the current fan presentation, not its configured view.
+
+**Trash occupancy**:
+The empty/full presentation and count derived from the existing simulated Trash's deleted records. It is not host Trash state, a second file store, or an implemented restore/empty lifecycle.

@@ -19,7 +19,7 @@ export function createMacDockCommands(desktop, context) {
   const ownedWindow = windowId => state.appWindows && context.getWindows().find(window => window.id === windowId && window.appId === state.appWindows.appId);
   const appTarget = (target, payload, names = [], required = names) => fields(target, ['appId']) && id(target.appId) && fields(payload, names, required);
   const appError = appId => !app(appId) ? rejected('not_found', 'The installed application no longer exists.') : !available() ? unavailable() : null;
-  const clearMenus = () => { state.context = null; desktop.context = null; desktop.rename = null;
+  const clearMenus = () => { state.context = null; state.folderStack = null; desktop.context = null; desktop.rename = null;
     desktop.windowMenuOpen = false; desktop.windowMenuItem = null;
     if (desktop.stacks) desktop.stacks.focusedStackId = null;
     context.dismissAppMenus();
@@ -36,8 +36,8 @@ export function createMacDockCommands(desktop, context) {
         && !context.getDockSections().main.some(app => `app:${app.id}` === beforeItemId))
         return rejected('disabled', 'Application aliases can only be placed on the main app side.');
     } else {
-      const item = liveDockItem(itemId), before = beforeItemId && liveDockItem(beforeItemId);
-      if (!item) return rejected('not_found', 'The current movable Dock item no longer exists.');
+      const item = liveDockItem(itemId) ?? context.getFolderSource(itemId), before = beforeItemId && liveDockItem(beforeItemId);
+      if (!item) return rejected('not_found', 'The actual movable Dock item or folder source no longer exists.');
       if (beforeItemId !== null && (!before || before.kind === 'app' || before.kind === 'separator'))
         return rejected('disabled', 'Folder and minimized-window items remain on the file side.');
     }
@@ -48,14 +48,19 @@ export function createMacDockCommands(desktop, context) {
     await context.getView().prepareDock();
   }
   function dismissUnusedDock() {
-    if (state.preferences.autoHide && !state.context && !state.drag && !state.hover && !state.focusedItemId) state.revealed = false;
+    if (state.preferences.autoHide && !state.context && !state.folderStack && !state.drag && !state.hover && !state.focusedItemId) state.revealed = false;
   }
   const commands = {
-    'dock.place': (target, payload) => {
+    'dock.place': async (target, payload) => {
       if (!fields(target, ['itemId']) || !id(target.itemId) || !fields(payload, ['beforeItemId']) || !nullableId(payload.beforeItemId)) return invalid();
       if (!available()) return unavailable();
       const error = placementError(target.itemId, payload.beforeItemId); if (error) return error;
       const appId = applicationId(target.itemId);
+      const folder = !appId && context.getFolderSource(target.itemId);
+      if (folder) {
+        const result = await context.invoke('dock.folder.pin', { fileId: folder.id }, { pinned: true });
+        if (result.status !== 'applied') return result;
+      }
       const order = appId ? context.getDockSections().main.map(app => `app:${app.id}`)
         : dockItems().filter(item => item.kind !== 'app' && !['trash', 'separator'].includes(item.itemId)).map(item => item.itemId);
       if (!order.includes(target.itemId)) order.push(target.itemId);
@@ -72,11 +77,12 @@ export function createMacDockCommands(desktop, context) {
     },
     'dock.drag.begin': async (target, payload) => {
       if (!fields(target, ['itemId']) || !id(target.itemId) || !fields(payload, ['x', 'y', 'source'], ['x', 'y'])
-        || !number(payload.x) || !number(payload.y) || (payload.source !== undefined && !['dock', 'bundle'].includes(payload.source))) return invalid();
+        || !number(payload.x) || !number(payload.y) || (payload.source !== undefined && !['dock', 'bundle', 'folder'].includes(payload.source))) return invalid();
       if (!available() || state.drag) return unavailable();
       const source = payload.source ?? 'dock', appId = applicationId(target.itemId);
-      if (source === 'bundle' ? !appId || !context.hasBundle(appId) : !liveDockItem(target.itemId))
-        return rejected('not_found', 'The drag source is not an actual Dock alias or application bundle.');
+      const sourceExists = source === 'bundle' ? appId && context.hasBundle(appId)
+        : source === 'folder' ? context.getFolderSource(target.itemId) : liveDockItem(target.itemId);
+      if (!sourceExists) return rejected('not_found', 'The drag source is not an actual Dock alias, bundle or folder.');
       if (['app:finder', 'trash', 'separator'].includes(target.itemId)) return rejected('disabled', 'This native Dock item is fixed.');
       clearMenus(); state.appWindows = null;
       state.drag = { itemId: target.itemId, source, startX: payload.x, startY: payload.y, x: payload.x, y: payload.y,
@@ -89,7 +95,9 @@ export function createMacDockCommands(desktop, context) {
       if (!available() || !state.drag) return unavailable();
       const drag = state.drag, plan = context.getView().dockDropPlan(drag.itemId, drag.source, payload.x, payload.y);
       if (!plan) return unavailable();
-      const removable = drag.source === 'dock' && applicationId(drag.itemId) && state.pinnedAppIds.includes(applicationId(drag.itemId));
+      const folder = context.getFolderSource(drag.itemId);
+      const removable = drag.source === 'dock' && (applicationId(drag.itemId) && state.pinnedAppIds.includes(applicationId(drag.itemId))
+        || folder && state.folderFileIds.includes(folder.id));
       const valid = plan.valid && (plan.remove ? Boolean(removable) : !placementError(drag.itemId, plan.beforeItemId));
       Object.assign(drag, { x: payload.x, y: payload.y, beforeItemId: plan.beforeItemId, remove: Boolean(plan.remove && removable), valid: Boolean(valid) });
       return applied({ itemId: drag.itemId, beforeItemId: drag.beforeItemId, remove: drag.remove, valid: drag.valid });
@@ -102,7 +110,10 @@ export function createMacDockCommands(desktop, context) {
         state.drag = null; dismissUnusedDock();
         return applied({ itemId: drag.itemId, cancelled: true, removed: false });
       }
-      const result = drag.remove ? await commands['dock.pin']({ appId: applicationId(drag.itemId) }, { pinned: false })
+      const appId = applicationId(drag.itemId), folder = context.getFolderSource(drag.itemId);
+      if (drag.remove && !appId && !folder) return rejected('stale_target', 'The dragged folder is no longer live.');
+      const result = drag.remove
+        ? await context.invoke(appId ? 'dock.pin' : 'dock.folder.pin', appId ? { appId } : { fileId: folder.id }, { pinned: false })
         : await commands['dock.place']({ itemId: drag.itemId }, { beforeItemId: drag.beforeItemId });
       if (result.status !== 'applied') return result;
       state.drag = null; state.hover = null; dismissUnusedDock();
@@ -139,7 +150,7 @@ export function createMacDockCommands(desktop, context) {
     'dock.visibility': (target, payload) => {
       if (!fields(target, []) || !fields(payload, ['visible']) || typeof payload.visible !== 'boolean') return invalid();
       if (!available()) return unavailable();
-      if (!payload.visible && (!state.preferences.autoHide || state.context || state.drag || state.hover || state.focusedItemId))
+      if (!payload.visible && (!state.preferences.autoHide || state.context || state.folderStack || state.drag || state.hover || state.focusedItemId))
         return rejected('disabled', 'The Dock remains visible while not auto-hidden or while its controls are in use.');
       state.revealed = payload.visible;
       return applied({ visible: !state.preferences.autoHide || state.revealed });
@@ -160,7 +171,7 @@ export function createMacDockCommands(desktop, context) {
       if (Object.hasOwn(payload, 'showRecent') && !context.profile.capabilities.includes('shell.dock-recents'))
         return rejected('unsupported_profile', 'High Sierra has no recent-app Dock preference.');
       Object.assign(state.preferences, payload);
-      if (payload.autoHide !== undefined) state.revealed = !payload.autoHide || Boolean(state.context || state.drag || state.hover || state.focusedItemId);
+      if (payload.autoHide !== undefined) state.revealed = !payload.autoHide || Boolean(state.context || state.folderStack || state.drag || state.hover || state.focusedItemId);
       return applied({ preferences: { ...state.preferences } });
     },
     'dock.activate': async (target, payload) => {
@@ -190,18 +201,21 @@ export function createMacDockCommands(desktop, context) {
       return context.reveal(target.appId);
     },
     'dock.context.open': async (target, payload) => {
-      const separator = fields(target, ['itemId']) && target.itemId === 'separator';
-      if ((!separator && !(fields(target, ['appId']) && id(target.appId))) || !fields(payload, ['x', 'y'], [])
+      const itemTarget = fields(target, ['itemId']) && id(target.itemId);
+      const separator = itemTarget && target.itemId === 'separator';
+      const folder = itemTarget && liveDockItem(target.itemId)?.kind === 'folder' && context.getFolderSource(target.itemId);
+      if ((!itemTarget && !(fields(target, ['appId']) && id(target.appId))) || !fields(payload, ['x', 'y'], [])
         || Object.hasOwn(payload, 'x') !== Object.hasOwn(payload, 'y')
         || (Object.hasOwn(payload, 'x') && (!finite(payload.x) || !finite(payload.y)))) return invalid();
-      const error = separator ? !available() && unavailable() : appError(target.appId); if (error) return error;
-      if (!separator && !context.getDockApps().some(entry => entry.id === target.appId)) return rejected('not_found', 'The application has no current Dock alias.');
-      const revealed = state.revealed;
+      if (itemTarget && !separator && !folder) return rejected('not_found', 'The actual folder Dock alias no longer exists.');
+      const error = itemTarget ? (!available() ? unavailable() : null) : appError(target.appId); if (error) return error;
+      if (!itemTarget && !context.getDockApps().some(entry => entry.id === target.appId)) return rejected('not_found', 'The application has no current Dock alias.');
+      const dockItemId = itemTarget ? target.itemId : `app:${target.appId}`, revealed = state.revealed;
       await revealDock();
-      const point = Object.hasOwn(payload, 'x') ? payload : context.getView().dockItemAnchor(separator ? 'separator' : `app:${target.appId}`);
+      const point = Object.hasOwn(payload, 'x') ? payload : context.getView().dockItemAnchor(dockItemId);
       if (!point) { state.revealed = revealed; return unavailable(); }
-      clearMenus(); state.appWindows = null;
-      state.context = { kind: separator ? 'dock' : 'app', appId: separator ? null : target.appId,
+      clearMenus(); state.appWindows = null; state.focusedItemId = dockItemId;
+      state.context = { kind: separator ? 'dock' : folder ? 'folder' : 'app', appId: itemTarget ? null : target.appId, dockItemId,
         x: point.x, y: point.y, itemId: null, submenuId: null, scroll: { main: 0, submenu: 0 } };
       const first = items().find(item => item.enabled);
       state.context.itemId = first?.id ?? null;
@@ -216,6 +230,7 @@ export function createMacDockCommands(desktop, context) {
       state.context = null;
       if (payload.restoreFocus !== false && menu) {
         if (menu.kind === 'dock') await commands['dock.focus']({ itemId: 'separator' }, {});
+        else if (menu.kind === 'folder' && liveDockItem(menu.dockItemId)) await commands['dock.focus']({ itemId: menu.dockItemId }, {});
         else await context.focusDock(menu.appId);
       } else dismissUnusedDock();
       return applied({ menuId: 'dock-context' });
@@ -243,7 +258,16 @@ export function createMacDockCommands(desktop, context) {
       if (!entry.enabled || entry.children) return rejected('disabled', 'Choose an enabled native Dock leaf.');
       const menu = state.context, appId = menu.appId;
       let result;
-      if (entry.id.startsWith('window:')) result = await context.invoke('window.focus', { windowId: entry.id.slice(7) }, {});
+      if (menu.kind === 'folder') {
+        const folder = context.getFolderSource(menu.dockItemId);
+        if (!folder) return rejected('stale_target', 'The folder shortcut no longer refers to a live directory.');
+        if (entry.id === 'folder-open-finder') result = await context.invoke('desktop.open', { fileId: folder.id }, {});
+        else if (entry.id === 'folder-remove') result = await context.invoke('dock.folder.pin', { fileId: folder.id }, { pinned: false });
+        else if (entry.id.startsWith('folder-sort:')) result = await context.invoke('dock.folder.preferences.set', { fileId: folder.id }, { sortBy: entry.id.slice(12) });
+        else if (entry.id.startsWith('folder-display:')) result = await context.invoke('dock.folder.preferences.set', { fileId: folder.id }, { display: entry.id.slice(15) });
+        else if (entry.id.startsWith('folder-view:')) result = await context.invoke('dock.folder.preferences.set', { fileId: folder.id }, { view: entry.id.slice(12) });
+        else return rejected('disabled', 'Choose a supported folder Dock leaf.');
+      } else if (entry.id.startsWith('window:')) result = await context.invoke('window.focus', { windowId: entry.id.slice(7) }, {});
       else if (entry.id === 'show-windows') result = await commands['dock.windows.open']({ appId }, {});
       else if (entry.id === 'keep-in-dock') result = await commands['dock.pin']({ appId }, { pinned: !state.pinnedAppIds.includes(appId) });
       else if (entry.id === 'show-in-finder') result = await commands['dock.reveal']({ appId }, {});
@@ -257,6 +281,10 @@ export function createMacDockCommands(desktop, context) {
       if (state.context === menu) state.context = null;
       if (entry.id === 'keep-in-dock' || entry.id === 'quit') await context.focusDock(appId);
       else if (menu.kind === 'dock' && entry.id !== 'dock-preferences') await commands['dock.focus']({ itemId: 'separator' }, {});
+      else if (menu.kind === 'folder' && entry.id !== 'folder-open-finder') {
+        if (liveDockItem(menu.dockItemId)) await commands['dock.focus']({ itemId: menu.dockItemId }, {});
+        else await context.focusDock(null);
+      }
       else dismissUnusedDock();
       return applied({ menuId: 'dock-context', itemId: entry.id, appId });
     },

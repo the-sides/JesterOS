@@ -42,10 +42,10 @@ export function createMacDockView({ getWorkspace, getDock, getDockControls, getS
   function shortcut(event) {
     if (event.defaultPrevented || event.isComposing || !dockAvailable()) return;
     const state = getState();
-    if (event.key === 'Escape' && (state.context || state.appWindows)
-      && !event.target?.closest?.('[data-dock-context-menu], [data-dock-app-windows]')) {
+    if (event.key === 'Escape' && (state.context || state.folderStack || state.appWindows)
+      && !event.target?.closest?.('[data-dock-context-menu], [data-dock-stack], [data-dock-app-windows]')) {
       event.preventDefault(); event.stopPropagation();
-      request(state.context ? 'dock.context.close' : 'dock.windows.close'); return;
+      request(state.context ? 'dock.context.close' : state.folderStack ? 'dock.stack.close' : 'dock.windows.close'); return;
     }
     if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
     if (event.key === 'ArrowDown' && !state.context) {
@@ -55,6 +55,8 @@ export function createMacDockView({ getWorkspace, getDock, getDockControls, getS
   }
   function dismissOutside(event) {
     if (getState().context && !event.target?.closest?.('[data-dock-context-menu]')) request('dock.context.close', {}, { restoreFocus: false });
+    if (getState().folderStack && !event.target?.closest?.('[data-dock-stack]')
+      && !getDock()?.contains(event.target)) request('dock.stack.close', {}, { restoreFocus: false });
   }
   return { prepareDock, dockAvailable, dockItemAnchor, focusDockItem, dockDropPlan, dockItemBounds, dockPointerInside,
     focusDockMenuItem, dockMenuScrollTop, scrollDockMenu, dockMenuBounds, focusDockAppWindows, shortcut, dismissOutside };

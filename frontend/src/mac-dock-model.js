@@ -1,3 +1,5 @@
+import { macDockFolderDefaults } from './mac-dock-folders.js';
+
 export function macDockDefaults(profile) {
   const main = Object.values(profile.applications).filter(app => app.dock === 'main').map(app => app.id);
   const recent = Object.values(profile.applications).filter(app => app.dock === 'recent').map(app => app.id);
@@ -10,6 +12,7 @@ export function macDockDefaults(profile) {
       magnificationSize: 96, autoHide: false, minimizeIntoApp: false, showRecent: supportsRecent },
     hover: null, focusedItemId: null, revealed: true, drag: null,
     context: null, appWindows: null,
+    ...macDockFolderDefaults(),
   };
 }
 
@@ -38,10 +41,10 @@ export function macDockTiles(state, windows) {
   return result;
 }
 
-export function macDockItems(profile, state, runningAppIds, windows) {
+export function macDockItems(profile, state, runningAppIds, windows, folders) {
   const apps = macDockApps(profile, state, runningAppIds), tiles = macDockTiles(state, windows);
   const applicationItems = [...apps.main, ...apps.recent].map(app => ({ itemId: `app:${app.id}`, appId: app.id, name: app.name, kind: 'app' }));
-  const secondary = [{ itemId: 'downloads', name: 'Downloads', kind: 'folder' },
+  const secondary = [...folders.map(folder => ({ itemId: folder.itemId, fileId: folder.fileId, name: folder.name, kind: 'folder' })),
     ...tiles.map(window => ({ itemId: `window:${window.id}`, windowId: window.id, appId: window.appId, name: window.title, kind: 'window' }))];
   const ordered = state.secondaryOrderItemIds.filter(id => secondary.some(item => item.itemId === id)).map(id => secondary.find(item => item.itemId === id));
   for (const item of secondary) if (!ordered.some(entry => entry.itemId === item.itemId)) ordered.push(item);
