@@ -2,6 +2,8 @@
 
 A simulated desktop and applications for actors to use as screen props during film and television scenes. The current screen is inspired by macOS Mojave (2018); it is not a real operating system or an iMessage client.
 
+JesterOS will eventually support **multiple OS profiles**: different macOS releases across years, **Windows 11**, and possibly **Linux** later. Mojave is the first profile, not a permanent platform limit. Each profile must reproduce its own version-specific shell, apps, menus, and behavior rather than serve as a cosmetic theme.
+
 ## Current implementation
 
 - Rust/Axum backend serves the built frontend and `GET /api/health`.
@@ -36,6 +38,8 @@ Primary-source screenshots, UI observations, implementation decisions, defects/f
 ## Feature backlog
 
 [Pseudo-OS feature backlog](docs/pseudo-os-backlog.md) is the durable queue for long-session work: stable IDs, completed versus pending slices, suggested iteration order, and coverage of the desktop, menus, bundled apps, utilities, System Preferences panes, and secondary dialogs. Additional period-compatible production apps are listed separately. The Rust controller remains deferred.
+
+[Multi-OS and feature command requirements](docs/pseudo-os-architecture.md) define the architecture: every feature must expose transport-neutral commands so actor input and a future WebSocket adapter can invoke the same behavior, including menus, dialogs, transient UI state, and incoming events. The existing desktop/Notes actions still need the tracked command-interface retrofit; neither multi-OS switching nor universal WebSocket control is implemented today.
 
 ## Requirements
 
@@ -131,9 +135,9 @@ tools/
 
 ## Future controller-to-puppet boundary
 
-The intended flow is **controller device → Rust backend → puppet screen(s)**. The puppet is the actor-facing desktop; the controller is a separate operator interface. Neither the controller nor its WebSocket protocol is implemented in this iteration.
+The intended flow is **controller device → Rust backend → puppet screen(s) → feature command handlers**. The puppet is the actor-facing desktop; the controller is a separate operator interface. Neither the controller nor its WebSocket transport/protocol is implemented in this iteration. Transport-neutral feature command interfaces are required during pseudo-OS development, before controller integration.
 
-Future operator cues include incoming fictional messages, low-battery notifications, and a simulated zero-battery/power-off appearance. Those effects should change the simulated screen only, never the host machine's files, battery, or power state. Actor interactions will remain part of the same simulated applications.
+Future operator cues include incoming fictional messages, low-battery notifications, and a simulated zero-battery/power-off appearance. Every feature—not just these cues—must be command-addressable through the shared behavior interface, including app editing/navigation and menu/dialog presentation. Those effects must change the simulated screen only, never the host machine's files, battery, or power state. Actor interactions use the same feature handlers as equivalent remote requests.
 
 Rust should own shared scene/take state and saved messages, with SQLite persistence. WebSockets should deliver state changes to paired screens, acknowledge applied cues, and restore current state after reconnecting. Scenario templates and individual takes should be separate so a reset can begin a fresh take without erasing prior messages. These are design boundaries, not existing endpoints or functionality.
 

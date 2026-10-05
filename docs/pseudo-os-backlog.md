@@ -1,23 +1,26 @@
 # JesterOS pseudo-OS feature backlog
 
-The durable work queue for building the actor-facing **macOS Mojave 10.14 simulation**. Covers the desktop, system menus, bundled applications, utilities, preferences, and their secondary interfaces. **The Rust controller is deferred.** This is a proposed implementation inventory, not a claim that every listed interface has already been researched or built.
+The durable work queue for building JesterOS's actor-facing pseudo-OS. **macOS Mojave 10.14 is the first OS profile**, not the permanent limit: future profiles will cover different macOS releases across years and Windows 11, with Linux possibly later. This initial app inventory focuses on Mojave's desktop, system menus, bundled applications, utilities, preferences, and secondary interfaces. **The Rust controller and WebSocket transport are deferred; command-addressable features are required now.** See [multi-OS and feature command requirements](pseudo-os-architecture.md). This is a proposed implementation inventory, not a claim that every listed interface has already been researched or built.
 
 ## Tracking contract
 
 - `[x]` means implemented and exercised; `[ ]` means remaining work. Existing narrow functionality is checked separately from its extensions.
 - IDs are stable: refer to `MSG-02` rather than a line number. Add new IDs without renumbering completed work.
 - Work in complete, bounded slices. An app can take several iterations; a checked slice must work end to end, not merely draw its interface.
-- Before each slice, inspect primary **Mojave 10.14** documentation/screenshots. Confirm exact menus, labels, tabs, and hardware/region-dependent availability. The candidate inventories below are research prompts, not permission to substitute modern macOS UI.
+- Before each slice, inspect primary documentation/screenshots for the selected OS and release: **Mojave 10.14** for the initial profile, each other profile's own era/version later. Confirm exact menus, labels, tabs, and hardware/region-dependent availability. The candidate inventories below are research prompts, not permission to substitute modern or cross-OS UI.
 - Reuse existing UI/state conventions. Keep application data separate from window lifetime. Add shared behavior only when a concrete app workflow needs it.
+- Every feature must expose transport-neutral commands usable by both actor input and a future WebSocket adapter, including transient menu/dialog/focus state and externally initiated effects. Document stable targets, payloads, availability, and observable results; no DOM-click automation or duplicate controller-only logic.
 - Each enabled control must perform a real action within the simulation. Native unavailable/selection-dependent commands may be disabled; unfinished features must not masquerade as working controls.
 - All accounts, files, mail, messaging, networking, devices, security, installations, and power changes are fictional. Never execute host commands, change host settings, or contact real services. Local runtime assets only.
 - Preserve the default Messages reference scene. Keep a deterministic fictional clock; elapsed-time displays must not silently replace the scene date with the host date.
-- Verify through the actual Rust-served browser UI: useful action, empty/error state, keyboard/focus behavior, close/minimize retention, and resizing where relevant. Record observed results and visual limitations.
+- Verify through the actual Rust-served browser UI and the equivalent direct feature commands: useful action, empty/error state, keyboard/focus behavior, close/minimize retention, and resizing where relevant. Record observed results and visual limitations.
 - Finish each slice by updating its research/working notes, this checklist, and relevant user docs; commit explicitly affected files. Do not mark an entire app complete while its sub-interfaces remain open.
 
 ### Current checkpoint
 
 Desktop launches and manages one window per app. The Window menu works. Notes has a functional plain-text implementation. Messages has a researched but fixed sample conversation. Finder, Launchpad, Safari, Mail, Contacts, Calendar, System Preferences, Photos, and Preview are registered shells without application interiors. Other menu/status items remain static.
+
+Existing checkmarks below cover exercised UI behavior only. They do not claim a universal command interface; `CORE-02` tracks that retrofit.
 
 Evidence: [README](../README.md), [Mojave fidelity notes](mojave-fidelity.md), [Notes research and working notes](notes-mojave.md).
 
@@ -25,7 +28,7 @@ Evidence: [README](../README.md), [Mojave fidelity notes](mojave-fidelity.md), [
 
 Use this order unless a scene requirement changes priority. Section order is a grouping, not a requirement to finish every utility before returning to a core app.
 
-1. **Menu behavior + Messages:** `MENU-01`, `MENU-02`, then `MSG-02` through `MSG-05`. Make the existing hero app interactive without changing its initial appearance.
+1. **Command foundation + menu behavior + Messages:** implement `CORE-01` with a working existing action and `CORE-02` for existing behavior, then `MENU-01`, `MENU-02`, and `MSG-02` through `MSG-05`. Make the existing hero app interactive without changing its initial appearance.
 2. **Files + Finder + Preview:** `FS-01` through `FS-03`, `FND-01` through `FND-05`, `PRE-01` through `PRE-03`, and the necessary common file dialogs.
 3. **Safari:** offline browsing, navigation, tabs, bookmarks, history, downloads, and local page forms.
 4. **System surfaces:** Apple menu, About This Mac, Spotlight, Notification Center, status menus, and the first System Preferences panes.
@@ -34,7 +37,17 @@ Use this order unless a scene requirement changes priority. Section order is a g
 7. **Remaining bundled apps and utilities:** Launchpad, Mission Control, Dashboard, Maps, Calculator, creative/office add-ons, and diagnostic interfaces.
 8. **Completion pass:** finish every researched app menu and secondary dialog; verify cross-app workflows and visual/state consistency.
 
-**Next suggested slice: `MENU-01` — extend the working Window-menu interaction pattern to a shared menu-bar behavior.** Then implement actual Messages commands against that behavior, rather than populating menus with inert entries.
+**Next suggested slice: `CORE-01` — introduce a minimal browser-local command entry point with a working existing feature.** Follow with `CORE-02` and `MENU-01`. Feature interfaces are in scope now; the Rust/WebSocket transport is not.
+
+## Architecture foundations and future OS profiles
+
+- [ ] `CORE-01` — Implement a minimal transport-neutral browser-local feature command entry point with stable names, serializable payloads, explicit targets, and inspectable results; prove a real existing workflow without introducing WebSocket/controller infrastructure.
+- [ ] `CORE-02` — Route existing desktop, Dock, windows, Window menu, and Notes actions through feature handlers shared by UI and direct command callers; include selection/search/focus/menu presentation state and unavailable-action behavior.
+- [ ] `CORE-03` — Publish and maintain a command inventory for every implemented slice; commands, target identities, supported profiles, required state, data/presentation effects, and asynchronous completion where relevant.
+- [ ] `CORE-04` — Establish explicit OS-profile identity and capability boundaries around the current Mojave scene, app registry, shell, assets, and behavior; share simulation operations where semantics genuinely match rather than imposing Mojave conventions on every OS.
+- [ ] `CORE-05` — Research and add further macOS releases across years as separate profiles, each with a version-specific app/menu/sub-interface inventory and researched assets/behavior.
+- [ ] `CORE-06` — Research a specific Windows 11 release/build and add its shell, applications, menus, settings, dialogs, and profile command adapters using the same feature-contract principles.
+- [ ] `CORE-07` — Investigate a future Linux profile: choose distribution, desktop environment, and version before making its UI inventory. Conditional future scope, not a required next platform.
 
 ## 1. Desktop, Dock, windows, and session behavior
 
@@ -487,13 +500,16 @@ These remain separate tasks; implementing an app's primary window does not autom
 - [ ] `DONE-06` — Light/dark appearance, native-era fonts/chrome/icons, local asset provenance, and per-app Mojave visual evidence documented; keep Messages comparison regression visible.
 - [ ] `DONE-07` — Offline audit: no external requests, missing assets, real credentials, host commands/settings effects, or permissions needed for default fixture workflows.
 - [ ] `DONE-08` — Chronological implementation notes, README capability list, checklist status, and commits reflect exercised behavior rather than intended behavior.
+- [ ] `DONE-09` — Every implemented feature, including temporary presentation state and externally initiated events, is reachable through documented commands; direct invocations and actor input produce equivalent specified behavior without DOM automation or a WebSocket server.
+- [ ] `DONE-10` — OS-profile capability boundaries are explicit; future profiles do not inherit unsupported Mojave interfaces or silently accept unsupported commands.
 
 ## Deferred boundary — not part of this queue
 
-Rust controller UI, paired screens, WebSocket cues/protocol, shared server scene state, SQLite persistence, operator timelines, take management, remote incoming events, multi-screen synchronization, and deployment/authentication for operators. Frontend data ownership should make a later integration possible, but do not build that infrastructure during this pseudo-OS pass.
+Rust controller UI, paired screens, WebSocket transport/wire protocol, shared server scene state, SQLite persistence, operator timelines, take management, remote delivery of cues, multi-screen synchronization, and deployment/authentication for operators. Feature commands, browser-local invocation, and frontend-local incoming-event effects are part of the pseudo-OS work now. The later transport must call those interfaces rather than introduce a second behavior implementation.
 
 ## Session record
 
 | Date | Checkpoint | Next slice |
 | --- | --- | --- |
 | 2026-10-04 | Created this inventory from the README, application registry, existing Desktop menu/status surfaces, and completed Notes work. Candidate app/pane details still require their own Mojave research. No runtime behavior changed. | `MENU-01` |
+| 2026-10-04 | Added future macOS/Windows 11/possible Linux profiles and mandatory command interfaces for every feature. Added architecture/retrofit tasks without claiming existing UI already supports a universal interface. Controller and WebSocket transport remain deferred. | `CORE-01` |
