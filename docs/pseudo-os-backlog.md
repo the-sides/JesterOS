@@ -20,7 +20,7 @@ The durable work queue for building JesterOS's actor-facing pseudo-OS. **macOS M
 
 Desktop launches and manages one window per app. The Window menu works. Notes has a functional plain-text implementation. Messages has a researched but fixed sample conversation. Finder, Launchpad, Safari, Mail, Contacts, Calendar, System Preferences, Photos, and Preview are registered shells without application interiors. Other menu/status items remain static.
 
-Existing checkmarks below cover exercised UI behavior only. They do not claim a universal command interface; `CORE-02` tracks that retrofit.
+Existing UI checkmarks below cover exercised actor behavior. `CORE-01` adds browser-local `app.open` and detached inspection; the remaining desktop/window/Notes command retrofit is tracked in `CORE-02`. Implemented commands and verification notes are in [the command inventory](feature-commands.md).
 
 Evidence: [README](../README.md), [Mojave fidelity notes](mojave-fidelity.md), [Notes research and working notes](notes-mojave.md).
 
@@ -37,11 +37,11 @@ Use this order unless a scene requirement changes priority. Section order is a g
 7. **Remaining bundled apps and utilities:** Launchpad, Mission Control, Dashboard, Maps, Calculator, creative/office add-ons, and diagnostic interfaces.
 8. **Completion pass:** finish every researched app menu and secondary dialog; verify cross-app workflows and visual/state consistency.
 
-**Next suggested slice: `CORE-01` — introduce a minimal browser-local command entry point with a working existing feature.** Follow with `CORE-02` and `MENU-01`. Feature interfaces are in scope now; the Rust/WebSocket transport is not.
+**Next suggested slice: `CORE-02` — route the remaining existing desktop/window/Notes actions and presentation state through the command interface.** Follow with the maintained inventory and profile boundaries. Feature interfaces are in scope now; the Rust/WebSocket transport is not.
 
 ## Architecture foundations and future OS profiles
 
-- [ ] `CORE-01` — Implement a minimal transport-neutral browser-local feature command entry point with stable names, serializable payloads, explicit targets, and inspectable results; prove a real existing workflow without introducing WebSocket/controller infrastructure.
+- [x] `CORE-01` — Implement a minimal transport-neutral browser-local feature command entry point with stable names, serializable payloads, explicit targets, and inspectable results; prove a real existing workflow without introducing WebSocket/controller infrastructure.
 - [ ] `CORE-02` — Route existing desktop, Dock, windows, Window menu, and Notes actions through feature handlers shared by UI and direct command callers; include selection/search/focus/menu presentation state and unavailable-action behavior.
 - [ ] `CORE-03` — Publish and maintain a command inventory for every implemented slice; commands, target identities, supported profiles, required state, data/presentation effects, and asynchronous completion where relevant.
 - [ ] `CORE-04` — Establish explicit OS-profile identity and capability boundaries around the current Mojave scene, app registry, shell, assets, and behavior; share simulation operations where semantics genuinely match rather than imposing Mojave conventions on every OS.
@@ -513,3 +513,4 @@ Rust controller UI, paired screens, WebSocket transport/wire protocol, shared se
 | --- | --- | --- |
 | 2026-10-04 | Created this inventory from the README, application registry, existing Desktop menu/status surfaces, and completed Notes work. Candidate app/pane details still require their own Mojave research. No runtime behavior changed. | `MENU-01` |
 | 2026-10-04 | Added future macOS/Windows 11/possible Linux profiles and mandatory command interfaces for every feature. Added architecture/retrofit tasks without claiming existing UI already supports a universal interface. Controller and WebSocket transport remain deferred. | `CORE-01` |
+| 2026-10-04 | Completed `CORE-01`: browser-local execute/inspect, shared Dock/file app opening, explicit rejections and detached snapshots. Production-browser smoke confirmed invalid requests do not mutate state, close/reopen retains Notes edits, repeated launch deduplicates, and contextual Finder titles work. Default desktop visually inspected; no page errors. | `CORE-02` |

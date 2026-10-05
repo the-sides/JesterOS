@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-These are implementation requirements, not claims about current functionality. Today JesterOS implements only parts of the Mojave desktop; it has no OS-profile switching, universal command interface, or WebSocket control transport. The [feature backlog](pseudo-os-backlog.md) tracks the work. Project terminology is in [CONTEXT.md](../CONTEXT.md).
+Today JesterOS implements parts of the Mojave desktop and a browser-local feature command entry point with `app.open` and detached state inspection. The [implemented command inventory](feature-commands.md) distinguishes current commands from the remaining retrofit. OS-profile switching, universal feature coverage, and WebSocket control transport are not implemented. The [feature backlog](pseudo-os-backlog.md) tracks the work. Project terminology is in [CONTEXT.md](../CONTEXT.md).
 
 Build the actor-facing pseudo-OS first. **Implement feature command interfaces as part of that work; defer the Rust controller, WebSocket transport, server state, and persistence.** Deferring transport must not mean burying feature behavior in click handlers that later require a second implementation.
 

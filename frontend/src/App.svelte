@@ -1,4 +1,6 @@
 <script>
+  import { onMount, tick } from 'svelte';
+  import { createFeatureCommands, rejected } from './feature-commands.js';
   import Desktop from './Desktop.svelte';
   import MessagesWindow from './MessagesWindow.svelte';
   import NotesWindow from './NotesWindow.svelte';
@@ -14,6 +16,36 @@
   let notesState = $state(createNotesState());
   let initialized = false;
   const activeApp = $derived(applications[windows.find((window) => window.id === activeWindowId)?.appId] ?? applications.finder);
+
+  const commands = createFeatureCommands({
+    'app.open': (target, payload) => {
+      if (Object.keys(target).some((key) => key !== 'appId')
+        || typeof target.appId !== 'string'
+        || Object.keys(payload).some((key) => key !== 'title')
+        || (payload.title !== undefined && typeof payload.title !== 'string')) {
+        return rejected('invalid_arguments', 'app.open requires target.appId and an optional string payload.title.');
+      }
+      if (!Object.hasOwn(applications, target.appId)) return rejected('not_found', 'Application does not exist.');
+      if (!area.width || !area.height) return rejected('unavailable', 'The desktop has not been laid out.');
+      openWindow(target.appId, payload.title);
+      return { status: 'applied', target: { appId: target.appId, windowId: target.appId } };
+    },
+  }, () => $state.snapshot({ windows, activeWindowId, area, notes: notesState }), tick);
+
+  onMount(() => {
+    globalThis.jesteros = commands;
+    return () => {
+      if (globalThis.jesteros === commands) delete globalThis.jesteros;
+    };
+  });
+
+  function launchApplication(appId, title) {
+    return commands.execute({
+      command: 'app.open',
+      target: { appId },
+      payload: title === undefined ? {} : { title },
+    });
+  }
 
   function focusWindow(id) {
     const index = windows.findIndex((window) => window.id === id);
@@ -109,7 +141,7 @@
   {windows}
   {activeWindowId}
   {activeApp}
-  onopen={openWindow}
+  onopen={launchApplication}
   onfocus={focusWindow}
   onclose={closeWindow}
   onminimize={minimizeWindow}

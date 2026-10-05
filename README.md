@@ -11,6 +11,7 @@ JesterOS will eventually support **multiple OS profiles**: different macOS relea
 - Notes supports creating/editing plain-text notes, search, pinning, trash, and recovery in a researched Mojave-style UI. Other applications except Messages still have empty interiors.
 - Messages retains its sample conversation. Clock, battery level, conversation selection, and message history remain fixed scene content. Messages search and editing are disabled.
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
+- Browser-local `jesteros.execute()` currently supports `app.open`, shared with Dock/desktop-file activation; `jesteros.inspect()` exposes detached state snapshots. See the [implemented command inventory](docs/feature-commands.md). Other feature commands remain queued.
 
 ## Desktop interactions
 
