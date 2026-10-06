@@ -56,6 +56,7 @@
   import GoldenGateAboutThisMac from './GoldenGateAboutThisMac.svelte';
   import GoldenGateSystemInformation from './GoldenGateSystemInformation.svelte';
   import GoldenGateForceQuit from './GoldenGateForceQuit.svelte';
+  import { captureForceQuitLease, forceQuitLeaseCurrent, forceQuitWindowTarget } from './force-quit-model.js';
   import GoldenGateSystemAboutSettings from './GoldenGateSystemAboutSettings.svelte';
   import GoldenGateSystemCoverage from './GoldenGateSystemCoverage.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
@@ -347,6 +348,12 @@
   let storageConfirmation = $state(null);
   let storageConfirmationLease = null;
   let nextStorageConfirmation = 1;
+  let forceQuitConfirmation = $state(null);
+  let forceQuitConfirmationLease = null;
+  let forceQuitReturnControl = null;
+  const applicationLifetimes = hasAppleMenu ? new Map() : null;
+  const forceQuitScope = hasAppleMenu ? crypto.randomUUID() : null;
+  let nextForceQuitConfirmation = 1;
   let storageMaintenanceError = $state(null);
   let storageMaintenanceClock = null;
   let appearanceState = $state(macDesktop ? initialData.appearance ?? appearanceDefaults(profile) : undefined);
@@ -1014,7 +1021,8 @@
     openForceQuit: () => openWindowPanel('finder', 'system-force-quit', 'Force Quit Applications'),
     getPanel: getSystemPanel, controlIds: systemPanelControls, focusPanel: focusWindowPanel,
     getComputerName: () => systemState.computerName,
-    forceQuit: appId => quitApplication(appId, true), relaunchDesktop: relaunchFinder,
+    requestForceQuit: appId => requestForceQuit(appId, 'quit'),
+    requestFinderRelaunch: () => requestForceQuit('finder', 'relaunch'), respondForceQuit,
     clearRecents: () => clearSystemRecents(systemState),
     openRecent: openRecentItem, openServer: openFictionalServer,
   }));
@@ -1647,7 +1655,7 @@
     const find = panel => control === 'panel' ? panel?.element
       : panel?.element.querySelector(`[data-application-settings-control="${CSS.escape(control)}"]`);
     let node = find(entry);
-    if (!node?.isConnected || node.disabled || !node.getClientRects().length) return false;
+    if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return false;
     focusWindow(entry.window.id);
     await tick(); await tick();
     node = find(getWindowPanel(entry.window.id));
@@ -1656,7 +1664,7 @@
     await tick();
     return document.activeElement === node && getWindowPanel(entry.window.id)?.element.contains(node) === true;
   }
-  async function openWindowPanel(appId, utilityKind, title, settingsPane) {
+  async function openWindowPanel(appId, utilityKind, title, settingsPane, forceQuitRequest) {
     if (utilityPreparation) return rejected('unavailable', 'Wait for the current native panel preparation.');
     if (pendingQuitAppIds.includes(appId)) return rejected('unavailable', 'Resolve the pending application quit before opening its panel.');
     const snapshot = captureWindowPreparation();
@@ -1677,17 +1685,26 @@
         window.forceQuitSelectedAppId = runningAppIds.includes(snapshot.activeAppId)
           ? snapshot.activeAppId : runningAppIds[0] ?? null;
       }
+      if (forceQuitRequest) {
+        window.forceQuitSelectedAppId = forceQuitRequest.presentation.appId;
+        forceQuitConfirmationLease = forceQuitRequest.lease;
+        forceQuitReturnControl = forceQuitRequest.returnControl;
+        forceQuitConfirmation = { ...forceQuitRequest.presentation, windowId: window.id };
+      }
       await tick(); await tick();
       const entry = getWindowPanel(window.id);
       const control = utilityKind === 'application-settings' ? 'sort-by'
+        : utilityKind === 'system-force-quit' && forceQuitConfirmation?.windowId === window.id ? 'confirmation-cancel'
         : utilityKind === 'system-force-quit' && window.forceQuitSelectedAppId ? `app:${window.forceQuitSelectedAppId}` : 'panel';
       if (!entry || !await focusWindowPanel(entry, control) || !sceneCoreAvailable()
-        || activeWindowId !== window.id || activeAppId !== appId) {
+        || activeWindowId !== window.id || activeAppId !== appId || forceQuitRequest && !currentForceQuitLease()) {
+        if (forceQuitRequest) cancelForceQuitConfirmation(window.id);
         await rollbackWindowPreparation(preparation);
         return rejected('unavailable', 'The owned system/application panel did not finish native preparation.');
       }
       return { status: 'applied', target: { appId, windowId: window.id } };
     } catch (error) {
+      if (forceQuitRequest) cancelForceQuitConfirmation(preparation.windowId);
       await rollbackWindowPreparation(preparation);
       throw error;
     } finally {
@@ -1700,7 +1717,7 @@
   }
   function systemPanelControls(entry) {
     return entry ? ['panel', ...[...entry.element.querySelectorAll('[data-application-settings-control]')]
-      .filter(node => !node.disabled && node.getClientRects().length).map(node => node.dataset.applicationSettingsControl)] : [];
+      .filter(node => !node.disabled && !node.closest('[inert]') && node.getClientRects().length).map(node => node.dataset.applicationSettingsControl)] : [];
   }
   function servicesAvailable() {
     return hasServices && windowInteractionsAvailable() && !switching.switcher && !presentation.pairing;
@@ -2466,6 +2483,7 @@
         confirmation: storageConfirmation, maintenanceError: storageMaintenanceError }),
       recentItems: $state.snapshot(systemState.recentItems),
       servers: systemState.servers.map(server => ({ ...server, available: Boolean(availableServerFolder(server)) })),
+      forceQuitConfirmation: forceQuitPresentation(),
       panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
         || window.appId === 'systeminformation' && !window.utilityKind
         || window.appId === 'settings' && !window.utilityKind
@@ -3687,7 +3705,10 @@
         ? { notesPresentation: remembered?.window.notesPresentation ?? notesPresentationDefaults(viewing.notes.mode) } : {}),
     });
     if (remembered) pendingWindowViews.set(id, remembered.view);
-    if (!runningAppIds.includes(appId)) runningAppIds.push(appId);
+    if (!runningAppIds.includes(appId)) {
+      runningAppIds.push(appId);
+      if (hasAppleMenu) applicationLifetimes.set(appId, id);
+    }
     activeWindowId = id;
     activeAppId = appId;
     recordApplicationActivation(switching, appId, id, true);
@@ -3733,6 +3754,7 @@
     if (index < 0) return;
     const appId = windows[index].appId;
     const wasActive = activeWindowId === id, returnFocus = utilityReturnFocus.get(id);
+    cancelForceQuitConfirmation(id);
     const appUtility = Object.hasOwn(WINDOW_UTILITY_SIZES, windows[index].utilityKind);
     utilityReturnFocus.delete(id);
     if (hasRetention) {
@@ -3779,14 +3801,80 @@
     pendingQuitAppIds = pendingQuitAppIds.filter(entry => entry !== appId);
   }
 
+  function currentForceQuitLease() {
+    return forceQuitConfirmationLease !== null && forceQuitLeaseCurrent(forceQuitConfirmationLease,
+      windows, applicationLifetimes.get(forceQuitConfirmationLease.appId), runningAppIds);
+  }
+  function forceQuitPresentation() {
+    const pending = forceQuitConfirmation;
+    return pending ? { confirmationId: pending.confirmationId, windowId: pending.windowId,
+      appId: pending.appId, name: pending.name, action: pending.action, busy: pending.busy,
+      stale: !currentForceQuitLease() } : null;
+  }
+  function cancelForceQuitConfirmation(windowId) {
+    if (forceQuitConfirmation?.windowId !== windowId) return;
+    forceQuitConfirmation = null;
+    forceQuitConfirmationLease = null;
+    forceQuitReturnControl = null;
+  }
+  async function requestForceQuit(appId, action) {
+    if (forceQuitConfirmation) return rejected('unavailable', 'Resolve the existing Force Quit confirmation first.');
+    if (!Number.isSafeInteger(nextForceQuitConfirmation) || nextForceQuitConfirmation >= Number.MAX_SAFE_INTEGER - 1)
+      return rejected('limit_exceeded', 'The private confirmation identity budget is exhausted.');
+    const lease = captureForceQuitLease(appId, action, windows, applicationLifetimes.get(appId));
+    const chooser = windows.find(window => window.utilityKind === 'system-force-quit');
+    const focused = document.activeElement;
+    const returnControl = chooser && managedWindowElement(chooser.id)?.contains(focused)
+      ? focused.dataset.applicationSettingsControl ?? `app:${appId}` : `app:${appId}`;
+    const presentation = { confirmationId: `force-quit-confirmation-${forceQuitScope}-${nextForceQuitConfirmation++}`,
+      appId, name: applications[appId].name, action, busy: false };
+    const result = await openWindowPanel('finder', 'system-force-quit', 'Force Quit Applications', undefined,
+      { lease, returnControl, presentation });
+    if (result.status !== 'applied') return result;
+    return { status: 'applied', target: { appId, windowId: result.target.windowId,
+      confirmationId: presentation.confirmationId, confirmationRequired: true,
+      ...(action === 'quit' ? { quit: false } : { relaunched: false }) } };
+  }
+  async function respondForceQuit(windowId, confirmationId, accept) {
+    const pending = forceQuitConfirmation;
+    if (!pending || pending.windowId !== windowId || pending.confirmationId !== confirmationId)
+      return rejected('stale_target', 'The owned Force Quit confirmation no longer exists.');
+    if (pending.busy || !getSystemPanel(windowId)) return rejected('unavailable', 'The owned Force Quit confirmation is not interactive.');
+    if (accept && !currentForceQuitLease())
+      return rejected('stale_target', 'The confirmed application lifetime or windows changed; cancel and review the current application.');
+    const outcome = { windowId, confirmationId, appId: pending.appId, action: pending.action,
+      accepted: accept, performed: false, openedWindowId: null };
+    const returnControl = forceQuitReturnControl;
+    if (accept) {
+      pending.busy = true;
+      const result = pending.action === 'relaunch' ? await relaunchFinder() : await quitApplication(pending.appId, true);
+      if (result.status !== 'applied') {
+        if (forceQuitConfirmation === pending) pending.busy = false;
+        return result;
+      }
+      outcome.performed = true;
+      if (pending.action === 'relaunch') outcome.openedWindowId = result.target.windowId;
+    }
+    cancelForceQuitConfirmation(windowId);
+    await tick(); await tick();
+    const entry = getSystemPanel(windowId);
+    if (entry && activeWindowId === windowId) {
+      const control = accept ? `app:${entry.window.forceQuitSelectedAppId}` : returnControl;
+      if (systemPanelControls(entry).includes(control)) await focusWindowPanel(entry, control);
+      else await focusWindowPanel(entry, 'panel');
+    }
+    return { status: 'applied', target: outcome };
+  }
+
   async function quitApplication(appId, force = false) {
     if (quitInFlight.has(appId)) return rejected('unavailable', 'Application quit is already being processed.');
     if (!pendingQuitAppIds.includes(appId)) pendingQuitAppIds.push(appId);
     quitInFlight.add(appId);
     try {
+      const forceAction = force && appId === profile.defaults.desktopAppId ? 'relaunch' : 'quit';
       let window;
-      while (!disposed && (window = windows.findLast(entry => entry.appId === appId
-        && !(force && appId === profile.defaults.desktopAppId && Object.hasOwn(SYSTEM_UTILITY_SIZES, entry.utilityKind))))) {
+      while (!disposed && (window = windows.findLast(entry => force
+        ? forceQuitWindowTarget(entry, appId, forceAction) : entry.appId === appId))) {
         const result = force ? (await closeWindow(window.id), { status: 'applied' })
           : await handlers['window.close']({ windowId: window.id }, {});
         if (result?.status === 'rejected') {
@@ -3799,7 +3887,10 @@
         }
       }
       if (disposed) return rejected('unavailable', 'The outgoing scene has been disposed.');
-      if (!(force && appId === profile.defaults.desktopAppId)) runningAppIds = runningAppIds.filter(entry => entry !== appId);
+      if (!(force && appId === profile.defaults.desktopAppId)) {
+        runningAppIds = runningAppIds.filter(entry => entry !== appId);
+        if (hasAppleMenu) applicationLifetimes.set(appId, null);
+      }
       switching.hiddenAppIds = switching.hiddenAppIds.filter(id => id !== appId);
       if (!hasMenuBar) switching.appMenu = null;
       if (activeAppId === appId) {
@@ -3823,6 +3914,7 @@
     const result = await quitApplication('finder', true);
     if (result.status !== 'applied') return result;
     const windowId = openWindow('finder');
+    applicationLifetimes.set('finder', windowId);
     await tick(); await tick();
     if (chooser && windows.includes(chooser)) {
       focusWindow(chooser.id);
@@ -3962,7 +4054,9 @@
           <GoldenGateAboutThisMac {profile} {window} execute={commands.execute} />
         {:else if hasAppleMenu && window.utilityKind === 'system-force-quit'}
           <GoldenGateForceQuit {profile} windowId={window.id} runningApps={runningAppIds.map(id => applications[id])}
-            selectedAppId={window.forceQuitSelectedAppId} execute={commands.execute} available={() => Boolean(getSystemPanel(window.id))} />
+            selectedAppId={window.forceQuitSelectedAppId}
+            confirmation={forceQuitConfirmation?.windowId === window.id ? forceQuitPresentation() : null}
+            execute={commands.execute} available={() => Boolean(getSystemPanel(window.id))} />
         {:else if hasAppleMenu && window.utilityKind === 'system-coverage'}
           <GoldenGateSystemCoverage {profile} windowId={window.id} sceneTime={macFiles.sceneTime} execute={commands.execute} />
         {:else if hasAppleMenu && window.appId === 'settings' && !window.utilityKind

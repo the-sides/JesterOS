@@ -71,22 +71,29 @@ export function createAppleCommands(ctx) {
       if (!fields(target, ['windowId', 'appId']) || !identity(target.windowId) || !identity(target.appId) || !fields(payload, [])) return invalid();
       const error = currentApp(target.appId); if (error) return error;
       const entry = ctx.getPanel(target.windowId);
-      if (entry?.window.utilityKind !== 'system-force-quit') return unavailable();
+      if (entry?.window.utilityKind !== 'system-force-quit' || !ctx.controlIds(entry).includes(`app:${target.appId}`)) return unavailable();
       if (!await ctx.focusPanel(entry, `app:${target.appId}`) || !ctx.available()
         || !ctx.getPanel(target.windowId) || !ctx.getRunningAppIds().includes(target.appId)) return unavailable();
       entry.window.forceQuitSelectedAppId = target.appId;
       return applied({ windowId: target.windowId, appId: target.appId });
     },
+    'system.forceQuit.respond': (target, payload) => {
+      if (!fields(target, ['windowId', 'confirmationId']) || !identity(target.windowId) || !identity(target.confirmationId)
+        || !fields(payload, ['accept']) || typeof payload.accept !== 'boolean') return invalid();
+      const entry = ctx.getPanel(target.windowId);
+      if (entry?.window.appId !== ctx.profile.defaults.desktopAppId || entry.window.utilityKind !== 'system-force-quit') return unavailable();
+      return ctx.respondForceQuit(target.windowId, target.confirmationId, payload.accept);
+    },
     'app.forceQuit': async (target, payload) => {
       if (!fields(target, ['appId']) || !identity(target.appId) || !fields(payload, [])) return invalid();
       const error = currentApp(target.appId); if (error) return error;
       if (target.appId === ctx.profile.defaults.desktopAppId) return rejected('disabled', 'Finder remains running; use app.relaunch instead.');
-      return ctx.forceQuit(target.appId);
+      return ctx.requestForceQuit(target.appId);
     },
     'app.relaunch': (target, payload) => {
       if (!fields(target, ['appId']) || target.appId !== ctx.profile.defaults.desktopAppId || !fields(payload, [])) return invalid();
       const error = currentApp(target.appId); if (error) return error;
-      return ctx.relaunchDesktop();
+      return ctx.requestFinderRelaunch();
     },
     'system.recents.open': (target, payload) => {
       if (!fields(target, ['category', 'itemId']) || !['applications', 'documents', 'servers'].includes(target.category)

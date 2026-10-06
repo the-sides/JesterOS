@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-JesterOS defaults to immutable **macOS27 Golden Gate27.0.1**, exposing306 commands and independently authored native-informed shell/window/Notes/Messages presentation. Source-verified current macOS is the only new-feature target. Completed High Sierra10.13/Mojave10.14/Sonoma14.0/Windows11 23H2 build22631.2428 profiles remain installed with170/178/163/190 commands respectively. Detached discovery follows fresh profile selection behind a stable public interface; unsupported setup has no substitute. The [conditional Linux research](ubuntu-24.04-profile.md) does not install another profile.
+JesterOS defaults to immutable **macOS27 Golden Gate27.0.1**, exposing307 commands and independently authored native-informed shell/window/Notes/Messages presentation. Source-verified current macOS is the only new-feature target. Completed High Sierra10.13/Mojave10.14/Sonoma14.0/Windows11 23H2 build22631.2428 profiles remain installed with170/178/163/190 commands respectively. Detached discovery follows fresh profile selection behind a stable public interface; unsupported setup has no substitute. The [conditional Linux research](ubuntu-24.04-profile.md) does not install another profile.
 
 Build the actor-facing pseudo-OS first. **Implement feature command interfaces as part of that work; defer the Rust controller, WebSocket transport, server state and server/controller persistence.** Golden Gate supports only optional explicit browser-local saved sessions. Deferring transport must not mean burying feature behavior in click handlers that later require a second implementation.
 
@@ -275,4 +275,17 @@ The submenu's three categories route through `system.recents.open`. Exact histor
 Clear affects all three histories only. File renaming changes resolved document/Finder names; trash/missing/offline state disables server rows and typed requests reject atomically. Per-root definitions/history use existing local retention and explicit saved-session capture; Guest never serializes and reinitializes from the authored baseline. Older V1 without either new required field rejects before disposal, without a merge shim.
 
 Evidence:427 tests/5,183 assertions,598-module build,306 strict schema pairs and66 applied pairs across87 raw requests. Actual native app/image/server opens, shared child, rename/trash, capacity/eviction, exact4 Mi boundary, local/Guest isolation and source/production cold restore pass. Eight historical calls preserve state/DOM/focus. Inspected Light/Dark320×240/DPR1.25; native submenu scroll193 and End/disabled-row skipping/Enter Clear work with zero production errors/failed/external requests. Foreground control resolved two-tab wait failures; temporary popup guarding was removed, leaving shared menu code unchanged.
+
+
+## APPLE-05 — private application lifetime and owned confirmation
+
+Public force quit/relaunch requests prepare the actual Finder-owned chooser and focus Cancel before returning confirmation-required results. A single `system.forceQuit.respond` command owns acceptance/cancellation. Pending controls are window-local; inert row admission rejects before focus. Native Return/Tab/Escape route through these canonical contracts, without an immediate-action shim.
+
+Private leases hold actual target window references in a Set and a per-application lifetime token. First-created existing window IDs identify new runs; successful quit retires the token and Finder relaunch renews it. Restored running apps initially have undefined tokens. Membership/count and running/token equality prevent replacement-window and zero-window-process borrowing while allowing edits, reorder, hide/minimize and unrelated windows. One exported target predicate is shared by lease validation and actual force-close: Finder relaunch excludes all its utility kinds, correcting observed About/Get Info loss outside the confirmed ordinary-window set.
+
+Confirmation IDs include a private root UUID scope and bounded sequence; matching restored window IDs cannot revive an old request. The flat public DTO contains only copied scalar identity/name/action/busy/stale fields, never Set/window references. Existing V1 seed/saved window shapes are intentionally unchanged; leases/confirmation state are excluded. Owned close retires pending confirmation; locked/foreign-root response rejects without data or credential-focus theft.
+
+Confirmed termination retains Notes/virtual file/Services records and ordinary native reopening memory under the disclosed recovery policy. Finder preserves files/all utilities/running marker and recreates ordinary lifetime. No host process or synthetic hung status is introduced. Existing file-sheet/global-presentation availability barriers remain.
+
+Evidence:437 tests/5,204 assertions, warning-free599 modules,307 strict pairs and119 applied pairs/145 records. Actual edited Notes/mail reopening, hidden/minimized windows, zero-window restart/new-window stale protection, Finder About/Get Info/system utility survival and source/production cold replay checks pass. Twelve historical calls preserve state/DOM/focus. Production Light/Dark320×240/DPR1.25;16-app End scroll438 and Return/Escape verified with zero errors/failed/external requests. Proof: local://apple05-shipped-proof.json. Extra confirmation/default-Cancel are safety policies, not unverified factory defaults.
 
