@@ -33,9 +33,9 @@ const bounds = object({ x: number(-MAX_COUNTER), y: number(-MAX_COUNTER), width:
 const desktopId = { ...identity, pattern: '^desktop-[1-9][0-9]*$' };
 const scrollPosition = object({ top: number(), left: number() });
 const scrollKey = choice('notes-list', 'notes-body', 'messages-conversations', 'messages-thread', 'finder-contents',
-  'window-content', 'settings-dock', 'settings-appearance', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel', 'system-about', 'system-force-quit', 'system-information');
+  'window-content', 'settings-dock', 'settings-appearance', 'settings-about', 'settings-displays', 'settings-storage', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel', 'system-about', 'system-force-quit', 'system-information', 'system-coverage');
 const selectionKey = choice('notes-title', 'notes-body', 'notes-search',
-  'service-name', 'service-email', 'service-phone', 'service-notes', 'service-to', 'service-subject', 'service-body');
+  'service-name', 'service-email', 'service-phone', 'service-notes', 'service-to', 'service-subject', 'service-body', 'settings-computer-name');
 const viewToken = object({
   scroll: array(object({ key: scrollKey, top: number(), left: number(), recordId: nullable(identity) }, ['key', 'top', 'left']), 10),
   selections: array(object({ key: selectionKey, noteId: nullable(identity), recordId: identity, start: counter(), end: counter(),
@@ -45,11 +45,12 @@ const viewToken = object({
 const windowRecord = object({
   id: { ...identity, maxLength: 256 }, appId: identity, title: string(4096), minimized: flag, fullScreen: flag, zoomed: flag,
   bounds, restoreBounds: nullable(bounds), spaceId: desktopId,
-  folderId: safeKey(), finderSelectedFileIds: ids(safeKey()), settingsPane: choice('dock', 'appearance'),
+  folderId: safeKey(), finderSelectedFileIds: ids(safeKey()), settingsPane: choice('dock', 'appearance', 'about', 'displays', 'storage'),
   finderPresentation: finderPresentationSchema, notesPresentation: notesPresentationSchema,
   finderBrowseMode: choice('icons', 'list', 'columns', 'gallery'),
-  utilityKind: choice('desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'system-about', 'system-force-quit'),
+  utilityKind: choice('desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'system-about', 'system-force-quit', 'system-coverage'),
   fileId: safeKey(), infoSections: object({ general: flag, name: flag }), forceQuitSelectedAppId: nullable(identity),
+  aboutBuildVisible: flag, storageVolumesVisible: flag,
 }, ['id', 'appId', 'title', 'minimized', 'fullScreen', 'zoomed', 'bounds', 'restoreBounds', 'spaceId']);
 const rootSnapshot = object({
   seed: sceneSeedSchema, windows: array(windowRecord),
@@ -164,6 +165,13 @@ function validateView(view, window, seed) {
       && selection.key.startsWith('service-') && Object.hasOwn(entry.fields, selection.key.slice('service-'.length))
       && selection.start <= selection.end && selection.end <= entry.fields[selection.key.slice('service-'.length)].length);
   }
+  if (!window.utilityKind && window.appId === 'settings' && window.settingsPane === 'about') {
+    if (view.focusKey !== null && (view.focusKey !== 'settings-computer-name'
+      || !view.selections.some(selection => selection.key === view.focusKey))) return false;
+    return view.selections.every(selection => selection.key === 'settings-computer-name'
+      && selection.noteId === null && !Object.hasOwn(selection, 'recordId')
+      && selection.start <= selection.end && selection.end <= seed.system.computerName.length);
+  }
   if (window.utilityKind || window.appId !== 'notes') return view.selections.length === 0 && view.focusKey === null;
   if (view.focusKey !== null && !['notes-title', 'notes-body', 'notes-search'].includes(view.focusKey)) return false;
   const notes = new Set(seed.notes.notes.map(note => note.id));
@@ -234,6 +242,10 @@ function validateRoot(scene, userId, profile) {
     }
     if (window.zoomed !== (window.restoreBounds !== null)) return invalid('Zoomed windows require retained normal restore bounds; unzoomed windows must not have restore bounds.');
     if (Object.hasOwn(window, 'forceQuitSelectedAppId') && window.utilityKind !== 'system-force-quit') return invalid('Only the Force Quit chooser owns an application selection.');
+    if (Object.hasOwn(window, 'aboutBuildVisible') && window.utilityKind !== 'system-about'
+      && (window.appId !== 'settings' || window.utilityKind)) return invalid('Only About This Mac or ordinary System Settings owns build visibility.');
+    if (Object.hasOwn(window, 'storageVolumesVisible') && (window.appId !== 'settings' || window.utilityKind))
+      return invalid('Only ordinary System Settings owns volume-detail visibility.');
     if (window.utilityKind) {
       if (Object.hasOwn(window, 'folderId') || Object.hasOwn(window, 'finderSelectedFileIds')
         || Object.hasOwn(window, 'finderPresentation') || Object.hasOwn(window, 'notesPresentation')
@@ -245,8 +257,9 @@ function validateRoot(scene, userId, profile) {
         const owner = `${window.appId}:${window.utilityKind}`;
         if (utilityOwners.has(owner)) return invalid('An application can have at most one live utility of each app-menu kind.');
         utilityOwners.add(owner);
-      } else if (window.utilityKind === 'system-about' || window.utilityKind === 'system-force-quit') {
-        if (window.appId !== 'finder' || Object.hasOwn(window, 'fileId') || Object.hasOwn(window, 'infoSections')) return invalid('System utilities belong to the simulated Finder shell and contain no desktop-file metadata.');
+      } else if (window.utilityKind === 'system-about' || window.utilityKind === 'system-force-quit' || window.utilityKind === 'system-coverage') {
+        const ownerAppId = window.utilityKind === 'system-coverage' ? 'settings' : 'finder';
+        if (window.appId !== ownerAppId || Object.hasOwn(window, 'fileId') || Object.hasOwn(window, 'infoSections')) return invalid('System utilities require their exact shell/Settings owner and no desktop-file metadata.');
         const owner = `${window.appId}:${window.utilityKind}`;
         if (utilityOwners.has(owner)) return invalid('Each local desktop has at most one system utility of each kind.');
         utilityOwners.add(owner);

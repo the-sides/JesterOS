@@ -49,10 +49,12 @@
   import { APPLICATION_MENU_UTILITY_SIZES, goldenApplicationMenuItems, createApplicationMenuCommands } from './application-menu.js';
   import { SYSTEM_UTILITY_SIZES } from './apple-menu.js';
   import { createAppleCommands } from './apple-commands.js';
-  import { recordSystemRecent, clearSystemRecents } from './system-state.js';
+  import { recordSystemRecent, clearSystemRecents, systemStorageSummary } from './system-state.js';
   import GoldenGateAboutThisMac from './GoldenGateAboutThisMac.svelte';
   import GoldenGateSystemInformation from './GoldenGateSystemInformation.svelte';
   import GoldenGateForceQuit from './GoldenGateForceQuit.svelte';
+  import GoldenGateSystemAboutSettings from './GoldenGateSystemAboutSettings.svelte';
+  import GoldenGateSystemCoverage from './GoldenGateSystemCoverage.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -349,6 +351,7 @@
       : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
   });
   let macFiles = $state(macDesktop ? createMacSceneFiles() : undefined);
+  const systemStorage = $derived(hasAppleMenu ? systemStorageSummary(profile, macFiles) : null);
   let recentDocumentCursor = hasAppleMenu ? macFiles.files.reduce((latest, file) =>
     file.kind === 'document' && Number.isFinite(file.lastOpenedAt) ? Math.max(latest, file.lastOpenedAt) : latest, 0) : 0;
   $effect(() => {
@@ -964,12 +967,25 @@
     focusPanel: focusWindowPanel,
   }));
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
-    profile, available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
+    profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
     getRunningAppIds: () => runningAppIds,
     openAbout: () => openWindowPanel('finder', 'system-about', 'About This Mac'),
+    openSettings: async pane => {
+      const result = await openWindowPanel('settings', undefined, pane === 'about' ? 'About' : pane === 'displays' ? 'Displays' : 'Storage', pane);
+      return result.status === 'applied' ? { status: 'applied', target: { ...result.target, pane } } : result;
+    },
+    renameComputer: (entry, name) => {
+      if (workflowTextSize() + name.length - systemState.computerName.length > 4 * 1024 * 1024)
+        return rejected('invalid_arguments', 'The computer name exceeds the shared complete-scene text budget.');
+      systemState.computerName = name;
+      applicationViews.get(entry.window.id)?.setComputerName(name);
+      return { status: 'applied', target: { windowId: entry.window.id, computerName: name } };
+    },
+    openCoverage: () => openWindowPanel('settings', 'system-coverage', 'Warranty and Coverage'),
     openInformation: () => openWindowPanel('systeminformation', undefined, 'System Information'),
     openForceQuit: () => openWindowPanel('finder', 'system-force-quit', 'Force Quit Applications'),
     getPanel: getSystemPanel, controlIds: systemPanelControls, focusPanel: focusWindowPanel,
+    getComputerName: () => systemState.computerName,
     forceQuit: appId => quitApplication(appId, true), relaunchDesktop: relaunchFinder,
     clearRecents: () => clearSystemRecents(systemState),
   }));
@@ -1136,6 +1152,8 @@
         ...(window.infoSections ? { infoSections: { ...window.infoSections } } : {}),
         ...(window.finderSelectedFileIds ? { selectedFileIds: [...window.finderSelectedFileIds] } : {}),
         ...(window.settingsPane ? { settingsPane: window.settingsPane } : {}),
+        ...(Object.hasOwn(window, 'aboutBuildVisible') ? { aboutBuildVisible: window.aboutBuildVisible } : {}),
+        ...(Object.hasOwn(window, 'storageVolumesVisible') ? { storageVolumesVisible: window.storageVolumesVisible } : {}),
         ...(hasViewWorkflows && window.finderPresentation ? { finderPresentation: { ...window.finderPresentation } } : {}),
         ...(hasViewWorkflows && window.notesPresentation ? { notesPresentation: { ...window.notesPresentation } } : {}),
         ...(desktopState.dock?.appWindows ? { presentationVisible: Boolean(dockWindowBounds[window.id]),
@@ -1260,7 +1278,7 @@
     if (!element || element.closest('[inert]') || getComputedStyle(element).visibility !== 'visible') return false;
     element.focus({ preventScroll: true });
     if (hasRetention && pendingWindowViews.has(id)) {
-      restoreRetainedView(element, pendingWindowViews.get(id), retainedServiceOptions(windows.find(window => window.id === id), { focus: foreground }));
+      restoreRetainedView(element, pendingWindowViews.get(id), retainedWindowOptions(windows.find(window => window.id === id), { focus: foreground }));
       pendingWindowViews.delete(id);
     }
     return hasRetention ? element.contains(document.activeElement) : document.activeElement === element;
@@ -1570,7 +1588,8 @@
     await tick();
     return document.activeElement === node && getWindowPanel(entry.window.id)?.element.contains(node) === true;
   }
-  async function openWindowPanel(appId, utilityKind, title) {
+  async function openWindowPanel(appId, utilityKind, title, settingsPane) {
+    if (utilityPreparation) return rejected('unavailable', 'Wait for the current native panel preparation.');
     if (pendingQuitAppIds.includes(appId)) return rejected('unavailable', 'Resolve the pending application quit before opening its panel.');
     const snapshot = captureWindowPreparation();
     const preparation = { appId, windowId: null, snapshot, createdIds: [] };
@@ -1585,6 +1604,7 @@
         if (utilityKind) utilityReturnFocus.set(id, snapshot.returnFocus);
       }
       preparation.windowId = window.id;
+      if (settingsPane) { window.settingsPane = settingsPane; window.title = title; }
       if (utilityKind === 'system-force-quit' && !Object.hasOwn(window, 'forceQuitSelectedAppId')) {
         window.forceQuitSelectedAppId = runningAppIds.includes(snapshot.activeAppId)
           ? snapshot.activeAppId : runningAppIds[0] ?? null;
@@ -1850,10 +1870,12 @@
       text, payload.direction === 'backward' ? payload.start : payload.end);
     return { status: 'applied', target: { windowId: target.windowId, itemIndex: target.itemIndex, start: payload.start, end: payload.end } };
   }
-  function retainedServiceOptions(window, extra = {}) {
+  function retainedWindowOptions(window, extra = {}) {
     const entry = hasServices && !window.utilityKind && ['contacts', 'mail', 'messages'].includes(window.appId)
       ? communicationEntry(communicationsState, window.appId) : null;
-    return { noteId: notesState.selectedId, recordId: entry?.id ?? null, fields: entry?.fields ?? null, ...extra };
+    return { noteId: notesState.selectedId, recordId: entry?.id ?? null, fields: entry?.fields ?? null,
+      computerName: hasAppleMenu && !window.utilityKind && window.appId === 'settings' && window.settingsPane === 'about'
+        ? systemState.computerName : null, ...extra };
   }
   function serviceContextArea() { return desktopView?.contextArea() ?? { left: 0, top: 28, width: globalThis.innerWidth, height: Math.max(0, globalThis.innerHeight - 28) }; }
   function serviceContextMenu(event) {
@@ -2328,16 +2350,25 @@
     ] };
   }
   function systemTargets() {
-    return { runningAppIds: [...runningAppIds], panels: windows.filter(window =>
-      Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind) || window.appId === 'systeminformation' && !window.utilityKind).map(window => {
-      const entry = getSystemPanel(window.id), element = managedWindowElement(window.id)?.querySelector('[data-system-panel]');
-      return { windowId: window.id, appId: window.appId, kind: window.utilityKind ?? 'system-information',
-        available: Boolean(entry), controlIds: systemPanelControls(entry),
-        ...(window.utilityKind === 'system-force-quit' ? { selectedAppId: window.forceQuitSelectedAppId } : {}),
-        focusedControl: element?.contains(document.activeElement)
-          ? document.activeElement === element ? 'panel' : document.activeElement.dataset.applicationSettingsControl ?? null : null,
-        scroll: element ? { top: element.scrollTop, left: element.scrollLeft } : null };
-    }), boundaries: { hostHardware: false, hostProcesses: false, localDocumentRecovery: true, fictionalServers: false } };
+    return { machine: { ...profile.defaults.machine, computerName: systemState.computerName,
+      profileId: profile.id, version: profile.version }, storage: systemStorage, runningAppIds: [...runningAppIds],
+      panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
+        || window.appId === 'systeminformation' && !window.utilityKind
+        || window.appId === 'settings' && !window.utilityKind
+          && (window.settingsPane === 'about' || window.settingsPane === 'displays' || window.settingsPane === 'storage')).map(window => {
+        const entry = getSystemPanel(window.id), element = managedWindowElement(window.id)?.querySelector('[data-system-panel]');
+        const controlIds = systemPanelControls(entry);
+        return { windowId: window.id, appId: window.appId,
+          kind: window.utilityKind ?? (window.appId === 'settings' ? `system-settings-${window.settingsPane}` : 'system-information'),
+          available: Boolean(entry) && !utilityPreparation, controlIds,
+          ...(controlIds.includes('version') ? { aboutBuildVisible: Boolean(window.aboutBuildVisible) } : {}),
+          ...(window.appId === 'settings' && window.settingsPane === 'storage' ? { storageVolumesVisible: Boolean(window.storageVolumesVisible) } : {}),
+          ...(window.utilityKind === 'system-force-quit' ? { selectedAppId: window.forceQuitSelectedAppId } : {}),
+          focusedControl: element?.contains(document.activeElement)
+            ? document.activeElement === element ? 'panel' : document.activeElement.dataset.applicationSettingsControl ?? null : null,
+          scroll: element ? { top: element.scrollTop, left: element.scrollLeft } : null };
+      }), boundaries: { hostHardware: false, hostProcesses: false, localDocumentRecovery: true, fictionalServers: false,
+        hostDisplayConfiguration: false, hostDiskInspection: false, warrantyLookup: false, repairBooking: false } };
   }
   function dismissDockPresentation() {
     if (!hasDockContext) return;
@@ -3480,7 +3511,7 @@
       if (!closed.utilityKind && !windows.some(window => window.id !== id && window.appId === appId && !window.utilityKind)) {
         closedWindows[appId] = {
           window: { ...$state.snapshot(closed), minimized: false, fullScreen: false },
-          view: captureRetainedView(managedWindowElement(id), retainedServiceOptions(closed)),
+          view: captureRetainedView(managedWindowElement(id), retainedWindowOptions(closed)),
         };
       }
       pendingWindowViews.delete(id);
@@ -3642,7 +3673,7 @@
   async function restoreSavedViews() {
     await tick();
     for (const window of windows) restoreRetainedView(managedWindowElement(window.id), pendingWindowViews.get(window.id),
-      retainedServiceOptions(window));
+      retainedWindowOptions(window));
     return { status: 'applied', target: {} };
   }
 
@@ -3663,7 +3694,7 @@
       dockOrder: { mainOrderAppIds: dock.mainOrderAppIds, secondaryOrderItemIds: dock.secondaryOrderItemIds },
       windows, closedWindows,
       views: Object.fromEntries(windows.map(window => [window.id, captureRetainedView(managedWindowElement(window.id),
-        retainedServiceOptions(window, { focusElement }))])),
+        retainedWindowOptions(window, { focusElement }))])),
       nextWindowId, activeWindowId, activeAppId, runningAppIds,
       switching: { activationAppIds, activationWindowIds, creationWindowIds, hiddenAppIds },
       spaces: { desktops, order, activeSpaceId, lastDesktopId, nextDesktopId }, splitViews: presentation.splitViews,
@@ -3699,12 +3730,18 @@
         onresize={(edge, coordinates) => windowCommand('window.resize', window.id, { edge, ...coordinates })}
       >
         {#if hasAppleMenu && window.utilityKind === 'system-about'}
-          <GoldenGateAboutThisMac {profile} windowId={window.id} execute={commands.execute} />
+          <GoldenGateAboutThisMac {profile} {window} execute={commands.execute} />
         {:else if hasAppleMenu && window.utilityKind === 'system-force-quit'}
           <GoldenGateForceQuit {profile} windowId={window.id} runningApps={runningAppIds.map(id => applications[id])}
             selectedAppId={window.forceQuitSelectedAppId} execute={commands.execute} available={() => Boolean(getSystemPanel(window.id))} />
+        {:else if hasAppleMenu && window.utilityKind === 'system-coverage'}
+          <GoldenGateSystemCoverage {profile} windowId={window.id} sceneTime={macFiles.sceneTime} execute={commands.execute} />
+        {:else if hasAppleMenu && window.appId === 'settings' && !window.utilityKind
+          && (window.settingsPane === 'about' || window.settingsPane === 'displays' || window.settingsPane === 'storage')}
+          <GoldenGateSystemAboutSettings {profile} {window} system={systemState} storage={systemStorage}
+            execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasAppleMenu && window.appId === 'systeminformation' && !window.utilityKind}
-          <GoldenGateSystemInformation {profile} windowId={window.id} runningApps={runningAppIds.map(id => applications[id])} execute={commands.execute} />
+          <GoldenGateSystemInformation {profile} windowId={window.id} computerName={systemState.computerName} runningApps={runningAppIds.map(id => applications[id])} execute={commands.execute} />
         {:else if window.utilityKind === 'application-about'}
           <GoldenGateAboutApp application={applications[window.appId]} {profile} windowId={window.id} execute={commands.execute} />
         {:else if window.utilityKind === 'application-settings'}
@@ -3777,6 +3814,7 @@
         {:else if hasDockContext && window.appId === 'settings'}
           {#if hasAppearance && window.settingsPane === 'appearance'}
             <MacAppearancePreferences {profile} state={appearanceState} execute={commands.execute} />
+            {#if hasAppleMenu}<div class="settings-pane-links"><button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'system.settings.open', payload: { pane: 'about' } })}>General — About…</button></div>{/if}
           {:else if hasDashboard && window.settingsPane === 'mission-control'}
             <DashboardPreferences mode={dashboardState.mode} execute={commands.execute} />
             <div class="settings-pane-links">
@@ -3785,6 +3823,7 @@
           {:else}
             <MacDockPreferences {profile} preferences={desktopState.dock.preferences} execute={commands.execute} />
             <div class="settings-pane-links">
+              {#if hasAppleMenu}<button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'system.settings.open', payload: { pane: 'about' } })}>General — About…</button>{/if}
               {#if hasAppearance}
                 <button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'appearance.preferences.open' })}>{modernMac ? 'Appearance…' : 'General…'}</button>
               {/if}

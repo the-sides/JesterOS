@@ -80,7 +80,7 @@ export function createDefaultSceneSeed(profile) {
     editing: editingPreferencesDefaults(),
     viewing: viewingDefaults(),
     communications: communicationDefaults(sceneTime),
-    system: systemDefaults(),
+    system: systemDefaults(profile),
     messages: {
       pinned: [
         { name: 'Casey', initials: 'CR', tint: '#d39a72', selected: false },

@@ -41,7 +41,7 @@ function addWindow(scene, appId, fields = {}, userId = 'local-alex') {
   const id = fields.id ?? `${userId === 'local-casey' ? 'local-casey--' : ''}${appId}-window-${allocation}`;
   const window = { id, appId, title: profile.applications[appId].name, minimized: false, fullScreen: false, zoomed: false,
     bounds: bounds(), restoreBounds: null, spaceId: scene.spaces.lastDesktopId,
-    ...(appId === 'finder' ? { folderId: 'desktop' } : {}), ...(appId === 'settings' ? { settingsPane: 'dock' } : {}),
+    ...(appId === 'finder' ? { folderId: 'desktop' } : {}), ...(appId === 'settings' && !fields.utilityKind ? { settingsPane: 'dock' } : {}),
     ...(!fields.utilityKind && appId === 'finder' ? { finderPresentation: finderPresentationDefaults(),
       finderBrowseMode: scene.seed.viewing.finder.folderViews.desktop?.mode ?? 'icons' } : {}),
     ...(!fields.utilityKind && appId === 'notes' ? { notesPresentation: notesPresentationDefaults(scene.seed.viewing.notes.mode) } : {}), ...fields };
@@ -73,6 +73,30 @@ function renameWindow(scene, window, id) {
   if (scene.activeWindowId === previous) scene.activeWindowId = id;
   for (const key of ['activationWindowIds', 'creationWindowIds']) scene.switching[key] = scene.switching[key].map(value => value === previous ? id : value);
 }
+
+test('saved About name caret and coverage belong only to their exact native Settings owners', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  scene.seed.system.computerName = 'Studio 🎬 Mac';
+  const about = addWindow(scene, 'settings', { settingsPane: 'about', aboutBuildVisible: true, storageVolumesVisible: true });
+  const coverage = addWindow(scene, 'settings', { utilityKind: 'system-coverage' });
+  scene.views[about.id] = { scroll: [{ key: 'settings-about', top: 80, left: 0 }],
+    selections: [{ key: 'settings-computer-name', noteId: null, start: 2, end: 8, direction: 'backward' }],
+    focusKey: 'settings-computer-name' };
+  scene.views[coverage.id].scroll = [{ key: 'system-coverage', top: 24, left: 0 }];
+  scene.activeAppId = 'settings'; scene.activeWindowId = about.id;
+  expect(validateSavedSession(snapshot, profile).ok).toBe(true);
+  for (const change of [
+    value => { value.locals[0].scene.views[about.id].selections[0].end = 99; },
+    value => { value.locals[0].scene.views[about.id].selections[0].noteId = 'note-1'; },
+    value => { value.locals[0].scene.views[about.id].selections[0].recordId = 'borrowed-record'; },
+    value => { value.locals[0].scene.windows.find(window => window.id === about.id).settingsPane = 'displays'; },
+    value => { value.locals[0].scene.windows.find(window => window.id === coverage.id).appId = 'finder'; },
+    value => { value.locals[0].scene.windows.find(window => window.id === coverage.id).aboutBuildVisible = true; },
+  ]) {
+    const candidate = structuredClone(snapshot); change(candidate);
+    expect(validateSavedSession(candidate, profile).ok).toBe(false);
+  }
+});
 const validate = snapshot => validateSavedSession(snapshot, profile);
 function rejects(change) {
   const snapshot = fixture();

@@ -1,4 +1,5 @@
-import { defineCommand, NONE, identity, flag, offset, object, empty } from './command-schema.js';
+import { defineCommand, NONE, identity, flag, offset, object, empty, choice } from './command-schema.js';
+import { computerNameSchema } from './system-state.js';
 
 const profiles = ['macos-golden-gate-27.0.1'];
 const define = (name, target, payload, requires, presentation, result) => {
@@ -8,11 +9,28 @@ const define = (name, target, payload, requires, presentation, result) => {
   return entry;
 };
 const interactive = 'Interactive retained local desktop; no blocking local file sheet or global session/power presentation.';
-const panel = 'Exact existing connected, visible, interactive native system utility or System Information summary panel.';
+const panel = 'Exact existing connected, visible, interactive native system utility, represented About/Displays/Storage Settings page, or System Information summary panel.';
 const opened = object({ appId: identity, windowId: identity });
 export const appleCatalog = Object.fromEntries([
   define('system.about.open', empty, empty, [interactive],
     ['Open/reuse the bounded About This Mac utility with installed profile/version and explicit fictional machine identity; focus its real panel. No historical tabbed About interface or host hardware inference.'], opened),
+  define('system.settings.open', empty, object({ pane: choice('about', 'displays', 'storage') }), [interactive],
+    ['Open/reuse the real System Settings About, read-only fictional Displays, or actual virtual-payload Storage summary; focus its native panel. Other Settings interiors are not synthesized.'],
+    object({ appId: { const: 'settings' }, windowId: identity, pane: choice('about', 'displays', 'storage') })),
+  define('system.machine.rename', object({ windowId: identity }), object({ name: computerNameSchema }), [interactive, panel, 'Exact About Settings computer-name control. Shared complete-seed 4 Mi UTF-16 text budget; name is at most256 UTF-16 units.'],
+    ['Commit the literal single-line fictional computer name and synchronize that actual field. Preserve identity/hardware/files/other accounts; invalid input never changes the canonical name. Uncommitted native drafts are not saved.'],
+    object({ windowId: identity, computerName: computerNameSchema })),
+  define('system.machine.select', object({ windowId: identity }), object({
+    start: { type: 'integer', minimum: 0, maximum: 256 }, end: { type: 'integer', minimum: 0, maximum: 256 },
+    direction: choice('forward', 'backward', 'none') }, ['start', 'end']), [interactive, panel, 'Exact About Settings computer-name control matching its committed value; range lies within that value.'],
+    ['Focus the owned real computer-name field and set/read its actual UTF-16 caret/selection. Invalid, dirty-draft, foreign or obscured targets reject without borrowing another field.'],
+    object({ windowId: identity, start: { type: 'integer', minimum: 0, maximum: 256 }, end: { type: 'integer', minimum: 0, maximum: 256 }, direction: choice('forward', 'backward', 'none') })),
+  define('system.about.version.set', object({ windowId: identity }), object({ expanded: flag }), [interactive, panel, 'Exact rendered About version control.'],
+    ['Reveal/hide installed exact version and explicitly fictional build, with owned window state retained through login/save.'], object({ windowId: identity, expanded: flag })),
+  define('system.coverage.open', object({ windowId: identity }), empty, [interactive, panel, 'Exact About Settings Details control.'],
+    ['Open/reuse fictional AppleCare coverage details using scene time, with real local support/service article actions. No warranty lookup, purchase, support call or repair booking.'], opened),
+  define('system.storage.volumes.set', object({ windowId: identity }), object({ expanded: flag }), [interactive, panel, 'Exact Storage Settings All Volumes control.'],
+    ['Show/hide the actual single fictional APFS volume/capacity/available-byte detail; never scan/mount/modify host disks.'], object({ windowId: identity, expanded: flag })),
   define('system.information.open', empty, empty, [interactive],
     ['Open/activate the real System Information read-only scene summary; current fictional hardware, installed software profile and running scene applications. No host report or full diagnostic tree.'], opened),
   define('system.forceQuit.open', empty, empty, [interactive],

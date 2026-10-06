@@ -3,6 +3,7 @@
 export const SYSTEM_UTILITY_SIZES = {
   'system-about': { width: 360, height: 450, minimumSize: { width: 280, height: 240 } },
   'system-force-quit': { width: 420, height: 390, minimumSize: { width: 280, height: 240 } },
+  'system-coverage': { width: 500, height: 460, minimumSize: { width: 280, height: 240 } },
 };
 
 export function appleMenuItems({ profile, session, option = false, recentItems = [], desktopAvailable = false }) {

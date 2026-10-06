@@ -8,6 +8,9 @@ const scrollSelectors = {
   'window-content': '.golden-gate-launch-content',
   'settings-dock': '.dock-preferences',
   'settings-appearance': '.appearance-preferences',
+  'settings-about': '.settings-about',
+  'settings-displays': '.settings-displays',
+  'settings-storage': '.settings-storage',
   'desktop-info': '.info-inspector',
   'desktop-view-options': '.view-inspector',
   'application-about': '.golden-gate-about-app',
@@ -15,6 +18,7 @@ const scrollSelectors = {
   'system-about': '.system-about-panel',
   'system-force-quit': '.force-quit-panel',
   'system-information': '.system-information-panel',
+  'system-coverage': '.system-coverage-panel',
   'printing-queue': '[data-print-center-view="queue"] [data-print-center-area="jobs"]',
   'service-panel': '[data-service-scroll]',
 };
@@ -29,6 +33,7 @@ const controlSelectors = {
   'service-to': '[data-service-field="to"]',
   'service-subject': '[data-service-field="subject"]',
   'service-body': '[data-service-field="body"]',
+  'settings-computer-name': '[data-system-computer-name]',
 };
 const directions = new Set(['forward', 'backward', 'none']);
 const position = (value) => Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -63,6 +68,13 @@ function matchingServiceScroll(root, element, recordId) {
     && selectedNoteId(element.getAttribute('data-service-entry-id')) === recordId;
 }
 
+function matchingComputerName(root, element, computerName) {
+  return typeof computerName === 'string' && root?.isConnected && element?.isConnected
+    && root.contains(element) && element.value === computerName;
+}
+const computerNameSelection = selection => selection.key === 'settings-computer-name'
+  && selection.noteId === null && !Object.hasOwn(selection, 'recordId');
+
 function canFocus(root, element) {
   if (!root?.isConnected || !element?.isConnected || !root.contains(element) || !available(element)) return false;
   if (!element.getClientRects().length) return false;
@@ -76,7 +88,7 @@ function canFocus(root, element) {
   return true;
 }
 
-export function captureRetainedView(root, { noteId = null, recordId = null, fields = null, focusElement = root?.ownerDocument.activeElement } = {}) {
+export function captureRetainedView(root, { noteId = null, recordId = null, fields = null, computerName = null, focusElement = root?.ownerDocument.activeElement } = {}) {
   const token = { scroll: [], selections: [], focusKey: null };
   noteId = selectedNoteId(noteId);
   recordId = selectedNoteId(recordId);
@@ -89,37 +101,39 @@ export function captureRetainedView(root, { noteId = null, recordId = null, fiel
   }
   for (const key of Object.keys(controlSelectors)) {
     const element = find(root, controlSelectors, key);
-    const service = key.startsWith('service-');
-    if (!available(element) || (service ? !matchingService(root, element, recordId, fields) : key !== 'notes-search' && noteId === null)) continue;
+    const service = key.startsWith('service-'), computer = key === 'settings-computer-name';
+    if (!available(element) || (computer ? !matchingComputerName(root, element, computerName)
+      : service ? !matchingService(root, element, recordId, fields) : key !== 'notes-search' && noteId === null)) continue;
     const start = element.selectionStart;
     const end = element.selectionEnd;
     if (Number.isInteger(start) && start >= 0 && Number.isInteger(end) && end >= start
-      && (!service || end <= element.value.length)) {
-      token.selections.push({ key, noteId: service || key === 'notes-search' ? null : noteId,
+      && (!(service || computer) || end <= element.value.length)) {
+      token.selections.push({ key, noteId: service || computer || key === 'notes-search' ? null : noteId,
         ...(service ? { recordId } : {}), start, end,
         direction: directions.has(element.selectionDirection) ? element.selectionDirection : 'none' });
     }
-    if (focusElement === element && (!service || token.selections.some(selection => selection.key === key))) token.focusKey = key;
+    if (focusElement === element && (!(service || computer) || token.selections.some(selection => selection.key === key))) token.focusKey = key;
   }
   return token;
 }
 
-export function restoreRetainedView(root, token, { noteId = null, recordId = null, fields = null, focus = false } = {}) {
+export function restoreRetainedView(root, token, { noteId = null, recordId = null, fields = null, computerName = null, focus = false } = {}) {
   if (!root || !token) return;
   noteId = selectedNoteId(noteId);
   recordId = selectedNoteId(recordId);
   const selections = Array.isArray(token.selections) ? token.selections : [];
   for (const selection of selections) {
     if (!selection) continue;
-    const service = selection.key?.startsWith('service-');
-    if (!(service ? matchingServiceSelection(selection, recordId) : matchingSelection(selection, noteId))) continue;
+    const service = selection.key?.startsWith('service-'), computer = selection.key === 'settings-computer-name';
+    if (!(computer ? computerNameSelection(selection) : service ? matchingServiceSelection(selection, recordId) : matchingSelection(selection, noteId))) continue;
     const element = find(root, controlSelectors, selection.key);
-    if (!available(element) || (service && !matchingService(root, element, recordId, fields)) || typeof element.setSelectionRange !== 'function'
+    if (!available(element) || (computer && !matchingComputerName(root, element, computerName))
+      || (service && !matchingService(root, element, recordId, fields)) || typeof element.setSelectionRange !== 'function'
       || !Number.isInteger(selection.start) || selection.start < 0
       || !Number.isInteger(selection.end) || selection.end < selection.start
       || !directions.has(selection.direction)) continue;
     const length = element.value.length;
-    if (service && selection.end > length) continue;
+    if ((service || computer) && selection.end > length) continue;
     element.setSelectionRange(Math.min(selection.start, length), Math.min(selection.end, length), selection.direction);
   }
   if (focus === true) {
@@ -130,7 +144,12 @@ export function restoreRetainedView(root, token, { noteId = null, recordId = nul
         && matchingServiceSelection(selection, recordId) && Number.isInteger(selection.start) && selection.start >= 0
         && Number.isInteger(selection.end) && selection.end >= selection.start && selection.end <= element.value.length
         && directions.has(selection.direction))
-      : key === 'notes-search' || selections.some(selection => selection?.key === key && matchingSelection(selection, noteId));
+      : key === 'settings-computer-name'
+        ? matchingComputerName(root, element, computerName) && selections.some(selection => selection?.key === key
+          && computerNameSelection(selection) && Number.isInteger(selection.start) && selection.start >= 0
+          && Number.isInteger(selection.end) && selection.end >= selection.start && selection.end <= element.value.length
+          && directions.has(selection.direction))
+        : key === 'notes-search' || selections.some(selection => selection?.key === key && matchingSelection(selection, noteId));
     if (matchesOwner && canFocus(root, element)) element.focus({ preventScroll: true });
   }
   // Selection and focus can move the viewport: apply the retained offsets last.

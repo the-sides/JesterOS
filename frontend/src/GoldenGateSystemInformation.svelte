@@ -1,5 +1,5 @@
 <script>
-  let { profile, windowId, runningApps, execute } = $props();
+  let { profile, windowId, computerName, runningApps, execute } = $props();
   const machine = $derived(profile.defaults.machine);
 </script>
 
@@ -7,12 +7,13 @@
   <header><h1>System Information</h1><p>Read-only scene summary — no host report or hardware access</p></header>
   <article>
     <h2>Hardware Overview</h2>
-    <dl><div><dt>Model Name</dt><dd>{machine.modelName}</dd></div><div><dt>Model</dt><dd>{machine.modelDetail}</dd></div><div><dt>Chip</dt><dd>{machine.chip}</dd></div><div><dt>Memory</dt><dd>{machine.memoryGB} GB</dd></div><div><dt>Startup Disk</dt><dd>{machine.startupDisk}</dd></div><div><dt>Fictional Serial Number</dt><dd>{machine.serialNumber}</dd></div></dl>
+    <dl><div><dt>Model Name</dt><dd>{machine.modelName}</dd></div><div><dt>Model</dt><dd>{machine.modelDetail}</dd></div><div><dt>Model Identifier</dt><dd>{machine.modelIdentifier}</dd></div><div><dt>Chip</dt><dd>{machine.chip}</dd></div><div><dt>Memory</dt><dd>{machine.memoryGB} GB</dd></div><div><dt>Startup Disk</dt><dd>{machine.startupDisk}</dd></div><div><dt>Fictional Serial Number</dt><dd>{machine.serialNumber}</dd></div></dl>
   </article>
   <article>
     <h2>Software Overview</h2>
-    <dl><div><dt>System Version</dt><dd>{profile.name} {profile.version}</dd></div><div><dt>Profile ID</dt><dd>{profile.id}</dd></div><div><dt>Fictional Build</dt><dd>{machine.buildNumber}</dd></div><div><dt>Fixture Epoch</dt><dd>{profile.defaults.sceneTime}</dd></div><div><dt>Network Boundary</dt><dd>Offline local simulation; no host networking or account services</dd></div></dl>
+    <dl><div><dt>Computer Name</dt><dd>{computerName}</dd></div><div><dt>System Version</dt><dd>{profile.name} {profile.version}</dd></div><div><dt>Profile ID</dt><dd>{profile.id}</dd></div><div><dt>Fictional Build</dt><dd>{machine.buildNumber}</dd></div><div><dt>Fixture Epoch</dt><dd>{profile.defaults.sceneTime}</dd></div><div><dt>Network Boundary</dt><dd>Offline local simulation; no host networking or account services</dd></div></dl>
   </article>
+  <article><h2>Displays</h2><dl>{#each machine.displays as display}<div><dt>{display.name}</dt><dd>{display.diagonalInches}-inch · {display.width} × {display.height} · {display.refreshRateHz} Hz · {display.colorSpace}</dd></div>{/each}</dl></article>
   <article>
     <h2>Running Scene Applications</h2>
     <ul>{#each runningApps as app (app.id)}<li><span>{app.name}</span><code>{app.id}</code><small>{app.coverage}</small></li>{/each}</ul>

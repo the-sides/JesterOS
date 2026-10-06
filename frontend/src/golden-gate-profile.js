@@ -32,7 +32,7 @@ export const goldenGateProfile = {
     reminders: launchOnly('reminders', 'Reminders', 'main'),
     notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 720,
       minimumSize: { width: 960, height: 420 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
-    settings: { ...launchOnly('settings', 'System Settings', 'main'), coverage: 'dock-preferences' },
+    settings: { ...launchOnly('settings', 'System Settings', 'main'), coverage: 'about-display-storage-dock-appearance' },
     music: launchOnly('music', 'Music', 'recent'),
     activitymonitor: launchOnly('activitymonitor', 'Activity Monitor'),
     airport: launchOnly('airport', 'AirPort Utility'),
@@ -98,7 +98,12 @@ export const goldenGateProfile = {
   defaults: { startupAppId: 'messages', desktopAppId: 'finder', clockLabel: 'Mon 9:41 AM',
     sceneTime: '2026-09-28T09:41:00.000Z', batteryPercent: 87, accountName: 'Alex Morgan',
     // Invented scene identity; never derived from this browser or host hardware.
-    machine: { modelName: 'MacBook Air', modelDetail: 'M2, 2022', chip: 'Apple M2', memoryGB: 8,
-      startupDisk: 'Macintosh HD', serialNumber: 'JESTEROS-FICTIONAL-001', buildNumber: 'JESTEROS-GOLDEN-GATE-001' },
+    machine: { computerName: 'Studio MacBook Air', modelName: 'MacBook Air', modelDetail: 'M2, 2022',
+      modelIdentifier: 'Mac14,2', chip: 'Apple M2', memoryGB: 8,
+      startupDisk: 'Macintosh HD', serialNumber: 'JESTEROS-FICTIONAL-001', buildNumber: 'JESTEROS-GOLDEN-GATE-001',
+      displays: [{ id: 'built-in', name: 'Built-in Liquid Retina Display', diagonalInches: 13.6,
+        width: 2560, height: 1664, refreshRateHz: 60, colorSpace: 'Display P3' }],
+      storage: { capacityBytes: 256_000_000_000, systemBytes: 18_000_000_000, applicationsBytes: 6_000_000_000 },
+      coverage: { plan: 'AppleCare+', expiresOn: '2027-09-28', repairService: true, technicalSupport: true } },
   },
 };
