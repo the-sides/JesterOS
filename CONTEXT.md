@@ -118,3 +118,12 @@ Transient inline name input distinct from the retained folder name. Invalid comm
 **Captured presentation invoker**:
 The actual focus owner at shell entry. Native Dock activation captures its focused button; direct entry with an original editor focused captures that editor/caret. Restoration never substitutes a cloned editor or a guessed pre-click focus owner.
 
+**Dashboard**:
+A classic macOS collection of small task-specific widgets, presented over the desktop or in a separate workspace. Turning it off removes access, not the retained widget collection. It is distinct from Notification Center's Today widgets and Sonoma desktop widgets.
+
+**Dashboard widget instance**:
+One independently configured and positioned clock, calculator, calendar, weather or conversion tool. Adding another instance does not share its calculator memory, selected date or configuration; removing it does not uninstall a host application.
+
+**Fictional widget reference time**:
+The explicit civil-time reference used by Dashboard clocks, calendar Today and offline forecast dates. Visible clock ticks advance that reference; host date/time is never authoritative. Weather observations and currency rates remain fictional samples even when unit/date calculations are real.
+

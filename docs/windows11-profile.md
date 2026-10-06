@@ -210,3 +210,7 @@ The Windows scene still exposes **190 contracts** and advertises neither `shell.
 ## OS-16 unsupported boundary
 
 Windows still exposes **190 contracts** and advertises neither `shell.launchpad` nor any of its seventeen commands. Every known Launchpad request rejected **unsupported_profile**; complete canonical inspection remained byte-identical across the batch. No Mac launcher/window appeared. Windows Start is its separate existing native simulation, not a renamed Launchpad. Combined strict catalog compilation,107 tests/1502 assertions and final build passed with only the existing bundle advisory; final production diagnostics were empty.
+
+## OS-17 unsupported Dashboard boundary
+
+Windows remains190 contracts and advertises neither `shell.dashboard` nor a Dashboard app/Space/widget board. All22 known requests rejected unsupported_profile and complete canonical inspection remained byte-identical. Native Windows Widgets is not implemented or renamed by this classic Mac slice; it remains separate scope. Combined strict catalogs,123 tests/1607 assertions and production build pass with only the existing bundle advisory.

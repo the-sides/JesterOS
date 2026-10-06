@@ -11,6 +11,7 @@ import { applicationSwitchingCatalog } from './application-switching-catalog.js'
 import { fullScreenCatalog } from './full-screen-catalog.js';
 import { spacesCatalog } from './spaces-catalog.js';
 import { launchpadCatalog } from './launchpad-catalog.js';
+import { dashboardCatalog } from './dashboard-catalog.js';
 
 const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -42,6 +43,7 @@ export const commandCatalog = {
   ...fullScreenCatalog,
   ...spacesCatalog,
   ...launchpadCatalog,
+  ...dashboardCatalog,
   ...Object.fromEntries([
   defineShared('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
     ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],

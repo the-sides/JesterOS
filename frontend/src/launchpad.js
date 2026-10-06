@@ -28,7 +28,8 @@ const rootPage = (state, page) => Math.max(0, Math.min(page, state.pages.length 
 
 export function launchpadAppIds(profile) {
   return Object.keys(profile?.applications ?? {}).filter(id => id !== profile.defaults?.desktopAppId
-    && !profile.applications[id].presentation);
+    && (!profile.applications[id].presentation
+      || profile.applications[id].presentation === 'dashboard' && profile.capabilities?.includes('shell.dashboard')));
 }
 
 export function launchpadDefaults(profile) {
@@ -401,6 +402,12 @@ export function createLaunchpadCommands(ctx) {
         if (result?.status !== 'applied') return result?.status === 'rejected' ? result : unavailable();
         await ctx.settle();
         const id = result.target?.windowId;
+        const kind = profile.applications[target.appId].presentation;
+        if (kind) {
+          if (!available() || state.view !== null || result.target?.appId !== target.appId || id !== null
+            || ctx.isPresentationFocused?.(kind) !== true) return unavailable();
+          return applied({ appId: target.appId, windowId: null });
+        }
         const original = identity(id) ? ctx.getWindows().find(window => window.id === id && window.appId === target.appId) : null;
         if (!available() || state.view !== null || result.target?.appId !== target.appId || !original || original.minimized
           || original.hidden || original.pendingQuit || ctx.getActiveWindowId() !== id || ctx.getActiveAppId() !== target.appId

@@ -12,6 +12,7 @@ export const applications = {
   settings: { id: 'settings', name: 'System Preferences', icon: 'settings', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'dock-preferences' },
   photos: { id: 'photos', name: 'Photos', icon: 'photos', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'recent', coverage: 'launch-only' },
   preview: { id: 'preview', name: 'Preview', icon: 'preview', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: true, quitAllowed: true, coverage: 'launch-only' },
+  dashboard: { id: 'dashboard', name: 'Dashboard', icon: 'dashboard', presentation: 'dashboard', multipleWindows: false, quitAllowed: false, coverage: 'shell-widgets' },
 };
 
 export const desktopFiles = [

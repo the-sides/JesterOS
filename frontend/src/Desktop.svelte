@@ -31,6 +31,7 @@
     fullScreenStage = { mode: 'normal', topRevealed: false, launcherRevealed: false },
     missionControlOpen = false,
     launchpadOpen = false,
+    dashboardOpen = false,
     onfullscreenreveal,
     execute,
     registerView,
@@ -450,7 +451,7 @@
     function observeFocus(event) {
       dismissOutside(event);
       const target = event.target;
-      if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu], [data-dock-stack], [data-shell-switcher], [data-application-menu], [data-application-menu-button], [data-split-view-picker], [data-window-green-menu], [data-split-view-divider], [data-launchpad]')) return;
+      if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu], [data-dock-stack], [data-shell-switcher], [data-application-menu], [data-application-menu-button], [data-split-view-picker], [data-window-green-menu], [data-split-view-divider], [data-launchpad], [data-dashboard]')) return;
       if (!dock.contains(target) && viewState.dock.focusedItemId) request('dock.focus', { itemId: null }, { observe: true });
       if (!windowMenuContainer.contains(target)
         && !dock.contains(target)
@@ -485,7 +486,7 @@
   }
 
   function lifecycleKeydown(event) {
-    if (launchpadOpen || event.defaultPrevented || event.isComposing || !(event.metaKey || event.ctrlKey)
+    if (launchpadOpen || dashboardOpen || event.defaultPrevented || event.isComposing || !(event.metaKey || event.ctrlKey)
       || event.altKey || event.shiftKey) return;
     const key = event.key.toLowerCase();
     if (key !== 'n' && key !== 'q') return;
@@ -562,7 +563,7 @@
 <svelte:window onkeydown={escapeKey} />
 
 <div class="desktop" data-os-profile={profile.id} data-os-family={profile.family} style:background-image={`url("${profile.assets.wallpaper}")`}>
-  <header class="menu-bar" aria-label="Desktop menu bar" inert={missionControlOpen || launchpadOpen || (fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed)} style:visibility={missionControlOpen || launchpadOpen || (fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed) ? 'hidden' : undefined} style:z-index={fullScreenStage.mode !== 'normal' ? 10000 : undefined}>
+  <header class="menu-bar" aria-label="Desktop menu bar" inert={missionControlOpen || launchpadOpen || dashboardOpen || (fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed)} style:visibility={missionControlOpen || launchpadOpen || (fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed) ? 'hidden' : undefined} style:z-index={fullScreenStage.mode !== 'normal' ? 10000 : undefined}>
     <div class="menu-headings">
       <span class="apple-mark" aria-label="Apple menu"><svg viewBox="0 0 20 24" aria-hidden="true"><path fill="currentColor" d="M13.1 4.1c1-1.1 1.6-2.6 1.4-4.1-1.4.1-3 .9-4 2-1 1.1-1.7 2.6-1.5 4 1.6.1 3.1-.8 4.1-1.9ZM17 12.7c0-2.7 2.2-4 2.3-4.1-1.3-1.9-3.4-2.1-4.1-2.1-1.8-.2-3.5 1.1-4.4 1.1s-2.3-1.1-3.8-1.1C5 6.6 3 7.9 2 9.8c-2.1 3.8-.5 9.3 1.5 12.1 1 1.4 2.1 2.8 3.6 2.7 1.5-.1 2-1 3.8-1s2.3 1 3.9 1c1.6 0 2.6-1.4 3.5-2.8 1.1-1.6 1.6-3.1 1.6-3.2-.1 0-3-1.1-2.9-5.9Z" transform="translate(0 -1) scale(.9)"/></svg></span>
       <button type="button" class="window-menu-button app-menu"
@@ -615,7 +616,7 @@
   <main class="desktop-workspace" bind:this={workspace} tabindex="-1" aria-label="macOS Mojave-style desktop" onpointerdown={focusDesktop}
     oncontextmenu={(event) => { if (event.target === workspace || event.target === filesPanel) openContext(event); }}>
     <section class="desktop-files" bind:this={filesPanel} class:stacks-enabled={stacksEnabled} class:custom-view={customView} class:right-label={options.labelPosition === 'right'} class:wrapped-grid={wrappedGrid !== null} aria-label="Desktop files"
-      inert={missionControlOpen || launchpadOpen || fullScreenStage.mode !== 'normal'}
+      inert={missionControlOpen || launchpadOpen || dashboardOpen || fullScreenStage.mode !== 'normal'}
       style:max-height={filesHeight !== undefined ? `${filesHeight}px` : undefined}
       style:--grid-height={filesHeight !== undefined ? `${filesHeight}px` : undefined} style:--grid-rows={wrappedGrid?.rows}
       style:--grid-item-height={wrappedGrid ? `${wrappedGrid.height}px` : undefined} style:--grid-item-width={wrappedGrid ? `${wrappedGrid.width}px` : undefined}
@@ -659,7 +660,7 @@
   </main>
 
   <MacDock {profile} state={viewState.dock} applications={dockApplications} tiles={dockTiles} folders={dockFolders} trash={dockTrash} {runningAppIds}
-    activeAppId={activeApp.id} {execute} {renderWindowTile} {missionControlOpen} {launchpadOpen} presentationVisible={fullScreenStage.mode === 'normal' ? undefined : fullScreenStage.launcherRevealed} bind:element={dock} bind:this={dockControls} />
+    activeAppId={activeApp.id} {execute} {renderWindowTile} {missionControlOpen} {launchpadOpen} presentationVisible={dashboardOpen && !missionControlOpen ? false : fullScreenStage.mode === 'normal' ? undefined : fullScreenStage.launcherRevealed} bind:element={dock} bind:this={dockControls} />
 </div>
 
 <style>

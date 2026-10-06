@@ -59,7 +59,7 @@ export function windowSpaceId(state, presentation, window) {
   return pair ? splitId(pair) : soloId(window.id);
 }
 
-export function spacesItems(state, presentation, windows, profile, hidden = [], pending = []) {
+export function spacesItems(state, presentation, windows, profile, hidden = [], pending = [], dashboard = null) {
   if (!supported(profile)) return [];
   const seen = new Set(), managed = windows.filter(window => identity(window.id)
     && Object.hasOwn(profile.applications, window.appId) && !seen.has(window.id) && seen.add(window.id));
@@ -68,6 +68,8 @@ export function spacesItems(state, presentation, windows, profile, hidden = [], 
   const desktops = desktopIds(state);
   const entries = desktops.map((spaceId, index) => ({ spaceId, type: 'desktop', label: `Desktop ${index + 1}`,
     windowIds: available.filter(window => !window.fullScreen && homeId(state, window) === spaceId).map(window => window.id) }));
+  if (profile.capabilities.includes('shell.dashboard') && dashboard?.mode === 'space')
+    entries.unshift({ spaceId: 'dashboard', type: 'dashboard', label: 'Dashboard', windowIds: [] });
   for (const pair of presentation.splitViews) {
     const left = byId.get(pair.leftWindowId), right = byId.get(pair.rightWindowId);
     if (left === right || !left?.fullScreen || !right?.fullScreen || members.has(left.id) || members.has(right.id)
@@ -83,7 +85,8 @@ export function spacesItems(state, presentation, windows, profile, hidden = [], 
       windowIds: [window.id] });
   }
   const bySpace = new Map(entries.map(entry => [entry.spaceId, entry]));
-  return unique([...state.order.filter(id => bySpace.has(id)), ...entries.map(entry => entry.spaceId)]).map(id => bySpace.get(id));
+  return unique([...(bySpace.has('dashboard') ? ['dashboard'] : []), ...state.order.filter(id => bySpace.has(id)),
+    ...entries.map(entry => entry.spaceId)]).map(id => bySpace.get(id));
 }
 
 export function missionControlWindows(state, windows, hidden = [], pending = []) {
@@ -98,7 +101,8 @@ export function missionControlItems(state, spaceItems, windowItems) {
   if (!state.overview) return [];
   const count = spaceItems.filter(item => item.type === 'desktop').length;
   const ids = spaceItems.flatMap(item => [`space:${item.spaceId}`, ...(state.overview.expanded
-    ? item.type === 'desktop' ? count > 1 ? [`remove:${item.spaceId}`] : [] : [`exit:${item.spaceId}`] : [])]);
+    ? item.type === 'desktop' ? count > 1 ? [`remove:${item.spaceId}`] : []
+      : ['fullScreen', 'split'].includes(item.type) ? [`exit:${item.spaceId}`] : [] : [])]);
   if (count < 16) ids.push('add-space');
   ids.push(...windowItems.map(item => `window:${item.windowId}`), 'close');
   return ids;
@@ -108,11 +112,11 @@ export function missionControlItems(state, spaceItems, windowItems) {
 // ineligible. Selection repair must use its former position, not new stacking.
 function previousItems(state) {
   const spaces = state.order.map(spaceId => ({ spaceId,
-    type: state.desktops.some(desktop => desktop.id === spaceId) ? 'desktop' : spaceId.startsWith('split:') ? 'split' : 'fullScreen' }));
+    type: spaceId === 'dashboard' ? 'dashboard' : state.desktops.some(desktop => desktop.id === spaceId) ? 'desktop' : spaceId.startsWith('split:') ? 'split' : 'fullScreen' }));
   return missionControlItems(state, spaces, (state.overview?.windowIds ?? []).map(windowId => ({ windowId })));
 }
 
-export function reconcileSpaces(state, presentation, windows, profile, hidden = [], pending = [], creationIds = []) {
+export function reconcileSpaces(state, presentation, windows, profile, hidden = [], pending = [], creationIds = [], dashboard = null) {
   if (!supported(profile)) return;
   const previous = previousItems(state), selected = state.overview?.selectedItemId;
   const desktops = desktopIds(state);
@@ -120,7 +124,7 @@ export function reconcileSpaces(state, presentation, windows, profile, hidden = 
   for (const window of windows) if (Object.hasOwn(profile.applications, window.appId) && !desktops.includes(window.spaceId)) {
     window.spaceId = state.lastDesktopId;
   }
-  const items = spacesItems(state, presentation, windows, profile, hidden, pending), order = items.map(item => item.spaceId);
+  const items = spacesItems(state, presentation, windows, profile, hidden, pending, dashboard), order = items.map(item => item.spaceId);
   if (!sameOrder(state.order, order)) state.order = order;
   if (!order.includes(state.activeSpaceId)) state.activeSpaceId = state.lastDesktopId;
   if (desktops.includes(state.activeSpaceId) && state.lastDesktopId !== state.activeSpaceId) state.lastDesktopId = state.activeSpaceId;
@@ -144,7 +148,7 @@ export function createSpacesCommands(ctx) {
   const hidden = () => ctx.getHiddenAppIds();
   const pending = () => ctx.getPendingQuitAppIds();
   const view = () => ctx.getView();
-  const items = () => spacesItems(state, presentation, windows(), profile, hidden(), pending());
+  const items = () => spacesItems(state, presentation, windows(), profile, hidden(), pending(), ctx.getDashboard?.());
   const windowItems = () => missionControlWindows(state, windows(), hidden(), pending());
   const controls = () => missionControlItems(state, items(), windowItems());
   const lookup = id => windows().find(window => window.id === id && Object.hasOwn(profile.applications, window.appId));
@@ -211,7 +215,7 @@ export function createSpacesCommands(ctx) {
   }
 
   function reconcile(previous = previousItems(state), selected = state.overview?.selectedItemId) {
-    reconcileSpaces(state, presentation, windows(), profile, hidden(), pending(), ctx.getCreationWindowIds());
+    reconcileSpaces(state, presentation, windows(), profile, hidden(), pending(), ctx.getCreationWindowIds(), ctx.getDashboard?.());
     if (state.overview) state.overview.selectedItemId = nearestSurvivor(previous, selected, controls());
   }
 
@@ -246,8 +250,10 @@ export function createSpacesCommands(ctx) {
   }
 
   async function activate(entry, exactWindowId = null) {
-    state.activeSpaceId = entry.spaceId;
-    if (entry.type === 'desktop') state.lastDesktopId = entry.spaceId;
+    if (entry.type !== 'dashboard') {
+      state.activeSpaceId = entry.spaceId;
+      if (entry.type === 'desktop') state.lastDesktopId = entry.spaceId;
+    }
     if (!await ctx.activateSpace(exactWindowId ? { ...entry, windowIds: [exactWindowId] } : entry)) return false;
     await ctx.settle();
     if (!available() || !items().some(item => item.spaceId === entry.spaceId) || state.activeSpaceId !== entry.spaceId) return false;
@@ -450,7 +456,7 @@ export function createSpacesCommands(ctx) {
       if (error) return error;
       const entry = items().find(item => item.spaceId === target.spaceId);
       if (!entry) return notFound();
-      if (entry.type === 'desktop') return disabled();
+      if (!['fullScreen', 'split'].includes(entry.type)) return disabled();
       return atomic(async () => {
         const previous = controls(), current = state.overview, selected = current?.selectedItemId;
         const originals = entry.windowIds.map(lookup);

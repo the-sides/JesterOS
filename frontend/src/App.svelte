@@ -16,6 +16,9 @@
   import MissionControl from './MissionControl.svelte';
   import { launchpadDefaults, launchpadAppIds, launchpadItems, launchpadControlIds, createLaunchpadCommands } from './launchpad.js';
   import Launchpad from './Launchpad.svelte';
+  import { dashboardDefaults, dashboardTargets, createDashboardCommands } from './dashboard.js';
+  import Dashboard from './Dashboard.svelte';
+  import DashboardPreferences from './DashboardPreferences.svelte';
   import { createDesktopCommands } from './desktop-commands.js';
   import { createDesktopItemCommands } from './desktop-item-commands.js';
   import { createDesktopContextCommands } from './desktop-context-commands.js';
@@ -59,6 +62,7 @@
   const hasFullScreen = profile.capabilities.includes('shell.full-screen');
   const hasSpaces = profile.capabilities.includes('shell.mission-control');
   const hasLaunchpad = profile.capabilities.includes('shell.launchpad');
+  const hasDashboard = profile.capabilities.includes('shell.dashboard');
   const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
   const desktopUtilityApps = macDesktop ? {
     'desktop-info': { ...applications.finder, width: 360, height: 560, minimumSize: { width: 300, height: 300 } },
@@ -118,8 +122,12 @@
   let missionControlSlots = $state({});
   let launchpadState = $state(launchpadDefaults(profile));
   let launchpadControls = $state();
+  let dashboardState = $state(dashboardDefaults(profile));
+  let dashboardControls = $state();
+  let dashboardReturnState = null;
+  const dashboardOpen = $derived(Boolean(dashboardState.view));
   const spaceItems = $derived(hasSpaces ? spacesItems(spaceState, presentation, windows, profile,
-    switching.hiddenAppIds, pendingQuitAppIds) : []);
+    switching.hiddenAppIds, pendingQuitAppIds, dashboardState) : []);
   const overviewWindows = $derived(hasSpaces ? missionControlWindows(spaceState, windows,
     switching.hiddenAppIds, pendingQuitAppIds).map(item => {
       const window = windows.find(window => window.id === item.windowId);
@@ -152,10 +160,10 @@
     reconcileFullScreenWindowing(presentation, windows, switching.hiddenAppIds, pendingQuitAppIds);
     if (!hasSpaces) return;
     reconcileSpaces(spaceState, presentation, windows, profile, switching.hiddenAppIds,
-      pendingQuitAppIds, switching.creationWindowIds);
+      pendingQuitAppIds, switching.creationWindowIds, dashboardState);
     const foreground = windows.find(window => window.id === activeWindowId && !window.minimized
       && !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId));
-    if (!spaceState.overview && foreground) {
+    if (!spaceState.overview && !dashboardOpen && foreground) {
       const id = windowSpaceId(spaceState, presentation, foreground);
       if (spaceState.activeSpaceId !== id) spaceState.activeSpaceId = id;
       if (!foreground.fullScreen && spaceState.lastDesktopId !== foreground.spaceId)
@@ -420,6 +428,7 @@
     dismissAppMenus: appId => {
       spaceState.overview = null;
       if (!applications[appId]?.presentation) launchpadState.view = null;
+      if (applications[appId]?.presentation !== 'dashboard') dismissDashboard();
       clearNotesPresentation();
     },
   }));
@@ -467,12 +476,13 @@
     profile, state: spaceState, presentation, getWindows: () => windows,
     getHiddenAppIds: () => switching.hiddenAppIds, getPendingQuitAppIds: () => pendingQuitAppIds,
     getCreationWindowIds: () => switching.creationWindowIds, getActiveWindowId: () => activeWindowId,
+    getDashboard: () => dashboardState,
     available: () => sceneInteractionsAvailable() && Boolean(desktopView && stageArea.width > 0 && stageArea.height > 0),
     settle: async () => { await tick(); await tick(); }, getView: () => missionControlControls,
     captureScene: captureSpacesScene, restoreScene: restoreSpacesScene,
     dismissPresentations: () => {
       if (stageDrag) stagePointerUp({ pointerId: stageDrag.pointerId, type: 'pointercancel' });
-      clearSwitchingPresentations(); switching.switcher = null; switching.appMenu = null;
+      clearSwitchingPresentations(true); switching.switcher = null; switching.appMenu = null;
       cancelPairingForActivation(null); presentation.greenMenu = null;
       presentation.revealed = { top: false, launcher: false };
     },
@@ -500,6 +510,35 @@
       return Boolean(window && !window.minimized && windowPresented(window) && node?.contains(document.activeElement)
         && !node.closest('[inert]') && getComputedStyle(node).visibility === 'visible');
     },
+    isPresentationFocused: kind => kind === 'dashboard' && Boolean(dashboardState.view)
+      && dashboardControls?.available() === true && Boolean(document.activeElement?.closest('[data-dashboard]')),
+  }));
+  if (hasDashboard) Object.assign(handlers, createDashboardCommands({
+    profile, state: dashboardState,
+    available: () => sceneInteractionsAvailable() && Boolean(desktopView && stageArea.width > 0 && stageArea.height > 0),
+    settle: async () => { await tick(); await tick(); }, getView: () => dashboardControls,
+    captureScene: captureLaunchpadScene, restoreScene: restoreLaunchpadScene,
+    captureFocus: captureNativeFocus, restoreFocus: restoreNativeFocus,
+    captureReturn: () => ({ spaceId: spaceState.activeSpaceId, windowId: activeWindowId, appId: activeAppId }),
+    dismissPresentations: () => {
+      clearSwitchingPresentations(); switching.switcher = null; switching.appMenu = null;
+      cancelPairingForActivation(null); presentation.greenMenu = null;
+      presentation.revealed = { top: false, launcher: false };
+    },
+    enterSpace: async () => {
+      dashboardReturnState = { spaceId: spaceState.activeSpaceId, windowId: activeWindowId, appId: activeAppId };
+      spaceState.activeSpaceId = 'dashboard'; activeWindowId = null;
+      await tick(); return sceneInteractionsAvailable();
+    },
+    leaveSpace: async prior => { restoreDashboardSpace(prior); await tick(); return sceneInteractionsAvailable(); },
+    focusReturn: async prior => {
+      if (prior?.windowId && windows.some(window => window.id === prior.windowId && !window.minimized && windowPresented(window)))
+        return focusKeyboardWindow(prior.windowId);
+      return focusSceneWorkspace();
+    },
+    modeChanged: () => reconcileSpaces(spaceState, presentation, windows, profile, switching.hiddenAppIds,
+      pendingQuitAppIds, switching.creationWindowIds, dashboardState),
+    openPreferences: openDashboardPreferences,
   }));
   Object.assign(handlers,
     createFullScreenCommands({
@@ -526,7 +565,7 @@
     }, expandedProperty),
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
-      windowMenuAvailable: () => !spaceState.overview && !launchpadState.view && (fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed),
+      windowMenuAvailable: () => !spaceState.overview && !launchpadState.view && !dashboardOpen && (fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed),
       getFiles: () => macDesktop ? macFiles.files.filter(file => !isTrashed(macFiles, file))
         .map(file => ({ ...file, appId: file.appId ?? (file.kind === 'folder' ? 'finder' : 'preview') })) : getDesktopItems(),
       getItems: getDesktopItems,
@@ -545,7 +584,7 @@
   );
   if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
     getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes').id),
-    isVisible: () => !spaceState.overview && !launchpadState.view && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
+    isVisible: () => !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
       && windows.some(window => window.appId === 'notes' && !window.minimized && windowPresented(window)),
   }));
   if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
@@ -569,6 +608,7 @@
     () => $state.snapshot({ profile, windows, activeWindowId, activeAppId, runningAppIds, pendingQuitAppIds, switching, presentation, area, desktop: desktopState,
       ...(hasSpaces ? { spaces: spaceState } : {}),
       ...(hasLaunchpad ? { launchpad: launchpadState } : {}),
+      ...(hasDashboard ? { dashboard: dashboardState } : {}),
       ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(nativeState ? { native: nativeState } : {}),
@@ -673,6 +713,12 @@
         shortcuts: { alias: 'Control+Shift+F11', previousPage: 'Command+ArrowLeft', nextPage: 'Command+ArrowRight',
           nativeDelivery: 'Only delivered page events are handled; no host Launchpad, applications, gestures or settings are changed.' },
       } } : {}),
+      ...(hasDashboard ? { dashboard: {
+        ...dashboardTargets(dashboardState),
+        view: dashboardState.view ? { ...$state.snapshot(dashboardState.view),
+          itemIds: dashboardControls?.itemIds() ?? [], bounds: dashboardControls?.bounds() ?? null } : null,
+        shortcuts: { alias: 'Control+Shift+F12', nativeDelivery: 'Only delivered scene-local events; configurable native shortcut/Hot Corners are not installed on the host.' },
+      } } : {}),
       windows: windows.map((window) => ({
         windowId: window.id, appId: window.appId, minimized: window.minimized, fullScreen: window.fullScreen, [expandedProperty]: window[expandedProperty],
         ...(macDesktop ? { hidden: isAppHidden(window.appId) } : {}),
@@ -742,6 +788,11 @@
       const top = greenMenuControls.scrollTop();
       if (top !== null && top !== presentation.greenMenu.scrollTop) presentation.greenMenu.scrollTop = top;
     }
+    if (dashboardState.view && dashboardControls?.available()) {
+      const actual = dashboardControls.scrollPosition();
+      if (actual && (actual.top !== dashboardState.view.scroll.top || actual.left !== dashboardState.view.scroll.left))
+        dashboardState.view.scroll = { ...actual };
+    }
   }
 
   function registerDesktopView(view) {
@@ -763,7 +814,7 @@
     return !disposed && (adapter.windowInteractionsAvailable?.(nativeState) ?? true);
   }
   function windowInteractionsAvailable() {
-    return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view;
+    return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view && !dashboardOpen;
   }
 
   function getApplicationView(windowId) {
@@ -810,6 +861,15 @@
     const window = windows.find(window => window.id === result.target.windowId);
     window.settingsPane = 'dock';
     window.title = profile.renderer === 'sonoma' ? 'Desktop & Dock' : 'Dock';
+    await tick();
+    return { status: 'applied', target: { appId: 'settings', windowId: window.id } };
+  }
+  async function openDashboardPreferences() {
+    dismissDashboard();
+    const result = await handlers['app.open']({ appId: 'settings' }, {});
+    if (result.status !== 'applied') return result;
+    const window = windows.find(window => window.id === result.target.windowId);
+    window.settingsPane = 'mission-control'; window.title = 'Mission Control';
     await tick();
     return { status: 'applied', target: { appId: 'settings', windowId: window.id } };
   }
@@ -1012,6 +1072,7 @@
     cancelPairingForActivation(null);
     spaceState.overview = null;
     launchpadState.view = null;
+    dismissDashboard();
     if (hasSpaces) spaceState.activeSpaceId = spaceState.lastDesktopId;
     activeWindowId = null;
     activeAppId = profile.defaults.desktopAppId;
@@ -1027,7 +1088,7 @@
   }
 
   function windowCommand(command, id, payload = {}) {
-    if (spaceState.overview || launchpadState.view) return;
+    if (spaceState.overview || launchpadState.view || dashboardOpen) return;
     return commands.execute({ command, target: { windowId: id }, payload });
   }
 
@@ -1085,7 +1146,7 @@
     return windowPresented(window);
   }
   function windowInteractive(window) {
-    return !spaceState.overview && !launchpadState.view && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
+    return !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
       && fullScreenStage.mode !== 'pairing' && windowPresented(window);
   }
   function measureStageArea() {
@@ -1135,7 +1196,7 @@
   let stageDrag = null;
   function fullScreenKeydown(event) {
     if (!hasFullScreen || event.defaultPrevented || event.isComposing || !sceneInteractionsAvailable()
-      || spaceState.overview || launchpadState.view || switching.switcher || !activeWindowId) return;
+      || spaceState.overview || launchpadState.view || dashboardOpen || switching.switcher || !activeWindowId) return;
     const native = macDesktop ? event.metaKey && event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f'
       : event.key === 'F11' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
     const alias = event.key === 'F9' && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
@@ -1145,7 +1206,7 @@
     }
   }
   function stagePointerDown(event) {
-    if (spaceState.overview || launchpadState.view || fullScreenStage.mode !== 'split' || event.button !== 0 || !event.isPrimary) return;
+    if (spaceState.overview || launchpadState.view || dashboardOpen || fullScreenStage.mode !== 'split' || event.button !== 0 || !event.isPrimary) return;
     const target = event.target;
     if (!target?.closest?.('[data-window-drag]') || target.closest('button,input,textarea,select,a,[contenteditable],[data-window-no-drag]')) return;
     const id = target.closest('.managed-window')?.dataset.windowId;
@@ -1159,13 +1220,13 @@
     if (!drag || drag.pointerId !== event.pointerId) return;
     stageDrag = null;
     if (drag.element.hasPointerCapture(event.pointerId)) drag.element.releasePointerCapture(event.pointerId);
-    if (spaceState.overview || launchpadState.view || event.type !== 'pointerup' || fullScreenStage.mode !== 'split' || Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return;
+    if (spaceState.overview || launchpadState.view || dashboardOpen || event.type !== 'pointerup' || fullScreenStage.mode !== 'split' || Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return;
     const divider = stageArea.width * fullScreenStage.ratio;
     if (drag.side === 'left' ? event.clientX > divider : event.clientX < divider)
       commands.execute({ command: 'window.splitView.swap' });
   }
   function stagePointerMove(event) {
-    if (spaceState.overview || launchpadState.view || fullScreenStage.mode === 'normal' || switching.switcher || !sceneInteractionsAvailable()) return;
+    if (spaceState.overview || launchpadState.view || dashboardOpen || fullScreenStage.mode === 'normal' || switching.switcher || !sceneInteractionsAvailable()) return;
     const topLocked = Boolean(presentation.greenMenu || switching.appMenu || desktopState.windowMenuOpen);
     const topLimit = presentation.revealed.top ? stageArea.menuHeight + 50 : 2;
     revealFullScreen('top', topLocked || event.clientY <= topLimit);
@@ -1177,7 +1238,7 @@
     revealFullScreen('launcher', locked || near);
   }
   function resizeSplitView(event) {
-    if (spaceState.overview || launchpadState.view || fullScreenStage.mode !== 'split') return;
+    if (spaceState.overview || launchpadState.view || dashboardOpen || fullScreenStage.mode !== 'split') return;
     const ratio = Math.max(.2, Math.min(.8, event.clientX / stageArea.width));
     return commands.execute({ command: 'window.splitView.resize', payload: { ratio } });
   }
@@ -1272,21 +1333,30 @@
   }
   function captureSpacesScene() {
     const scroll = [];
-    for (const node of document.querySelectorAll('.managed-window, .managed-window *, [data-shell-switcher] *, [data-mission-control] *, [data-launchpad] *'))
+    for (const node of document.querySelectorAll('.managed-window, .managed-window *, [data-shell-switcher] *, [data-mission-control] *, [data-launchpad] *, [data-dashboard] *'))
       if (node.scrollTop || node.scrollLeft) scroll.push({ node, top: node.scrollTop, left: node.scrollLeft });
-    return { state: $state.snapshot({ switching, presentation, desktop: desktopState, notesView: notesViewState, launchpad: launchpadState }),
-      launchpadView: launchpadState.view,
+    return { state: $state.snapshot({ switching, presentation, desktop: desktopState, notesView: notesViewState, launchpad: launchpadState, dashboard: dashboardState }),
+      launchpadView: launchpadState.view, dashboardView: dashboardState.view, dashboardReturnState,
       windowIds: windows.map(window => window.id), activeWindowId, activeAppId,
       focus: captureNativeFocus(), switchingReturnFocus, scroll };
   }
   async function restoreSpacesScene(snapshot) {
     Object.assign(switching, snapshot.state.switching);
     Object.assign(presentation, snapshot.state.presentation);
+    const dock = desktopState.dock;
     Object.assign(desktopState, snapshot.state.desktop);
+    if (dock) {
+      Object.assign(dock, snapshot.state.desktop.dock);
+      desktopState.dock = dock;
+    }
     if (notesViewState) Object.assign(notesViewState, snapshot.state.notesView);
     Object.assign(launchpadState, snapshot.state.launchpad);
     launchpadState.view = snapshot.launchpadView;
     if (snapshot.launchpadView) Object.assign(snapshot.launchpadView, snapshot.state.launchpad.view);
+    Object.assign(dashboardState, snapshot.state.dashboard);
+    dashboardState.view = snapshot.dashboardView;
+    if (snapshot.dashboardView) Object.assign(snapshot.dashboardView, snapshot.state.dashboard.view);
+    dashboardReturnState = snapshot.dashboardReturnState;
     const order = new Map(snapshot.windowIds.map((id, index) => [id, index]));
     windows.sort((a, b) => order.get(a.id) - order.get(b.id));
     activeWindowId = snapshot.activeWindowId; activeAppId = snapshot.activeAppId;
@@ -1319,8 +1389,41 @@
     consumeSwitchingKey(event);
     if (!event.repeat) commands.execute({ command: launchpadState.view ? 'shell.launchpad.close' : 'shell.launchpad.open' });
   }
+  function dashboardKeydown(event) {
+    if (!hasDashboard || event.defaultPrevented || event.isComposing || !sceneInteractionsAvailable()
+      || event.key !== 'F12' || !event.ctrlKey || !event.shiftKey || event.metaKey || event.altKey) return;
+    consumeSwitchingKey(event);
+    if (!event.repeat) commands.execute({ command: dashboardControls?.available() ? 'shell.dashboard.close' : 'shell.dashboard.open' });
+  }
+  function restoreDashboardSpace(prior = dashboardReturnState) {
+    if (spaceState.activeSpaceId !== 'dashboard') { dashboardReturnState = null; return; }
+    const entry = spaceItems.find(item => item.spaceId === prior?.spaceId && item.type !== 'dashboard')
+      ?? spaceItems.find(item => item.spaceId === spaceState.lastDesktopId);
+    spaceState.activeSpaceId = entry?.spaceId ?? spaceState.lastDesktopId;
+    const original = windows.find(window => window.id === prior?.windowId && !window.minimized && !isAppHidden(window.appId)
+      && windowSpaceId(spaceState, presentation, window) === spaceState.activeSpaceId);
+    activeWindowId = original?.id ?? null; activeAppId = original?.appId ?? prior?.appId ?? profile.defaults.desktopAppId;
+    dashboardReturnState = null;
+  }
+  function dismissDashboard() {
+    dashboardState.view = null;
+    restoreDashboardSpace();
+  }
   async function activateManagedSpace(entry) {
     if (!hasSpaces || !sceneInteractionsAvailable()) return false;
+    if (entry.type === 'dashboard') {
+      const result = await handlers['shell.dashboard.open']({}, {});
+      return result.status === 'applied';
+    }
+    if (dashboardState.view && entry.spaceId === dashboardReturnState?.spaceId) {
+      // The Space controller has already assigned its destination. Close through
+      // Dashboard's original owner so its saved editor/caret, not the dialog, returns.
+      spaceState.activeSpaceId = 'dashboard';
+      const result = await handlers['shell.dashboard.close']({}, {});
+      if (result.status !== 'applied') return false;
+      if (!entry.windowIds.length || entry.windowIds.includes(activeWindowId)) return true;
+    }
+    dismissDashboard();
     const candidates = windows.filter(window => entry.windowIds.includes(window.id) && !window.minimized
       && !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId));
     if (entry.type !== 'desktop' && !candidates.length) return false;
@@ -1369,7 +1472,7 @@
     const destination = spaceItems[index + (event.key === 'ArrowLeft' ? -1 : 1)];
     if (destination && !event.repeat) commands.execute({ command: 'space.activate', target: { spaceId: destination.spaceId } });
   }
-  function clearSwitchingPresentations() {
+  function clearSwitchingPresentations(keepDashboard = false) {
     const snapshot = $state.snapshot({
       desktop: { context: desktopState.context, focusedControl: desktopState.focusedControl,
         ...(hasWindowMenu ? { windowMenuOpen: desktopState.windowMenuOpen, windowMenuItem: desktopState.windowMenuItem,
@@ -1384,6 +1487,11 @@
     });
     snapshot.overviewReference = spaceState.overview;
     snapshot.launchpadView = launchpadState.view;
+    snapshot.dashboardView = dashboardState.view;
+    snapshot.dashboardReturnState = dashboardReturnState;
+    snapshot.dashboardSpaceId = spaceState.activeSpaceId;
+    snapshot.dashboardActiveWindowId = activeWindowId; snapshot.dashboardActiveAppId = activeAppId;
+    if (!keepDashboard || dashboardState.mode !== 'space') dismissDashboard();
     desktopState.context = null; desktopState.focusedControl = null;
     spaceState.overview = null;
     launchpadState.view = null;
@@ -1403,6 +1511,12 @@
       if (snapshot.overviewReference) Object.assign(snapshot.overviewReference, snapshot.overview);
     }
     launchpadState.view = snapshot.launchpadView;
+    dashboardState.view = snapshot.dashboardView;
+    dashboardReturnState = snapshot.dashboardReturnState;
+    if (snapshot.dashboardView) {
+      spaceState.activeSpaceId = snapshot.dashboardSpaceId;
+      activeWindowId = snapshot.dashboardActiveWindowId; activeAppId = snapshot.dashboardActiveAppId;
+    }
     await tick(); await tick();
   }
   async function activateSwitcherApplication(appId, preserveSwitcher = false) {
@@ -1536,6 +1650,11 @@
     const unregister = registerCommands(commands);
     const stopScene = adapter.startScene?.(nativeState, commands.execute);
     window.addEventListener('keydown', launchpadKeydown, true);
+    window.addEventListener('keydown', dashboardKeydown, true);
+    const dashboardTimer = hasDashboard ? setInterval(() => {
+      if (!disposed && dashboardState.view && dashboardControls?.available())
+        commands.execute({ command: 'dashboard.clock.advance', payload: { seconds: 1 } });
+    }, 1000) : null;
     window.addEventListener('keydown', spacesKeydown, true);
     window.addEventListener('keydown', fullScreenKeydown, true);
     document.addEventListener('pointermove', stagePointerMove, true);
@@ -1551,6 +1670,8 @@
     return () => {
       disposed = true; stopScene?.(); unregister();
       window.removeEventListener('keydown', launchpadKeydown, true);
+      window.removeEventListener('keydown', dashboardKeydown, true);
+      if (dashboardTimer !== null) clearInterval(dashboardTimer);
       window.removeEventListener('keydown', switchingKeydown, true);
       window.removeEventListener('keyup', switchingKeyup, true);
       window.removeEventListener('keydown', fullScreenKeydown, true);
@@ -1579,9 +1700,10 @@
     window.minimized = false;
     spaceState.overview = null;
     launchpadState.view = null;
+    dismissDashboard();
     if (hasSpaces) {
       reconcileFullScreenWindowing(presentation, windows, switching.hiddenAppIds, pendingQuitAppIds);
-      reconcileSpaces(spaceState, presentation, windows, profile, switching.hiddenAppIds, pendingQuitAppIds, switching.creationWindowIds);
+      reconcileSpaces(spaceState, presentation, windows, profile, switching.hiddenAppIds, pendingQuitAppIds, switching.creationWindowIds, dashboardState);
       spaceState.activeSpaceId = windowSpaceId(spaceState, presentation, window);
       if (!window.fullScreen) spaceState.lastDesktopId = window.spaceId;
     }
@@ -1861,7 +1983,14 @@
             onzoom={() => toggleWindowZoom(window.id)}
           />
         {:else if hasDockContext && window.appId === 'settings'}
-          <MacDockPreferences {profile} preferences={desktopState.dock.preferences} execute={commands.execute} />
+          {#if hasDashboard && window.settingsPane === 'mission-control'}
+            <DashboardPreferences mode={dashboardState.mode} execute={commands.execute} />
+          {:else}
+            <MacDockPreferences {profile} preferences={desktopState.dock.preferences} execute={commands.execute} />
+            {#if hasDashboard}
+              <button type="button" class="dashboard-preferences-link" onclick={() => commands.execute({ command: 'dashboard.preferences.open' })}>Mission Control…</button>
+            {/if}
+          {/if}
         {:else if window.utilityKind === 'desktop-info'}
           <MacDesktopInfo {profile} info={desktopDetails[window.fileId]} windowId={window.id} sections={window.infoSections} execute={commands.execute} />
         {:else if window.utilityKind === 'desktop-view-options'}
@@ -1889,6 +2018,7 @@
   {fullScreenStage}
   missionControlOpen={Boolean(spaceState.overview)}
   launchpadOpen={Boolean(launchpadState.view)}
+  {dashboardOpen}
   onfullscreenreveal={revealFullScreen}
   {runningAppIds}
   {activeWindowId}
@@ -1930,11 +2060,14 @@
   {#if launchpadState.view}
     <Launchpad {profile} state={launchpadState} sceneRect={stageArea} execute={commands.execute} bind:this={launchpadControls} />
   {/if}
+  {#if dashboardState.view && !spaceState.overview && !switching.switcher}
+    <Dashboard {profile} state={dashboardState} sceneRect={stageArea} execute={commands.execute} bind:this={dashboardControls} />
+  {/if}
   {#if fullScreenStage.mode === 'pairing' && pairingRect}
     <SplitViewPicker {profile} state={presentation.pairing} items={pairingItems} rect={pairingRect}
       execute={commands.execute} onlayout={slots => { pairingPreviewSlots = slots; }} bind:this={pairingControls} />
   {/if}
-  {#if !spaceState.overview && !launchpadState.view && fullScreenStage.mode === 'split'}
+  {#if !spaceState.overview && !launchpadState.view && !dashboardOpen && fullScreenStage.mode === 'split'}
     <div class="split-divider" data-split-view-divider role="slider" aria-label="Resize Split View" aria-orientation="horizontal"
       aria-valuemin="20" aria-valuemax="80" aria-valuenow={Math.round(fullScreenStage.ratio * 100)} tabindex="0"
       style:left="{stageArea.x + stageArea.width * fullScreenStage.ratio - 2}px" style:top="{stageArea.y}px"
@@ -1968,4 +2101,5 @@
   .stage-backdrop { position: absolute; z-index: 1; background: black; pointer-events: none; }
   .split-divider { position: absolute; width: 4px; background: #171717; cursor: col-resize; touch-action: none; outline: none; }
   .split-divider:focus-visible { background: #5797dc; }
+  .dashboard-preferences-link { position: absolute; right: 20px; bottom: 12px; padding: 3px 12px; border: 1px solid #aaa; border-radius: 4px; background: #fafafa; color: #222; font: 12px var(--system-font); }
 </style>

@@ -11,7 +11,7 @@ export const highSierraProfile = {
   capabilities: [
     'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
     'shell.window-create', 'app.lifecycle', 'shell.switcher', 'app.visibility',
-    'shell.full-screen', 'shell.split-view', 'shell.mission-control', 'shell.launchpad',
+    'shell.full-screen', 'shell.split-view', 'shell.mission-control', 'shell.launchpad', 'shell.dashboard',
     'shell.desktop', 'shell.dock-context', 'shell.dock-management', 'shell.dock-stacks', 'shell.window-menu',
     'scene.profile-selection',
     'notes.plain-text', 'notes.presentation', 'messages.sample',
@@ -28,6 +28,7 @@ export const highSierraProfile = {
     messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 928, height: 710, minimumSize: { width: 928, height: 710 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'sample' },
     settings: { id: 'settings', name: 'System Preferences', icon: 'settings', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'dock-preferences' },
     preview: { id: 'preview', name: 'Preview', icon: 'preview', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: true, quitAllowed: true, coverage: 'launch-only' },
+    dashboard: { id: 'dashboard', name: 'Dashboard', icon: 'dashboard', presentation: 'dashboard', multipleWindows: false, quitAllowed: false, coverage: 'shell-widgets' },
   },
   desktopFiles: [
     { id: 'disk', name: 'Macintosh HD', icon: 'drive', appId: 'finder' },

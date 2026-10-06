@@ -502,7 +502,9 @@
               ? beginGesture(event, space.windowIds[0], space.spaceId) : pointerdown(event)}>
             {#if overview.expanded}
               <span class="space-image" aria-hidden="true">
-                {#if space.type !== 'desktop'}
+                {#if space.type === 'dashboard'}
+                  <span class="dashboard-preview" aria-hidden="true">◷<span>Dashboard</span></span>
+                {:else if space.type !== 'desktop'}
                   {#each space.windowIds as windowId, index (windowId)}
                     <span class="full-preview" data-mission-control-preview={windowId}
                       style:flex-basis={space.type === 'split' ? `${(index === 0 ? (space.ratio ?? .5) : 1 - (space.ratio ?? .5)) * 100}%` : '100%'}></span>
@@ -512,7 +514,7 @@
             {/if}
             <span class="space-label">{space.label}</span>
           </button>
-          {#if overview.expanded && (space.type !== 'desktop' || desktopCount > 1)}
+          {#if overview.expanded && (['fullScreen', 'split'].includes(space.type) || space.type === 'desktop' && desktopCount > 1)}
             {@const actionId = `${space.type === 'desktop' ? 'remove' : 'exit'}:${space.spaceId}`}
             <button type="button" class="space-action" data-mission-control-item-id={actionId}
               data-mission-control-remove={space.type === 'desktop' ? space.spaceId : undefined}
@@ -581,6 +583,8 @@
   .space-label { display: block; height: var(--label-height); box-sizing: border-box; min-width: 0; max-width: 100%; padding: 0 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: var(--label-height); text-align: center; text-shadow: 0 1px 1px #ffffff60; }
   .space-image { display: flex; box-sizing: border-box; height: var(--thumbnail-height); width: 100%; min-width: 0; gap: 2px; padding: 3px; margin-bottom: 6px; border: 2px solid transparent; border-radius: 2px; pointer-events: none; }
   .full-preview { display: block; flex-grow: 0; flex-shrink: 1; min-width: 0; height: 100%; }
+  .dashboard-preview { display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; background:repeating-linear-gradient(90deg,#333 0 2px,#383838 2px 4px); color:#ddd; font-size:32px; }
+  .dashboard-preview span { font-size:10px; }
   .thumbnail-wallpaper { position: absolute; z-index: 12000; top: 2px; left: 2px; right: 2px; height: calc(var(--thumbnail-height) - 4px); overflow: hidden; border-radius: 1px; background-position: center; background-size: cover; box-shadow: 0 1px 4px #0005; pointer-events: none; }
   .desktop-outline { position: absolute; width: 45%; height: 40%; border: 1px solid #ffffffc4; border-radius: 2px; background: #e9e9e936; box-shadow: 0 1px 2px #0004; }
   .space-entry.current .space-image { border-color: #4899ee; box-shadow: 0 0 0 1px #deefff8c; }

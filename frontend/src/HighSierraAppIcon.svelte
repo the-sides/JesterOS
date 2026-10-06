@@ -4,6 +4,7 @@
 
 <script>
   import ClassicPreviewIcon from './ClassicPreviewIcon.svelte';
+  import ClassicDashboardIcon from './ClassicDashboardIcon.svelte';
   let { name, assets } = $props();
 </script>
 
@@ -39,6 +40,8 @@
   </span>
 {:else if name === 'preview'}
   <ClassicPreviewIcon />
+{:else if name === 'dashboard'}
+  <ClassicDashboardIcon />
 {:else}
   <img class="app-icon" src={`${assets.icons}/${name}.${vectorIcons.has(name) ? 'svg' : 'png'}`} alt="" aria-hidden="true" draggable="false" />
 {/if}
