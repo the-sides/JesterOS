@@ -15,7 +15,7 @@ export const goldenGateProfile = {
     'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management',
     'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.menu-bar', 'shell.application-menu', 'shell.appearance',
     'shell.file-workflows', 'shell.edit-workflows', 'shell.view-workflows', 'shell.window-extensions',
-    'shell.help-workflows', 'shell.services-workflows', 'shell.apple-menu', 'status.wifi', 'status.battery',
+    'shell.help-workflows', 'shell.services-workflows', 'shell.apple-menu', 'status.wifi', 'status.battery', 'status.clock',
     'scene.profile-selection', 'scene.seed', 'scene.saved-session', 'session.fictional', 'session.power', 'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {
@@ -32,7 +32,7 @@ export const goldenGateProfile = {
     reminders: launchOnly('reminders', 'Reminders', 'main'),
     notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 720,
       minimumSize: { width: 960, height: 420 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
-    settings: { ...launchOnly('settings', 'System Settings', 'main'), coverage: 'about-display-storage-wifi-battery-menu-bar-dock-appearance' },
+    settings: { ...launchOnly('settings', 'System Settings', 'main'), coverage: 'about-display-storage-wifi-battery-menu-bar-date-time-dock-appearance' },
     music: launchOnly('music', 'Music', 'recent'),
     activitymonitor: launchOnly('activitymonitor', 'Activity Monitor'),
     airport: launchOnly('airport', 'AirPort Utility'),
@@ -95,7 +95,7 @@ export const goldenGateProfile = {
   ],
   assets: { wallpaper: '/golden-gate/wallpaper.svg',
     messages: '/messages', fonts: ['/fonts/InterVariable.woff2'] },
-  defaults: { startupAppId: 'messages', desktopAppId: 'finder', clockLabel: 'Mon 9:41 AM',
+  defaults: { startupAppId: 'messages', desktopAppId: 'finder',
     sceneTime: '2026-09-28T09:41:00.000Z', batteryPercent: 87, accountName: 'Alex Morgan',
     // Invented scene identity; never derived from this browser or host hardware.
     machine: { computerName: 'Studio MacBook Air', modelName: 'MacBook Air', modelDetail: 'M2, 2022',

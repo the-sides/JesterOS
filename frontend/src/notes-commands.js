@@ -1,12 +1,12 @@
 import { tick } from 'svelte';
 import { rejected } from './feature-commands.js';
-import { visibleNotes, createNote, updateNote, togglePin, trashNote, restoreNote, selectFolder, selectNote, setSearch } from './notes-state.js';
+import { visibleNotes, createNote, updateNote, togglePin, trashNote, restoreNote, selectFolder, selectNote, setSearch, nextNoteTimestamp } from './notes-state.js';
 
 /** Transport-neutral Notes handlers. Record targets use {noteId}; focus targets use
  * {control,noteId?,folder?,item?}; scroll targets use {area:'list'|'editor'}.
  * Data commands work while unmounted. Only explicit presentation/focus requests
  * use the registered view, and never reopen a closed or minimized window. */
-export function createNotesCommands(noteState, viewState, { getView, focusWindow, isVisible, prepareFocus }) {
+export function createNotesCommands(noteState, viewState, { getView, focusWindow, isVisible, prepareFocus, getSceneTime, onTimeChanged }) {
   viewState.scroll ??= { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } };
   const invalid = () => rejected('invalid_arguments', 'Invalid Notes target or payload.');
   const unavailable = () => rejected('unavailable', 'Notes presentation is not available.');
@@ -17,6 +17,7 @@ export function createNotesCommands(noteState, viewState, { getView, focusWindow
   const record = (target) => fields(target, ['noteId']) && typeof target.noteId === 'string' && target.noteId
     ? visibleNotes(noteState).find((note) => note.id === target.noteId) : undefined;
   const missing = () => rejected('stale_target', 'The note is not in the current visible collection.');
+  const limited = () => rejected('limit_exceeded', 'The Notes authored clock is invalid or exhausted.');
   const clearContext = () => {
     viewState.context = null;
     viewState.contextItem = null;
@@ -59,9 +60,12 @@ export function createNotesCommands(noteState, viewState, { getView, focusWindow
     if ((kind === 'restore') !== note.deleted) return rejected('read_only', kind === 'restore' ? 'Only deleted notes can be restored.' : 'Deleted notes are read-only.');
     if (!canRequestFocus(payload)) return unavailable();
     const retainedRow = !payload.focus && mounted() && viewState.focusedControl?.control === 'row' && viewState.focusedControl.noteId === note.id;
+    const sceneTime = getSceneTime?.();
+    if (kind !== 'pin' && nextNoteTimestamp(noteState, sceneTime) === null) return limited();
     if (kind === 'pin') { if (note.pinned !== payload.pinned) togglePin(noteState, note.id); }
-    else if (kind === 'trash') trashNote(noteState, note.id);
-    else restoreNote(noteState, note.id);
+    else if (kind === 'trash') trashNote(noteState, note.id, sceneTime);
+    else restoreNote(noteState, note.id, sceneTime);
+    if (kind !== 'pin') onTimeChanged?.(note.updatedAt);
     clearContext();
     reconcileFocus();
     if (payload.focus) await returnToRow(note.id);
@@ -75,8 +79,11 @@ export function createNotesCommands(noteState, viewState, { getView, focusWindow
     'notes.create': async (target, payload) => {
       if (!fields(target, []) || !focusPayload(payload)) return invalid();
       if (!canRequestFocus(payload)) return unavailable();
+      const sceneTime = getSceneTime?.();
+      if (nextNoteTimestamp(noteState, sceneTime) === null) return limited();
       clearContext();
-      const noteId = createNote(noteState);
+      const noteId = createNote(noteState, '', sceneTime);
+      onTimeChanged?.(noteState.notes.find(note => note.id === noteId).updatedAt);
       if (payload.focus) await focus({ control: 'title' });
       return applied({ noteId });
     },
@@ -85,10 +92,13 @@ export function createNotesCommands(noteState, viewState, { getView, focusWindow
       const note = record(target);
       if (!note || note.id !== noteState.selectedId) return missing();
       if (note.deleted) return rejected('read_only', 'Deleted notes are read-only.');
+      const sceneTime = getSceneTime?.(), beforeTime = note.updatedAt;
+      if (note.text !== payload.text && nextNoteTimestamp(noteState, sceneTime) === null) return limited();
       // Match typing: leave the active search before changing a visible result.
       if (noteState.search) setSearch(noteState, '');
       clearContext();
-      updateNote(noteState, note.id, payload.text);
+      updateNote(noteState, note.id, payload.text, sceneTime);
+      if (note.updatedAt !== beforeTime) onTimeChanged?.(note.updatedAt);
       return applied(target);
     },
     'notes.setPinned': (target, payload) => mutateRecord('pin', target, payload),

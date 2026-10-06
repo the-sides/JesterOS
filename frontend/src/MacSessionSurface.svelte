@@ -1,6 +1,6 @@
 <script>
   import { tick } from 'svelte';
-  let { profile, session, execute, registerView } = $props();
+  let { profile, session, clockContext, execute, registerView } = $props();
   let root = $state();
   let draft = $state('');
   let acknowledged = $state(false);
@@ -8,9 +8,9 @@
   const logoutUser = $derived(session.users.find(user => user.id === session.logoutPending?.userId));
   const userList = $derived(session.phase === 'login' && session.loginView === 'users' && !session.logoutPending);
   const identity = $derived(`${session.phase}:${selected?.id ?? ''}:${session.logoutPending?.userId ?? ''}:${userList}`);
-  const sceneDate = $derived(new Date(profile.defaults.sceneTime));
-  const dateLabel = $derived(new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(sceneDate));
-  const timeLabel = $derived(new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' }).format(sceneDate).replace(/\s?[AP]M$/, ''));
+  const sceneDate = $derived(new Date(clockContext.sceneTime));
+  const dateLabel = $derived(new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: clockContext.timeZone }).format(sceneDate));
+  const timeLabel = $derived(new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hourCycle: clockContext.use24Hour ? 'h23' : 'h12', timeZone: clockContext.timeZone }).format(sceneDate).replace(/\s?[AP]M$/, ''));
   function request(command, target = {}, payload = {}) { return execute({ command, target, payload }); }
   function available(element) {
     return Boolean((session.phase !== 'desktop' || session.logoutPending) && element?.isConnected
@@ -109,7 +109,7 @@
         <div class="actions"><button type="button" data-session-control="logout-cancel" onclick={() => request('session.logout.respond', {}, { accept: false })}>Cancel</button><button type="button" class="default" data-session-control="logout-confirm" onclick={() => request('session.logout.respond', {}, { accept: true })}>{logoutUser.kind === 'guest' ? 'Delete Files and Log Out' : 'Log Out'}</button></div>
       </div>
     {:else}
-      <div class="clock" aria-label="Fixed fictional scene time"><div class="date">{dateLabel}</div><time datetime={profile.defaults.sceneTime} class="time">{timeLabel}</time></div>
+      <div class="clock" aria-label="Shared fictional scene time"><div class="date">{dateLabel}</div><time datetime={sceneDate.toISOString()} class="time">{timeLabel}</time></div>
       <div class="login-area">
         {#if userList}
           <div class="user-list" aria-label="Choose a user">

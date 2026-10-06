@@ -30,6 +30,11 @@
   let retainedIds = $state(savedSession?.locals.map(local => local.userId) ?? ['local-alex']);
   let disposed = false;
   const controllers = new Map(), scenes = new Map(), menuViews = new Map(), desktopReturns = new Map();
+  const clockContext = $derived.by(() => {
+    sceneRevision;
+    return scenes.get(session.phase === 'desktop' || session.phase === 'locked' ? session.activeUserId : session.selectedUserId)?.clock()
+      ?? { sceneTime: seed.files.sceneTime, timeZone: seed.system.clock.timeZone, use24Hour: seed.system.clock.use24Hour };
+  });
   let surfaceView = null, powerView = null, powerReturn = null;
   const powerAvailable = () => !disposed && power.phase === 'awake' && !power.pending;
   const interactive = () => powerAvailable() && session.phase === 'desktop' && !session.logoutPending;
@@ -329,11 +334,11 @@
   {/each}
   {#if power.phase === 'awake' && (session.phase !== 'desktop' || session.logoutPending)}
     <div class="session-presentation" inert={Boolean(power.pending)} aria-hidden={Boolean(power.pending)}>
-      <MacSessionSurface {profile} {session} {execute} registerView={view => registerNativeView(null, view)} />
+      <MacSessionSurface {profile} {session} {clockContext} {execute} registerView={view => registerNativeView(null, view)} />
     </div>
   {/if}
   {#if power.phase !== 'awake' || power.pending}
-    <MacPowerSurface {profile} {power} {session} {execute} registerView={registerPowerView} />
+    <MacPowerSurface {profile} {power} {session} {clockContext} {execute} registerView={registerPowerView} />
   {/if}
 </div>
 

@@ -43,10 +43,11 @@
     registerView,
     onlayout,
   } = $props();
-  const primaryMenus = $derived(menuBarMenus.filter(menu => !['users', 'wifi', 'battery'].includes(menu.menuId)));
+  const primaryMenus = $derived(menuBarMenus.filter(menu => !['users', 'wifi', 'battery', 'clock'].includes(menu.menuId)));
   const userMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'users'));
   const wifiMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'wifi'));
   const batteryMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'battery' && menu.showInMenuBar));
+  const clockMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'clock'));
 
   const applications = $derived(profile.applications);
   const desktopFiles = $derived(desktopItems);
@@ -518,7 +519,8 @@
         registerView={registerSessionView} {foreground} zone="wifi" />
       <span class="golden-gate-spotlight" aria-label="Spotlight"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg></span>
       <span class="golden-gate-control-center" aria-label="Control Center"><svg viewBox="0 0 22 20" aria-hidden="true"><rect x="2" y="2" width="18" height="6" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="6" cy="5" r="2" fill="currentColor"/><rect x="2" y="12" width="18" height="6" rx="3" fill="currentColor"/><circle cx="16" cy="15" r="2" fill="#707a54"/></svg></span>
-      <time datetime={profile.defaults.sceneTime}>{profile.defaults.clockLabel}</time>
+      <GoldenGateMenuBar {profile} menus={clockMenus} state={menuBarState} execute={executeSession}
+        registerView={registerSessionView} {foreground} zone="clock" />
     </div>
   </header>
   <main class="golden-gate-workspace" bind:this={workspace} tabindex="-1" aria-label="macOS Golden Gate desktop" onpointerdown={focusDesktop}
@@ -598,6 +600,5 @@
     .golden-gate-menu-headings { margin-right:0; }
     .golden-gate-status-items { gap:6px; }
     .golden-gate-control-center { display:none; }
-    .golden-gate-status-items time { font-size:10px; }
   }
 </style>

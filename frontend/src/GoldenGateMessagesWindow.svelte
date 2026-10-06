@@ -1,10 +1,11 @@
 <script>
   import WindowControls from './WindowControls.svelte';
+  import { clockRecordLabel } from './clock-model.js';
   import './golden-gate-documents.css';
 
   let { scene, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu,
     fullScreen = false, revealedTop = true, modernGreenMenu = true, active = true, zoomed = false,
-    onservices = null, servicesEntryId = null } = $props();
+    onservices = null, servicesEntryId = null, clockContext } = $props();
   const symbols = {
     search: 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0m-1 5 6 6',
     filter: 'M4 6h16M7 12h10M10 18h4',
@@ -49,7 +50,7 @@
           <li>
             <button type="button" aria-label={`${conversation.name} — sample only`} disabled>
               {@render avatar(conversation.initials, conversation.tint)}
-              <span class="golden-gate-messages-conversation-copy"><span class="golden-gate-messages-conversation-heading"><strong>{conversation.name}</strong><time>{conversation.time}</time></span><span class="golden-gate-messages-conversation-preview">{conversation.preview}</span></span>
+              <span class="golden-gate-messages-conversation-copy"><span class="golden-gate-messages-conversation-heading"><strong>{conversation.name}</strong><time datetime={new Date(conversation.timestamp).toISOString()}>{clockRecordLabel(conversation.timestamp, clockContext.sceneTime, clockContext.timeZone, clockContext.use24Hour)}</time></span><span class="golden-gate-messages-conversation-preview">{conversation.preview}</span></span>
             </button>
           </li>
         {:else}
@@ -64,7 +65,7 @@
       <button type="button" class="golden-gate-document-tool golden-gate-document-capsule golden-gate-messages-call" data-window-no-drag aria-label="Video call — sample only" disabled>{@render symbol('video')}</button>
     </header>
     <ol class="golden-gate-messages-history" aria-label={`Fictional conversation with ${scene.thread.name}`}>
-      <li class="golden-gate-messages-timestamp"><time datetime={scene.thread.timestamp}>{scene.thread.timestampLabel}</time></li>
+      <li class="golden-gate-messages-timestamp"><time datetime={scene.thread.timestamp}>{clockRecordLabel(Date.parse(scene.thread.timestamp), clockContext.sceneTime, clockContext.timeZone, clockContext.use24Hour, true)}</time></li>
       {#each scene.thread.items as item, itemIndex}
         {#if item.kind === 'trail'}
       <li class="golden-gate-messages-artwork">

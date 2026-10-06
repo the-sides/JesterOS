@@ -146,14 +146,16 @@ function cloneEntity(entity) {
   return { ...entity, fields: { ...entity.fields },
     ...(entity.kind === 'mail' ? { attachments: entity.attachments.map(attachment => ({ ...attachment })) } : {}) };
 }
-function nextTimestamp(state) {
-  return state.timeBase < MAX_TIME ? state.timeBase + 1 : null;
+function nextTimestamp(state, sceneTime) {
+  if (sceneTime !== undefined && !bounded(sceneTime, 0, MAX_TIME)) return null;
+  const time = Math.max(state.timeBase, sceneTime ?? state.timeBase);
+  return time < MAX_TIME ? time + 1 : null;
 }
-export function draftPreview(state, kind, fields, attachments = []) {
+export function draftPreview(state, kind, fields, attachments = [], sceneTime) {
   try {
     if (!validateCommunications(state).ok || typeof kind !== 'string' || !Object.hasOwn(fieldLimits, kind)
       || state.drafts.length >= 128 || state.nextId >= MAX_COUNTER) return null;
-    const copiedFields = actorData(fields), copiedAttachments = actorData(attachments), time = nextTimestamp(state);
+    const copiedFields = actorData(fields), copiedAttachments = actorData(attachments), time = nextTimestamp(state, sceneTime);
     if (time === null || !validFields(kind, copiedFields) || !validAttachments(copiedAttachments)
       || (kind !== 'mail' && copiedAttachments.length !== 0)) return null;
     const preview = { id: `service-draft-${state.nextId}`, kind, createdAt: time, updatedAt: time, revision: 1, fields: copiedFields,
@@ -180,11 +182,11 @@ function commit(state, candidate, canCommit = () => true) {
   for (const key of stateKeys) state[key] = candidate[key];
   return null;
 }
-export function createCommunicationDraft(state, preview, canCommit = () => true) {
+export function createCommunicationDraft(state, preview, canCommit = () => true, sceneTime) {
   const error = stateError(state); if (error) return error;
   const copied = actorData(preview);
   if (!copied || !validEntity(copied, 'drafts', copied.createdAt)) return rejected('invalid_arguments', 'Expected a complete plain communications draft preview.');
-  const expected = draftPreview(state, copied.kind, copied.fields, copied.kind === 'mail' ? copied.attachments : []);
+  const expected = draftPreview(state, copied.kind, copied.fields, copied.kind === 'mail' ? copied.attachments : [], sceneTime);
   if (!expected) return rejected('limit_exceeded', 'Draft capacity, allocation, clock or text budget is exhausted.');
   if (copied.id !== expected.id || copied.createdAt !== expected.createdAt || copied.updatedAt !== expected.updatedAt || copied.revision !== 1) return rejected('stale_target', 'The preview no longer matches the next communications allocation and clock.');
   const next = detached(state);
@@ -192,7 +194,7 @@ export function createCommunicationDraft(state, preview, canCommit = () => true)
   const denied = commit(state, next, canCommit); if (denied) return denied;
   return { status: 'applied', target: { draftId: copied.id, kind: copied.kind } };
 }
-export function changeCommunicationDraft(state, draftId, field, value, canCommit = () => true) {
+export function changeCommunicationDraft(state, draftId, field, value, canCommit = () => true, sceneTime) {
   const error = stateError(state); if (error) return error;
   if (!validId(draftId) || typeof field !== 'string' || typeof value !== 'string') return rejected('invalid_arguments', 'Expected a draft identity and exact text field/value.');
   const draft = state.drafts.find(entity => entity.id === draftId);
@@ -200,21 +202,21 @@ export function changeCommunicationDraft(state, draftId, field, value, canCommit
   if (!validCommunicationField(draft.kind, field, value))
     return rejected('invalid_arguments', 'Unknown communications field, text bound exceeded or newline in a single-line field.');
   if (draft.fields[field] === value) return { status: 'applied', target: { draftId, field } };
-  const time = nextTimestamp(state);
+  const time = nextTimestamp(state, sceneTime);
   if (time === null || draft.revision >= MAX_COUNTER) return rejected('limit_exceeded', 'The communications clock or revision is exhausted.');
   const next = detached(state), changed = next.drafts.find(entity => entity.id === draftId);
   changed.fields[field] = value; changed.revision++; changed.updatedAt = time; next.timeBase = time;
   const denied = commit(state, next, canCommit); if (denied) return denied;
   return { status: 'applied', target: { draftId, field } };
 }
-export function submitCommunicationDraft(state, draftId, canCommit = () => true) {
+export function submitCommunicationDraft(state, draftId, canCommit = () => true, sceneTime) {
   const error = stateError(state); if (error) return error;
   if (!validId(draftId)) return rejected('invalid_arguments', 'Expected a communications draft identity.');
   const draft = state.drafts.find(entity => entity.id === draftId);
   if (!draft) return rejected('not_found', 'The communications draft does not exist.');
   if (!(draft.kind === 'contact' ? identified(draft.fields) : sendable(draft))) return rejected('invalid_arguments', draft.kind === 'contact'
     ? 'A local contact requires a nonblank name, email or phone.' : 'Local sending requires a recipient and body, or a real Mail attachment.');
-  const collection = draft.kind === 'contact' ? 'contacts' : 'outbox', time = nextTimestamp(state);
+  const collection = draft.kind === 'contact' ? 'contacts' : 'outbox', time = nextTimestamp(state, sceneTime);
   if (state[collection].length >= 1024 || state.nextId >= MAX_COUNTER || time === null) return rejected('limit_exceeded', 'Record capacity, communications allocation or clock is exhausted.');
   const next = detached(state), recordId = `service-${draft.kind}-${state.nextId}`;
   const record = { ...cloneEntity(draft), id: recordId, createdAt: time, updatedAt: time, revision: 1 };

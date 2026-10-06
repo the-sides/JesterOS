@@ -51,8 +51,8 @@ export const sceneSeedSchema = {
     communications: communicationsSchema,
     system: systemStateSchema,
     messages: object({ pinned: array(object({ ...avatar, selected: flag }), 128),
-      conversations: array(object({ ...avatar, time: string(256), preview: string(4096) })),
-      thread: object({ ...avatar, timestampLabel: string(256), timestamp: { ...string(32, 1),
+      conversations: array(object({ ...avatar, timestamp, preview: string(4096) })),
+      thread: object({ ...avatar, timestamp: { ...string(32, 1),
         pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{3})?Z$' },
       items: array({ anyOf: [object({ kind: { const: 'text' }, direction: choice('incoming', 'outgoing'),
         text: string(MAX_TEXT), sender: string(256), delivery: string(256) }, ['kind', 'direction', 'text']),
@@ -88,12 +88,12 @@ export function createDefaultSceneSeed(profile) {
         { name: 'Trail Crew', initials: 'TC', tint: '#789d82', selected: true },
       ],
       conversations: [
-        { name: 'Jordan Lee', initials: 'JL', tint: '#a49ab7', time: '9:32 AM', preview: 'The sketches look great. See you later!' },
-        { name: 'Morgan Park', initials: 'MP', tint: '#b08f77', time: '9:18 AM', preview: 'I left the book by your desk.' },
-        { name: 'Weekend Plans', initials: 'WP', tint: '#8ca3b9', time: 'Yesterday', preview: 'Let’s meet at the café on Saturday.' },
-        { name: 'Sam Rivera', initials: 'SR', tint: '#9baa81', time: 'Yesterday', preview: 'Thanks for the recommendation!' },
+        { name: 'Jordan Lee', initials: 'JL', tint: '#a49ab7', timestamp: sceneTime - 9 * 60_000, preview: 'The sketches look great. See you later!' },
+        { name: 'Morgan Park', initials: 'MP', tint: '#b08f77', timestamp: sceneTime - 23 * 60_000, preview: 'I left the book by your desk.' },
+        { name: 'Weekend Plans', initials: 'WP', tint: '#8ca3b9', timestamp: sceneTime - 28 * 3_600_000, preview: 'Let’s meet at the café on Saturday.' },
+        { name: 'Sam Rivera', initials: 'SR', tint: '#9baa81', timestamp: sceneTime - 32 * 3_600_000, preview: 'Thanks for the recommendation!' },
       ],
-      thread: { name: 'Trail Crew', initials: 'TC', tint: '#789d82', timestampLabel: 'Today 9:41 AM', timestamp: '2026-09-28T09:41:00Z', items: [
+      thread: { name: 'Trail Crew', initials: 'TC', tint: '#789d82', timestamp: new Date(sceneTime).toISOString(), items: [
         { kind: 'text', direction: 'outgoing', text: 'Morning! Where are we meeting?' },
         { kind: 'text', direction: 'incoming', sender: 'Casey Rivera', text: 'At the trailhead by the coast. I made a little sketch of the route.' },
         { kind: 'trail', sender: 'Casey Rivera' },

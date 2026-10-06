@@ -1,5 +1,5 @@
 import { isRecord, rejected } from './feature-commands.js';
-import { createNote, noteTitle, visibleNotes } from './notes-state.js';
+import { createNote, noteTitle, visibleNotes, nextNoteTimestamp } from './notes-state.js';
 import { liveMacFileRecords, validMacDesktopName } from './desktop-file-state.js';
 import { createNotesPdf } from './notes-pdf.js';
 import { PRINTING_LIMITS, printedPageTotal, validatePrintingState } from './printing-state.js';
@@ -67,7 +67,6 @@ export function createNotesFileCommands(notes, files, printing, context) {
     if (!integer(other, 0, MAX_TOTAL)) return Infinity;
     return other + stringBudget(notes) + stringBudget({ ...files, files: files.files.filter(file => !file.readOnly) }) + stringBudget(printing);
   };
-  const noteClock = () => notes.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), notes.timeBase);
   const begin = () => context.captureLease?.() ?? (() => true);
   function check(snapshot, current) {
     if (!current() || !available()) return unavailable();
@@ -135,15 +134,16 @@ export function createNotesFileCommands(notes, files, printing, context) {
       }
       const failure = check(snapshot, current);
       if (failure) return failure;
-      const time = noteClock();
+      const sceneTime = context.getSceneTime?.(), time = nextNoteTimestamp(notes, sceneTime);
       let number = notes.notes.length + 1;
       while (notes.notes.some(note => note.id === `note-${number}`) && number < MAX_COUNTER) number++;
       const newId = `note-${number}`;
       const projected = { ...notes, notes: [...notes.notes, { id: newId, text: snapshot.text, pinned: false, deleted: false,
-        createdAt: time + 1, updatedAt: time + 1 }], folder: 'notes', search: '', selectedId: newId };
-      if (notes.notes.length >= MAX_ITEMS || !integer(time, 0, MAX_TIME - 1) || number >= MAX_COUNTER
+        createdAt: time, updatedAt: time }], folder: 'notes', search: '', selectedId: newId };
+      if (notes.notes.length >= MAX_ITEMS || time === null || number >= MAX_COUNTER
         || budget() - stringBudget(notes) + stringBudget(projected) > MAX_TOTAL) return limited();
-      const noteId = createNote(notes, snapshot.text);
+      const noteId = createNote(notes, snapshot.text, sceneTime);
+      context.onTimeChanged?.(time);
       await context.notesCreated?.(noteId, payload.focus === true);
       return applied({ noteId });
     },
@@ -216,7 +216,9 @@ export function createNotesFileCommands(notes, files, printing, context) {
       const pageFrom = draft.pageFrom ?? 1, pageTo = draft.pageTo ?? output.pageCount;
       if (pageFrom > pageTo || pageTo > output.pageCount) return rejected('invalid_arguments', 'The requested range exceeds this note’s actual pagination.');
       if (!validPrinting()) return rejected('invalid_state', 'The print queue is not a valid bounded state.');
-      const timestamp = Math.max(noteClock(), files.sceneTime, ...printing.jobs.map(job => job.createdAt));
+      const nextNoteTime = nextNoteTimestamp(notes, context.getSceneTime?.());
+      if (nextNoteTime === null) return limited();
+      const timestamp = Math.max(nextNoteTime - 1, files.sceneTime, ...printing.jobs.map(job => job.createdAt));
       if (printing.jobs.length >= PRINTING_LIMITS.jobs || !integer(printing.nextJobId, 1, MAX_COUNTER - 1)
         || !integer(timestamp, 0, MAX_TIME - 1)) return limited();
       const job = { id: `job-${printing.nextJobId}`, title: noteTitle(snapshot.note), sourceNoteId: snapshot.note.id,
@@ -224,6 +226,7 @@ export function createNotesFileCommands(notes, files, printing, context) {
         pdfBase64: output.base64, status: 'queued', printedPages: 0, createdAt: timestamp + 1 };
       if (budget() + stringBudget(job) + String(printing.jobs.length).length > MAX_TOTAL) return limited();
       printing.jobs.push(job); printing.nextJobId++;
+      context.onTimeChanged?.(job.createdAt);
       return applied({ jobId: job.id });
     },
     'printing.job.setPaused': (target, payload) => {

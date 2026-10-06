@@ -47,7 +47,7 @@ const viewToken = object({
 const windowRecord = object({
   id: { ...identity, maxLength: 256 }, appId: identity, title: string(4096), minimized: flag, fullScreen: flag, zoomed: flag,
   bounds, restoreBounds: nullable(bounds), spaceId: desktopId,
-  folderId: safeKey(), finderSelectedFileIds: ids(safeKey()), settingsPane: choice('dock', 'appearance', 'about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar'),
+  folderId: safeKey(), finderSelectedFileIds: ids(safeKey()), settingsPane: choice('dock', 'appearance', 'about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time'),
   finderPresentation: finderPresentationSchema, notesPresentation: notesPresentationSchema,
   finderBrowseMode: choice('icons', 'list', 'columns', 'gallery'),
   utilityKind: choice('desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'system-about', 'system-force-quit', 'system-coverage'),

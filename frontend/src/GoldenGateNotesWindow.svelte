@@ -12,11 +12,11 @@
     onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu,
     fullScreen = false, revealedTop = true, modernGreenMenu = true,
     windowId = null, editing = null, dictionaryStatus = 'idle', textTools = null, ontextinput, ontextbeforeinput,
-    workflowView = null, sortedState = null, onviewoptions } = $props();
+    workflowView = null, sortedState = null, onviewoptions, clockContext = null } = $props();
   let root, searchInput, listElement;
   let titleInput = $state(null), bodyInput = $state(null), contextElement = $state(null);
   const context = $derived(viewState.context);
-  const groups = $derived(groupNotes(sortedState ?? noteState));
+  const groups = $derived(groupNotes(sortedState ?? noteState, clockContext));
   const notes = $derived(groups.flatMap(group => group.notes));
   const groupHeadings = $derived(new Map(groups.map(group => [group.notes[0].id, group])));
   const selected = $derived(noteState.notes.find((note) => note.id === noteState.selectedId));
@@ -30,8 +30,10 @@
   const titleAnnotations = $derived(editing && selected ? noteControlAnnotations(selected, 'title', find, spelling) : null);
   const bodyAnnotations = $derived(editing && selected ? noteControlAnnotations(selected, 'body', find, spelling) : null);
   const dictionaryLoading = $derived(Boolean(editing?.correctSpellingAutomatically && dictionaryStatus !== 'ready'));
-  const dateFormat = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
-  const summaryDateFormat = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', timeZone: 'UTC' });
+  const dateFormat = $derived(new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hourCycle: clockContext?.use24Hour ? 'h23' : 'h12', timeZone: clockContext?.timeZone ?? 'UTC' }));
+  const summaryDateFormat = $derived(new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit',
+    timeZone: clockContext?.timeZone ?? 'UTC' }));
   const view = createGoldenGateNotesView({ execute: (request) => execute(request), state: () => noteState,
     presentation: () => viewState, isActive: () => active,
     refs: () => ({ root, search: searchInput, list: listElement, title: titleInput, body: bodyInput, context: contextElement }) });

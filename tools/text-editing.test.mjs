@@ -295,3 +295,30 @@ test('composition document commits retain exact before and after native selectio
   await value.run('text.redo', owner(value.target('body')));
   expect(value.note().text).toBe('Title\na漢c'); expect(value.native.selections.body).toEqual(caret(2));
 });
+
+test('typing, replace, undo and redo commit the exact prospective shared instant without advancing it on denied budgets', async () => {
+  const value = model();
+  let sceneTime = value.note().updatedAt + 3 * 86_400_000, commits = 0;
+  value.context.getSceneTime = () => sceneTime;
+  value.context.onTimeChanged = time => {
+    expect(value.note().updatedAt).toBe(time);
+    sceneTime = Math.max(sceneTime, time); commits++;
+  };
+  value.context.canCommitNote = (note, text, time) => {
+    expect(time).toBe(Math.max(sceneTime, ...value.notes.notes.map(entry => entry.updatedAt)) + 1);
+    expect(note.text).not.toBe(text); return true;
+  };
+  const initial = sceneTime;
+  expect(value.engine.editDocument(value.note().id, 'Shared title\nBody').status).toBe('applied');
+  expect(sceneTime).toBe(initial + 1); expect(commits).toBe(1);
+  expect((await value.run('text.replace', value.target('body', 0, 4), { text: 'Next' })).status).toBe('applied');
+  expect(sceneTime).toBe(initial + 2);
+  expect((await value.run('text.undo', owner(value.target('body')))).status).toBe('applied');
+  expect(sceneTime).toBe(initial + 3);
+  expect((await value.run('text.redo', owner(value.target('body')))).status).toBe('applied');
+  expect(sceneTime).toBe(initial + 4);
+  const before = value.snapshot(), clock = sceneTime, count = commits;
+  value.context.canCommitNote = () => false;
+  expect(value.engine.editDocument(value.note().id, 'Denied title\nDenied body').error.code).toBe('limit_exceeded');
+  expect(value.snapshot()).toEqual(before); expect(sceneTime).toBe(clock); expect(commits).toBe(count);
+});

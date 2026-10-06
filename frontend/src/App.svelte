@@ -44,7 +44,7 @@
   import MacDesktopViewOptions from './MacDesktopViewOptions.svelte';
   import { createNotesCommands } from './notes-commands.js';
   import { commandCatalog } from './command-catalog.js';
-  import { visibleNotes, createNote } from './notes-state.js';
+  import { visibleNotes, createNote, nextNoteTimestamp } from './notes-state.js';
   import { appCommandMenuProviders } from './app-command-menus.js';
   import { APPLICATION_MENU_UTILITY_SIZES, goldenApplicationMenuItems, createApplicationMenuCommands } from './application-menu.js';
   import { SYSTEM_UTILITY_SIZES } from './apple-menu.js';
@@ -64,8 +64,12 @@
   import GoldenGateWifiJoin from './GoldenGateWifiJoin.svelte';
   import { createBatteryCommands } from './battery-commands.js';
   import GoldenGateBatterySettings from './GoldenGateBatterySettings.svelte';
-  import GoldenGateBatteryMenuSettings from './GoldenGateBatteryMenuSettings.svelte';
+  import GoldenGateMenuBarSettings from './GoldenGateMenuBarSettings.svelte';
   import GoldenGateBatteryOptions from './GoldenGateBatteryOptions.svelte';
+  import { createClockCommands } from './clock-commands.js';
+  import GoldenGateClockOptions from './GoldenGateClockOptions.svelte';
+  import GoldenGateClockTimeEdit from './GoldenGateClockTimeEdit.svelte';
+  import GoldenGateDateTimeSettings from './GoldenGateDateTimeSettings.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -115,6 +119,7 @@
   const hasMenuBar = profile.capabilities.includes('shell.menu-bar');
   const hasWifi = profile.capabilities.includes('status.wifi');
   const hasBattery = profile.capabilities.includes('status.battery');
+  const hasClock = profile.capabilities.includes('status.clock');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
@@ -358,6 +363,8 @@
   let wifiJoinView = $state(null), wifiController;
   const batteryPresentation = $state({ options: null });
   let batteryOptionsView = $state(null);
+  const clockPresentation = $state({ options: null, editor: null });
+  let clockOptionsView = $state(null), clockTimeView = $state(null);
   let storageConfirmation = $state(null);
   let storageConfirmationLease = null;
   let nextStorageConfirmation = 1;
@@ -379,6 +386,10 @@
       : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
   });
   let macFiles = $state(macDesktop ? createMacSceneFiles() : undefined);
+  const clockContext = $derived(hasClock ? { sceneTime: macFiles.sceneTime,
+    timeZone: systemState.clock.timeZone, use24Hour: systemState.clock.use24Hour } : undefined);
+  const sharedClockWriter = hasClock ? { getSceneTime: () => macFiles.sceneTime,
+    onTimeChanged: time => { macFiles.sceneTime = Math.max(macFiles.sceneTime, time); } } : {};
   const storageManagement = $derived(hasAppleMenu ? storageInventory(profile, macFiles) : null);
   const systemStorage = $derived(hasAppleMenu ? systemStorageSummary(profile, macFiles, storageManagement) : null);
   let recentDocumentCursor = hasAppleMenu ? macFiles.files.reduce((latest, file) =>
@@ -776,6 +787,7 @@
     }),
   );
   if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
+    ...sharedClockWriter,
     getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes' && !window.utilityKind).id),
     prepareFocus: target => {
       if (!hasViewWorkflows || !['title', 'body'].includes(target.control)) return;
@@ -787,6 +799,7 @@
   }));
   if (hasEditWorkflows) {
     textEditing = createTextEditingCommands(notesState, clipboardState, {
+      ...sharedClockWriter,
       available: windowInteractionsAvailable, dataAvailable: sceneCoreAvailable, getSource: ownedTextSource,
       prepare: target => prepareOwnedText(target),
       finishSelection: finishOwnedTextSelection,
@@ -820,6 +833,7 @@
       return new Uint8Array(await response.arrayBuffer());
     })().catch(error => { fontBytes = undefined; throw error; });
     const fileCommands = createNotesFileCommands(notesState, macFiles, printingState, {
+      ...sharedClockWriter,
       available: fileWorkflowsAvailable, fontLoader,
       captureLease: () => fileDialogController.captureLease(),
       otherTextSize: fileWorkflowOtherTextSize,
@@ -883,14 +897,14 @@
       if (Object.keys(target).length || Object.keys(payload).length)
         return rejected('invalid_arguments', 'Use an empty New Note target and payload.');
       if (!windowInteractionsAvailable()) return rejected('unavailable', 'New Note is unavailable.');
-      const time = notesState.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), notesState.timeBase);
+      const time = nextNoteTimestamp(notesState, hasClock ? macFiles.sceneTime : undefined);
       let number = notesState.notes.length + 1;
       while (notesState.notes.some(note => note.id === `note-${number}`) && number < Number.MAX_SAFE_INTEGER - 1) number++;
       const noteId = `note-${number}`;
-      const record = { id: noteId, text: '', pinned: false, deleted: false, createdAt: time + 1, updatedAt: time + 1 };
+      const record = { id: noteId, text: '', pinned: false, deleted: false, createdAt: time, updatedAt: time };
       const delta = persistentStringUnits(record) + String(notesState.notes.length).length
         + noteId.length - (notesState.selectedId?.length ?? 0) + 'notes'.length - notesState.folder.length - notesState.search.length;
-      if (notesState.notes.length >= 1024 || time >= 8_640_000_000_000_000 - 1 || number >= Number.MAX_SAFE_INTEGER - 1
+      if (notesState.notes.length >= 1024 || time === null || number >= Number.MAX_SAFE_INTEGER - 1
         || workflowTextSize() + delta > 4 * 1024 * 1024)
         return rejected('limit_exceeded', 'New Note exceeds the bounded scene record, clock or content budget.');
       const opened = await handlers['app.open']({ appId: 'notes' }, {});
@@ -981,6 +995,7 @@
       retainedSource: () => services?.retainedSource(),
     });
     const serviceCommands = createServiceCommands(communicationsState, {
+      ...sharedClockWriter,
       profile, notes: notesState, clipboard: clipboardState, namespace: () => windowNamespace,
       ui: { get lookup() { return serviceLookup; }, set lookup(value) { serviceLookup = value; },
         get context() { return serviceContext; }, set context(value) { serviceContext = value; } },
@@ -1017,7 +1032,7 @@
   if (hasWifi) {
     wifiController = createWifiCommands({
       profile, presentation: wifiPresentation, getState: () => systemState.wifi, getView: () => wifiJoinView,
-      available: () => sceneCoreAvailable() && !fileDialogState.current && !utilityPreparation && !servicePreparation
+      available: () => sceneCoreAvailable() && !fileDialogState.current && !clockPresentation.options && !clockPresentation.editor && !utilityPreparation && !servicePreparation
         && !servicePending && !switching.switcher && !presentation.pairing && !spaceState.overview
         && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
       canBegin: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
@@ -1033,7 +1048,7 @@
   const batteryController = hasBattery ? createBatteryCommands({
       profile, presentation: batteryPresentation, getState: () => systemState.battery,
       getRunningAppIds: () => runningAppIds, getView: () => batteryOptionsView,
-      available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join
+      available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !clockPresentation.options && !clockPresentation.editor
         && !utilityPreparation && !servicePreparation && !servicePending && !switching.switcher
         && !presentation.pairing && !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
       canBegin: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
@@ -1062,6 +1077,34 @@
       },
   }) : null;
   if (batteryController) Object.assign(handlers, batteryController.handlers);
+  const clockController = hasClock ? createClockCommands({
+    profile, presentation: clockPresentation, getState: () => systemState.clock,
+    getSceneTime: () => macFiles.sceneTime, setTime: setClockSceneTime,
+    getView: kind => kind === 'options' ? clockOptionsView : clockTimeView,
+    available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options
+      && !utilityPreparation && !servicePreparation && !servicePending && !switching.switcher
+      && !presentation.pairing && !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
+    canBegin: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
+      && !servicePending && !switching.switcher && !presentation.pairing,
+    canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
+    getOwner: (windowId, kind) => {
+      const entry = getSystemPanel(windowId), pane = kind === 'options' ? 'menu-bar' : 'date-time';
+      if (entry?.window.appId !== 'settings' || entry.window.utilityKind || entry.window.settingsPane !== pane
+        || activeWindowId !== windowId || activeAppId !== 'settings') return null;
+      const node = entry.element.querySelector(`[data-application-settings-control="${kind === 'options' ? 'clock-options' : 'clock-time-set'}"]`);
+      if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return null;
+      const rect = node.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return hit && (hit === node || node.contains(hit)) ? entry.window : null;
+    },
+    ownerCurrent: (owner, kind) => Boolean(owner && windows.find(window => window.id === owner.id) === owner
+      && owner.appId === 'settings' && !owner.utilityKind && owner.settingsPane === (kind === 'options' ? 'menu-bar' : 'date-time')
+      && !owner.minimized && windowPresented(owner) && !isAppHidden('settings')
+      && activeWindowId === owner.id && activeAppId === 'settings'),
+    capture: captureSessionDesktop, restore: restoreSessionDesktop,
+    settle: async () => { await tick(); await tick(); },
+    dateShown: () => sceneRoot?.querySelector('[data-menu-invoker="clock"]')?.dataset.dateShown === 'true',
+  }) : null;
+  if (clockController) Object.assign(handlers, clockController.handlers);
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
     profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
     getRunningAppIds: () => runningAppIds,
@@ -1156,6 +1199,7 @@
       ...(hasAppleMenu ? { storageManagement: { inventory: storageManagement, confirmation: storageConfirmation, error: storageMaintenanceError } } : {}),
       ...(hasWifi ? { wifi: wifiController.targets() } : {}),
       ...(hasBattery ? { battery: batteryController.targets() } : {}),
+      ...(hasClock ? { clock: clockController.targets() } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1169,6 +1213,7 @@
       profiles: listOSProfiles().map(({ id, name, family, version }) => ({ profileId: id, name, family, version })),
       ...(hasWifi ? { wifi: wifiController.targets() } : {}),
       ...(hasBattery ? { battery: batteryController.targets() } : {}),
+      ...(hasClock ? { clock: clockController.targets() } : {}),
       ...(hasAppearance ? { appearance: appearanceTargets(profile, appearanceState) } : {
         appearance: { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent,
           scope: 'full', highlight: null, customHighlight: false,
@@ -1393,11 +1438,11 @@
     return !disposed && (foreground || starting || !initialized) && (adapter.windowInteractionsAvailable?.(nativeState) ?? true);
   }
   function sceneInteractionsAvailable() {
-    return sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options;
+    return sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !clockPresentation.options && !clockPresentation.editor;
   }
   function fileWorkflowsAvailable() {
     return sceneCoreAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view
-      && !dashboardOpen && !switching.switcher && !presentation.pairing && !wifiPresentation.join && !batteryPresentation.options;
+      && !dashboardOpen && !switching.switcher && !presentation.pairing && !wifiPresentation.join && !batteryPresentation.options && !clockPresentation.options && !clockPresentation.editor;
   }
   function windowInteractionsAvailable() {
     return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view && !dashboardOpen;
@@ -1895,10 +1940,9 @@
     candidate.selected[preview.kind === 'contact' ? 'contacts' : preview.kind === 'message' ? 'messages' : 'mail'] = preview.id;
     return canCommitServiceCommunications(candidate);
   }
-  function canCreateServiceNote(text) {
-    if (notesState.notes.length >= 1024 || text.length > 1024 * 1024
-      || notesState.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), notesState.timeBase) >= 8_640_000_000_000_000 - 1) return false;
-    const candidate = $state.snapshot(notesState); createNote(candidate, text);
+  function canCreateServiceNote(text, sceneTime = hasClock ? macFiles.sceneTime : undefined) {
+    if (notesState.notes.length >= 1024 || text.length > 1024 * 1024 || nextNoteTimestamp(notesState, sceneTime) === null) return false;
+    const candidate = $state.snapshot(notesState); createNote(candidate, text, sceneTime);
     return workflowTextSize() - persistentStringUnits(notesState) + persistentStringUnits(candidate) <= 4 * 1024 * 1024;
   }
   function captureWindowPreparation() {
@@ -2554,7 +2598,7 @@
       panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
         || window.appId === 'systeminformation' && !window.utilityKind
         || window.appId === 'settings' && !window.utilityKind
-          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar'].includes(window.settingsPane)).map(window => {
+          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time'].includes(window.settingsPane)).map(window => {
         const entry = getSystemPanel(window.id), element = managedWindowElement(window.id)?.querySelector('[data-system-panel]');
         const controlIds = systemPanelControls(entry);
         return { windowId: window.id, appId: window.appId,
@@ -2609,6 +2653,16 @@
     cancelStorageConfirmation(pending.windowId);
     return { status: 'applied', target: { confirmationId: pending.confirmationId, windowId: pending.windowId,
       accepted: true, fileIds: result.target.fileIds } };
+  }
+  function setClockSceneTime(sceneTime) {
+    if (!Number.isSafeInteger(sceneTime) || sceneTime < 0 || sceneTime > 8_640_000_000_000_000 - 1)
+      return rejected('invalid_arguments', 'Use a bounded explicit virtual scene timestamp.');
+    if (sceneTime < macFiles.sceneTime) return rejected('invalid_arguments', 'The virtual scene clock cannot rewind existing record and storage histories.');
+    return storageTransaction((store, preferences) => {
+      store.sceneTime = sceneTime;
+      const changes = maintainStorage(store, preferences);
+      return { status: 'applied', target: { sceneTime: store.sceneTime, ...changes } };
+    }, true);
   }
   function storageTransaction(operation, maintenanceIncluded = false) {
     const before = macFiles.files, originalIds = new Set(before.map(file => file.id));
@@ -2770,7 +2824,7 @@
     return windowPresented(window);
   }
   function windowInteractive(window) {
-    return foreground && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
+    return foreground && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !clockPresentation.options && !clockPresentation.editor && !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
       && fullScreenStage.mode !== 'pairing' && windowPresented(window);
   }
   function measureStageArea() {
@@ -3017,6 +3071,22 @@
         || lowPower && lowPower.value !== systemState.battery.lowPowerMode
         || visible && visible.checked !== systemState.battery.showInMenuBar) return false;
     }
+    if (hasClock) {
+      for (const [control, key] of [['show-date', 'showDate'], ['show-day-of-week', 'showDayOfWeek'], ['show-ampm', 'showAMPM'], ['show-seconds', 'showSeconds']]) {
+        const node = sceneRoot.querySelector(`[data-clock-control="${control}"]`);
+        if (node && (typeof systemState.clock[key] === 'boolean' ? node.checked : node.value) !== systemState.clock[key]) return false;
+      }
+      for (const style of ['digital', 'analog']) {
+        const node = sceneRoot.querySelector(`[data-clock-control="style-${style}"]`);
+        if (node && node.checked !== (systemState.clock.style === style)) return false;
+      }
+      const hour = sceneRoot.querySelector('[data-application-settings-control="clock-24-hour"]');
+      const zone = sceneRoot.querySelector('[data-application-settings-control="clock-time-zone"]');
+      const local = sceneRoot.querySelector('[data-clock-time-control="local-datetime"]');
+      if (hour && hour.checked !== systemState.clock.use24Hour
+        || zone && zone.value !== systemState.clock.timeZone
+        || local && local.value !== clockPresentation.editor?.localDateTime) return false;
+    }
     for (const node of sceneRoot.querySelectorAll('[data-system-computer-name], [data-notes-control="title"], [data-notes-control="body"], [data-service-field]')) {
       if (node.disabled || node.readOnly) continue;
       if (node.hasAttribute('data-system-computer-name')) {
@@ -3042,6 +3112,7 @@
     storageConfirmation = null;
     wifiController?.clear();
     batteryController?.clear();
+    clockController?.clear();
     if (!reopenWindows) {
       // Close real native views using their existing lifecycle; never replace
       // the document/files/communications models with startup seed data.
@@ -3356,6 +3427,8 @@
       ...(hasWifi ? [wifiController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
       ...(hasBattery ? [batteryController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
+        && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
+      ...(hasClock ? [clockController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
     ];
   }
@@ -3690,6 +3763,7 @@
       persist: captureSavedScene,
       canSave: () => !disposed && !presentation.pairing && !fileDialogState.current && pendingQuitAppIds.length === 0,
       canLeave: canLeaveScene, leave: leaveScene, reopenWindows: () => systemState.reopenWindows,
+      clock: () => clockContext,
       capture: captureSessionDesktop, restore: restoreSessionDesktop,
       menuProviders: sharedMenuProviders, menusAvailable: sharedMenusAvailable, appleMenuContext,
       prepareMenus: () => clearSwitchingPresentations(false, true), restoreMenus: restoreSwitchingPresentations,
@@ -3750,6 +3824,7 @@
       services?.dispose(); serviceSources?.dispose();
       wifiController?.clear();
       batteryController?.clear();
+      clockController?.clear();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -4193,7 +4268,11 @@
           <GoldenGateBatterySettings {profile} {window} battery={systemState.battery} summary={batteryController.summary()}
             execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasBattery && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'menu-bar'}
-          <GoldenGateBatteryMenuSettings {profile} {window} battery={systemState.battery} summary={batteryController.summary()}
+          <GoldenGateMenuBarSettings {profile} {window} battery={systemState.battery} summary={batteryController.summary()}
+            clock={systemState.clock} clockSummary={clockController.summary()}
+            execute={commands.execute} registerView={registerApplicationView} />
+        {:else if hasClock && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'date-time'}
+          <GoldenGateDateTimeSettings {profile} {window} clock={systemState.clock} summary={clockController.summary()}
             execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasWifi && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'wifi'}
           <GoldenGateWifiSettings {profile} {window} wifi={systemState.wifi}
@@ -4220,6 +4299,7 @@
         {:else if window.appId === 'messages'}
           <div style:display={hasServices && (servicePending?.windowId === window.id || communicationsState.selected.messages !== null) ? 'none' : 'contents'}>
           <MessagesWindow
+            {...(hasClock ? { clockContext } : {})}
             {...(messagesState ? { scene: messagesState } : {})}
             {...(hasServices ? { onservices: () => commands.execute({ command: 'services.provider.select', target: { appId: 'messages', windowId: window.id },
               payload: { entryId: communicationEntries(communicationsState, 'messages')[0]?.id ?? null } }),
@@ -4257,6 +4337,7 @@
             viewState={notesViewState}
             execute={commands.execute}
             registerView={registerNotesView}
+            {...(hasClock ? { clockContext } : {})}
             {...(hasEditWorkflows ? { windowId: window.id, editing: editingPreferences, dictionaryStatus,
               textTools: textTools.targets(), ontextinput: editNativeText, ontextbeforeinput: observeTextBeforeInput } : {})}
             {...(hasViewWorkflows ? { workflowView: viewWorkflows.notesForWindow(window.id), sortedState: notesProjection,
@@ -4318,7 +4399,7 @@
 {/snippet}
 
 <div class="scene-root" data-session-scene data-profile-id={profile.id} bind:this={sceneRoot}>
-<div class="desktop-interaction-root" inert={Boolean(wifiPresentation.join || batteryPresentation.options)}>
+<div class="desktop-interaction-root" inert={Boolean(wifiPresentation.join || batteryPresentation.options || clockPresentation.options || clockPresentation.editor)}>
 <Desktop
   {profile}
   {session}
@@ -4447,6 +4528,19 @@
   <div class="status-sheet-backdrop">
     <GoldenGateBatteryOptions pending={batteryPresentation.options} battery={systemState.battery}
       execute={commands.execute} {foreground} bind:this={batteryOptionsView} />
+  </div>
+{/if}
+{#if hasClock && clockPresentation.options}
+  <div class="status-sheet-backdrop">
+    <GoldenGateClockOptions window={windows.find(window => window.id === clockPresentation.options.windowId)}
+      clock={systemState.clock} options={clockPresentation.options} execute={commands.execute} {foreground} bind:this={clockOptionsView} />
+  </div>
+{/if}
+{#if hasClock && clockPresentation.editor}
+  <div class="status-sheet-backdrop">
+    <GoldenGateClockTimeEdit window={windows.find(window => window.id === clockPresentation.editor.windowId)}
+      clock={systemState.clock} summary={clockController.summary()} editor={clockPresentation.editor}
+      execute={commands.execute} {foreground} bind:this={clockTimeView} />
   </div>
 {/if}
 </div>

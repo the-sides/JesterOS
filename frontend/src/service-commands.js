@@ -1,5 +1,5 @@
 import { rejected } from './feature-commands.js';
-import { createNote } from './notes-state.js';
+import { createNote, nextNoteTimestamp } from './notes-state.js';
 import { applicableServices, serviceMenuItems, contactDraftFields } from './service-registry.js';
 import { lookupOfflineDefinition } from './offline-dictionary.js';
 import { draftPreview, createCommunicationDraft, changeCommunicationDraft, submitCommunicationDraft,
@@ -98,6 +98,7 @@ export function createServiceCommands(state, ctx) {
         fileIds: source.files.map(file => file.fileId), windowIds: result.target.windowIds }) : result;
     }
     let preview = null;
+    const sceneTime = ctx.getSceneTime?.();
     if (service.id !== 'create-note') {
       const kind = service.provider === 'contacts' ? 'contact' : service.provider === 'messages' ? 'message' : 'mail';
       const values = kind === 'contact' ? contactDraftFields(source.text)
@@ -105,23 +106,27 @@ export function createServiceCommands(state, ctx) {
           body: source.kind === 'text' ? source.text : '' }
           : { to: service.id === 'email-contact' ? source.contact.fields.email : '', subject: '', body: source.kind === 'text' ? source.text : '' };
       const attachments = source.kind === 'files' ? source.files.map(file => ({ fileId: file.fileId, name: file.name, revision: file.revision, content: file.content })) : [];
-      preview = draftPreview(state, kind, values, attachments);
+      preview = draftPreview(state, kind, values, attachments, sceneTime);
       if (!preview) return rejected('limit_exceeded', 'Local service draft allocation or content capacity is exhausted.');
       if (!ctx.canCommitDraft(preview)) return rejected('limit_exceeded', 'The complete scene text capacity would be exceeded.');
-    } else if (!ctx.canCreateNote(source.text)) return rejected('limit_exceeded', 'The complete scene note, clock, identity or text capacity is exhausted.');
+    } else if (nextNoteTimestamp(ctx.notes, sceneTime) === null || !ctx.canCreateNote(source.text, sceneTime))
+      return rejected('limit_exceeded', 'The complete scene note, clock, identity or text capacity is exhausted.');
     const preparation = await native(() => ctx.prepareDestination(service.provider, preview, source));
     if (!preparation || !ctx.destinationCurrent(preparation) || !currentSource(source) || guard()) {
       await rollback(preparation, source);
       return fail(preparation && (preparation.stale || !currentSource(source)) ? 'stale_target' : 'unavailable');
     }
     if (service.id === 'create-note') {
-      if (!ctx.canCreateNote(source.text)) { await rollback(preparation, source); return rejected('limit_exceeded', 'The scene note capacity changed during preparation.'); }
-      const noteId = createNote(ctx.notes, source.text);
+      const sceneTime = ctx.getSceneTime?.(), time = nextNoteTimestamp(ctx.notes, sceneTime);
+      if (time === null || !ctx.canCreateNote(source.text, sceneTime)) { await rollback(preparation, source); return rejected('limit_exceeded', 'The scene note capacity changed during preparation.'); }
+      const noteId = createNote(ctx.notes, source.text, sceneTime);
+      ctx.onTimeChanged?.(time);
       ctx.noteCreated(); ctx.finishDestination(preparation);
       return applied({ appId: source.appId, serviceId: service.id, sourceId: source.sourceId, noteId, windowId: preparation.windowId });
     }
-    const result = createCommunicationDraft(state, preview, ctx.canCommitCommunications);
+    const result = createCommunicationDraft(state, preview, ctx.canCommitCommunications, ctx.getSceneTime?.());
     if (result.status !== 'applied') { await rollback(preparation, source); return result; }
+    ctx.onTimeChanged?.(state.timeBase);
     ctx.finishDestination(preparation); ctx.changed();
     return applied({ appId: source.appId, serviceId: service.id, sourceId: source.sourceId, draftId: preview.id,
       kind: preview.kind, windowId: preparation.windowId });
@@ -147,8 +152,12 @@ export function createServiceCommands(state, ctx) {
       if (!validCommunicationField(draft.kind, target.field, payload.value)) return fail('invalid_arguments');
       const lease = await prepareProvider(owner, target.field);
       if (!lease || !lease() || owner.view.fieldNode(target.field)?.dataset.serviceEntryId !== draft.id) return fail('unavailable');
-      const result = changeCommunicationDraft(state, draft.id, target.field, payload.value, ctx.canCommitCommunications);
-      if (result.status === 'applied') ctx.changed();
+      const beforeTime = state.timeBase;
+      const result = changeCommunicationDraft(state, draft.id, target.field, payload.value, ctx.canCommitCommunications, ctx.getSceneTime?.());
+      if (result.status === 'applied') {
+        if (state.timeBase !== beforeTime) ctx.onTimeChanged?.(state.timeBase);
+        ctx.changed();
+      }
       return result.status === 'applied' ? applied({ appId: target.appId, windowId: target.windowId, draftId: draft.id,
         field: target.field, revision: state.drafts.find(entry => entry.id === draft.id).revision }) : result;
     },
@@ -159,8 +168,8 @@ export function createServiceCommands(state, ctx) {
       if (!owner || owner.entry?.id !== target.draftId || !draft || draftApp(draft.kind) !== target.appId) return fail('stale_target');
       const lease = await prepareProvider(owner, 'panel');
       if (!lease || !lease() || !ctx.providerValuesCurrent(owner)) return fail('stale_target');
-      const result = submitCommunicationDraft(state, draft.id, ctx.canCommitCommunications);
-      if (result.status === 'applied') ctx.changed();
+      const result = submitCommunicationDraft(state, draft.id, ctx.canCommitCommunications, ctx.getSceneTime?.());
+      if (result.status === 'applied') { ctx.onTimeChanged?.(state.timeBase); ctx.changed(); }
       return result.status === 'applied' ? applied({ appId: target.appId, windowId: target.windowId, ...result.target }) : result;
     },
     'services.draft.discard': async (target, payload) => {

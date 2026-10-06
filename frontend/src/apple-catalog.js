@@ -14,9 +14,9 @@ const opened = object({ appId: identity, windowId: identity });
 export const appleCatalog = Object.fromEntries([
   define('system.about.open', empty, empty, [interactive],
     ['Open/reuse the bounded About This Mac utility with installed profile/version and explicit fictional machine identity; focus its real panel. No historical tabbed About interface or host hardware inference.'], opened),
-  define('system.settings.open', empty, object({ pane: choice('about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar') }), [interactive],
-    ['Open/reuse real System Settings About, read-only fictional Displays, actual virtual-payload Storage, shared fictional Wi-Fi, Battery status/Low Power, or Battery Menu Bar controls; focus its native panel. Other Settings interiors are not synthesized.'],
-    object({ appId: { const: 'settings' }, windowId: identity, pane: choice('about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar') })),
+  define('system.settings.open', empty, object({ pane: choice('about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time') }), [interactive],
+    ['Open/reuse real System Settings About, read-only fictional Displays, actual virtual-payload Storage, shared fictional Wi-Fi/Battery, Battery/Clock Menu Bar controls, or shared-clock Date & Time; focus its native panel. Other Settings interiors are not synthesized.'],
+    object({ appId: { const: 'settings' }, windowId: identity, pane: choice('about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time') })),
   define('system.machine.rename', object({ windowId: identity }), object({ name: computerNameSchema }), [interactive, panel, 'Exact About Settings computer-name control. Shared complete-seed 4 Mi UTF-16 text budget; name is at most256 UTF-16 units.'],
     ['Commit the literal single-line fictional computer name and synchronize that actual field. Preserve identity/hardware/files/other accounts; invalid input never changes the canonical name. Uncommitted native drafts are not saved.'],
     object({ windowId: identity, computerName: computerNameSchema })),

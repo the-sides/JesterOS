@@ -1,3 +1,5 @@
+import { clockParts } from './clock-model.js';
+
 const SCENE_TIME = Date.UTC(2018, 8, 24, 17, 0);
 
 export function createNotesState(timeBase = SCENE_TIME) {
@@ -59,7 +61,7 @@ function normalizeWhitespace(text) {
 
 const titleOrder = new Intl.Collator('en-US', { sensitivity: 'base', numeric: true });
 const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' });
-const DAY = 24 * 60 * 60 * 1000;
+const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const compareIds = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 
 export function visibleNotes(state) {
@@ -82,9 +84,9 @@ export function visibleNotes(state) {
     });
 }
 
-// The fixture's latest record (including hidden/deleted records) is the clock.
-// UTC day boundaries keep date groups stable across hosts and saved sessions.
-export function groupNotes(state) {
+// Standalone historical callers retain their record allocator and UTC grouping.
+// A root with an authored clock supplies its explicit instant and selected zone.
+export function groupNotes(state, clockContext) {
   const notes = visibleNotes(state);
   if (!notes.length) return [];
   const groups = [];
@@ -96,25 +98,25 @@ export function groupNotes(state) {
     groups.push({ id: 'notes', label: 'Notes', notes: unpinned });
     return groups;
   }
-  const clock = state.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), state.timeBase);
-  const today = Math.floor(clock / DAY);
-  const year = new Date(clock).getUTCFullYear();
+  const clock = clockContext?.sceneTime ?? state.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), state.timeBase);
+  const zone = clockContext?.timeZone ?? 'UTC';
+  const current = clockParts(clock, zone), today = current.dayNumber, year = current.year;
   const field = state.preferences.sortBy === 'date-created' ? 'createdAt' : 'updatedAt';
   const byId = new Map();
   for (const note of unpinned) {
-    const age = today - Math.floor(note[field] / DAY);
-    const date = new Date(note[field]);
+    const date = clockParts(note[field], zone);
+    const age = today - date.dayNumber;
     let id, label;
     if (age === 0) { id = 'today'; label = 'Today'; }
     else if (age === 1) { id = 'yesterday'; label = 'Yesterday'; }
-    else if (age < 7) { id = 'previous-7-days'; label = 'Previous 7 Days'; }
-    else if (age < 30) { id = 'previous-30-days'; label = 'Previous 30 Days'; }
-    else if (date.getUTCFullYear() === year) {
-      id = `month-${year}-${date.getUTCMonth() + 1}`;
-      label = monthLabel.format(date);
+    else if (age < 7 && (!clockContext || age > 1)) { id = 'previous-7-days'; label = 'Previous 7 Days'; }
+    else if (age < 30 && (!clockContext || age >= 7)) { id = 'previous-30-days'; label = 'Previous 30 Days'; }
+    else if (date.year === year) {
+      id = `month-${year}-${date.month}`;
+      label = clockContext ? months[date.month - 1] : monthLabel.format(note[field]);
     } else {
-      id = `year-${date.getUTCFullYear()}`;
-      label = String(date.getUTCFullYear());
+      id = `year-${date.year}`;
+      label = String(date.year);
     }
     let group = byId.get(id);
     if (!group) {
@@ -127,8 +129,25 @@ export function groupNotes(state) {
   return groups;
 }
 
-function nextTimestamp(state) {
-  return state.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), state.timeBase) + 1;
+export function nextNoteTimestamp(state, sceneTime) {
+  const maximum = 8_640_000_000_000_000 - 1;
+  let latest = state.timeBase;
+  if (!Number.isSafeInteger(latest) || latest < 0 || latest > maximum
+    || (sceneTime !== undefined && (!Number.isSafeInteger(sceneTime) || sceneTime < 0 || sceneTime > maximum))) return null;
+  if (sceneTime !== undefined) latest = Math.max(latest, sceneTime);
+  for (const note of state.notes) {
+    if (!Number.isSafeInteger(note.createdAt) || !Number.isSafeInteger(note.updatedAt) || note.createdAt < 0
+      || note.createdAt > note.updatedAt || note.updatedAt > maximum) return null;
+    latest = Math.max(latest, note.createdAt, note.updatedAt);
+  }
+  return latest < maximum ? latest + 1 : null;
+}
+function nextTimestamp(state, sceneTime) {
+  if (sceneTime === undefined)
+    return state.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), state.timeBase) + 1;
+  const time = nextNoteTimestamp(state, sceneTime);
+  if (time === null) throw new RangeError('The Notes authored clock is invalid or exhausted.');
+  return time;
 }
 
 function reconcileSelection(state, fallbackIndex = 0) {
@@ -143,8 +162,8 @@ function editableNote(state, id) {
   return visibleNotes(state).find((note) => note.id === id);
 }
 
-export function createNote(state, text = '') {
-  const timestamp = nextTimestamp(state);
+export function createNote(state, text = '', sceneTime) {
+  const timestamp = nextTimestamp(state, sceneTime);
   let number = state.notes.length + 1;
   while (state.notes.some((note) => note.id === `note-${number}`)) number += 1;
   const note = {
@@ -162,10 +181,10 @@ export function createNote(state, text = '') {
   return note.id;
 }
 
-export function updateNote(state, id, text) {
+export function updateNote(state, id, text, sceneTime) {
   const note = editableNote(state, id);
   if (!note || typeof text !== 'string' || note.text === text) return;
-  note.updatedAt = nextTimestamp(state);
+  note.updatedAt = nextTimestamp(state, sceneTime);
   note.text = text;
   // Losing a search match must not silently switch the editor to another note.
   if (!visibleNotes(state).some((entry) => entry.id === state.selectedId)) state.selectedId = null;
@@ -178,22 +197,22 @@ export function togglePin(state, id) {
   reconcileSelection(state);
 }
 
-export function trashNote(state, id) {
+export function trashNote(state, id, sceneTime) {
   const notes = visibleNotes(state);
   const index = notes.findIndex((note) => note.id === id);
   if (state.folder !== 'notes' || index === -1) return;
   const note = notes[index];
-  note.updatedAt = nextTimestamp(state);
+  note.updatedAt = nextTimestamp(state, sceneTime);
   note.deleted = true;
   reconcileSelection(state, index);
 }
 
-export function restoreNote(state, id) {
+export function restoreNote(state, id, sceneTime) {
   const notes = visibleNotes(state);
   const index = notes.findIndex((note) => note.id === id);
   if (state.folder !== 'deleted' || index === -1) return;
   const note = notes[index];
-  note.updatedAt = nextTimestamp(state);
+  note.updatedAt = nextTimestamp(state, sceneTime);
   note.deleted = false;
   reconcileSelection(state, index);
 }

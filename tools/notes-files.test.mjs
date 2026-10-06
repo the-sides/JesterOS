@@ -263,3 +263,24 @@ test('whole-scene aggregate preflight counts unrelated persistent strings and on
   expect((await model.run('notes.export', selected(model), { folderId: 'desktop', name: 'Budget.md', format: 'markdown', replaceFileId: file.id })).status).toBe('applied');
   expect(file.revision).toBe(2);
 });
+
+test('duplication uses the latest shared root instant after preparation and advances it only once committed', async () => {
+  const model = scene(), source = model.notes.notes[0];
+  model.files.sceneTime = source.updatedAt + 3 * 86_400_000;
+  let commits = 0;
+  model.context.getSceneTime = () => model.files.sceneTime;
+  model.context.onTimeChanged = time => {
+    expect(model.notes.notes.some(note => note.id !== source.id && note.createdAt === time)).toBe(true);
+    model.files.sceneTime = Math.max(model.files.sceneTime, time); commits++;
+  };
+  model.context.prepareNotesFocus = async () => { model.files.sceneTime += 86_400_000; return true; };
+  const initial = model.files.sceneTime;
+  const result = await model.run('notes.duplicate', { noteId: source.id }, { focus: true });
+  expect(result.status).toBe('applied');
+  expect(model.notes.notes.find(note => note.id === result.target.noteId).createdAt).toBe(initial + 86_400_000 + 1);
+  expect(model.files.sceneTime).toBe(initial + 86_400_000 + 1); expect(commits).toBe(1);
+  model.context.otherTextSize = () => 4 * 1024 * 1024;
+  const before = model.snapshot();
+  expect((await model.run('notes.duplicate', { noteId: source.id })).error.code).toBe('limit_exceeded');
+  expect(model.snapshot()).toEqual(before); expect(commits).toBe(1);
+});

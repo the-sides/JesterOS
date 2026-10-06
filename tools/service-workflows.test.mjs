@@ -41,6 +41,8 @@ function consumer() {
   }
   const services = createServiceCommands(state, {
     profile, notes, clipboard: { kind: 'empty', text: '', fileIds: [] }, ui, namespace: () => 'consumer-', available: () => true,
+    getSceneTime: () => seed.files.sceneTime,
+    onTimeChanged: time => { seed.files.sceneTime = Math.max(seed.files.sceneTime, time); },
     getSource, sourceCurrent: current, ownsSourcePresentation: owns,
     captureReturn: () => ({ focus }), restoreReturn: async snapshot => { focus = snapshot.focus; }, settle: async () => {},
     getLookupView: () => lookupView, getContextView: () => contextView,
@@ -68,7 +70,11 @@ function consumer() {
       revision: note.updatedAt, value, start, end, text: value.slice(start, end) };
     return selected;
   }
-  return { notes, state, ui, services, select, focus: () => focus,
+  function editNote(noteId, text) {
+    updateNote(notes, noteId, text, seed.files.sceneTime);
+    seed.files.sceneTime = Math.max(seed.files.sceneTime, notes.notes.find(note => note.id === noteId).updatedAt);
+  }
+  return { notes, state, files: seed.files, ui, services, select, editNote, focus: () => focus,
     failFocus: () => { focusFailure = true; }, onFocus: value => { hook = value; }, denyCapacity: () => { capacity = false; },
     activateSafari: () => { activeAppId = 'safari'; activeWindowId = 'safari-window'; focus = 'safari'; },
     perform: serviceId => services.handlers['app.service.perform']({ appId: getSource()?.appId ?? 'notes', serviceId,
@@ -79,7 +85,7 @@ function consumer() {
 }
 
 test('a service copies exact selected UTF-16 bytes into one editable note without changing its source', async () => {
-  const c = consumer(); updateNote(c.notes, c.notes.selectedId, 'Heading\nOne 🌊 two\nLast');
+  const c = consumer(); c.editNote(c.notes.selectedId, 'Heading\nOne 🌊 two\nLast');
   c.select(c.notes.selectedId, 'body', 4, 11);
   const original = structuredClone(c.notes.notes);
   const result = await c.perform('create-note');
@@ -106,7 +112,7 @@ test('failed native preparation and stale source edits allocate nothing and cann
     const c = consumer(); c.select(c.notes.selectedId, 'body', 0, 10);
     const before = structuredClone(c.notes), communications = structuredClone(c.state);
     if (scenario === 'focus') c.failFocus();
-    if (scenario === 'edit') c.onFocus(() => updateNote(c.notes, before.selectedId, 'Changed source\nNew body.'));
+    if (scenario === 'edit') c.onFocus(() => c.editNote(before.selectedId, 'Changed source\nNew body.'));
     if (scenario === 'owner') c.onFocus(c.activateSafari);
     const result = await c.perform('create-note');
     expect(result.status).toBe('rejected'); expect(c.state).toEqual(communications);
@@ -117,7 +123,7 @@ test('failed native preparation and stale source edits allocate nothing and cann
 });
 
 test('mail service delivers editable exact text, not a send, and explicit local submission creates the real addressed record', async () => {
-  const c = consumer(); updateNote(c.notes, c.notes.selectedId, 'Heading\nOne 🌊 two\nLast');
+  const c = consumer(); c.editNote(c.notes.selectedId, 'Heading\nOne 🌊 two\nLast');
   c.select(c.notes.selectedId, 'body', 4, 11); const notes = structuredClone(c.notes);
   const delivered = await c.perform('new-mail'); expect(delivered.status).toBe('applied');
   expect(c.state.drafts.find(draft => draft.id === delivered.target.draftId).fields).toEqual({ to: '', subject: '', body: '🌊 two\n' });
@@ -130,7 +136,7 @@ test('mail service delivers editable exact text, not a send, and explicit local 
 });
 
 test('selected contact text creates a card draft and a saved contact addresses a new composition without sending', async () => {
-  const c = consumer(); updateNote(c.notes, c.notes.selectedId, 'Heading\nemma@example.test'); c.select(c.notes.selectedId, 'body', 0, 17);
+  const c = consumer(); c.editNote(c.notes.selectedId, 'Heading\nemma@example.test'); c.select(c.notes.selectedId, 'body', 0, 17);
   const delivered = await c.perform('new-contact'); expect(delivered.status).toBe('applied');
   expect(c.state.contacts).toEqual([]); expect(c.state.drafts[0].fields).toEqual({ name: '', email: 'emma@example.test', phone: '', notes: 'emma@example.test' });
   const saved = await c.provider('services.draft.submit'); expect(saved.status).toBe('applied');
@@ -149,7 +155,7 @@ test('capacity is checked before native destination delivery and preserves every
 });
 
 test('offline lookup cannot manufacture an unknown definition and close restores the original owned focus', async () => {
-  const c = consumer(); updateNote(c.notes, c.notes.selectedId, 'Heading\nunlisted-word'); c.select(c.notes.selectedId, 'body', 0, 13);
+  const c = consumer(); c.editNote(c.notes.selectedId, 'Heading\nunlisted-word'); c.select(c.notes.selectedId, 'body', 0, 13);
   const before = structuredClone({ notes: c.notes, communications: c.state });
   const result = await c.perform('lookup'); expect(result.status).toBe('applied'); expect(result.target.found).toBe(false);
   expect(c.ui.lookup.entry).toBe(null); expect(c.focus()).toBe('reader');
@@ -163,7 +169,7 @@ test('contextual service refuses a changed original document rather than applyin
   const opened = await c.services.handlers['services.context.open']({ appId: 'notes', sourceId: source.sourceId }, { x: 90, y: 120 });
   expect(opened.status).toBe('applied');
   const itemId = c.services.contextItems().find(item => item.request.target.serviceId === 'create-note').id;
-  updateNote(c.notes, source.noteId, 'Replacement\nDifferent source');
+  c.editNote(source.noteId, 'Replacement\nDifferent source');
   const current = structuredClone(c.notes);
   expect((await c.services.handlers['services.context.execute']({ contextId: opened.target.contextId, itemId }, {})).error.code).toBe('stale_target');
   expect(c.notes).toEqual(current); expect(c.state.drafts).toEqual([]); c.services.reconcile(); expect(c.ui.context).toBe(null);
@@ -188,10 +194,45 @@ test('single-line composition fields reject newlines atomically rather than crea
 });
 
 test('lookup separates selected lines in its editable query rather than displaying a different stripped word', async () => {
-  const c = consumer(); updateNote(c.notes, c.notes.selectedId, 'Heading\nfo\nlder'); c.select(c.notes.selectedId, 'body', 0, 7);
+  const c = consumer(); c.editNote(c.notes.selectedId, 'Heading\nfo\nlder'); c.select(c.notes.selectedId, 'body', 0, 7);
   const result = await c.perform('lookup'); expect(result.status).toBe('applied'); expect(result.target.found).toBe(false);
   expect(c.ui.lookup.query).toBe('fo lder');
   const searched = await c.services.handlers['services.lookup.search']({ lookupId: result.target.lookupId }, { query: 'fo\r\nlder' });
   expect(searched.target).toEqual({ lookupId: result.target.lookupId, query: 'fo lder', found: false });
   expect(c.notes.notes.find(note => note.id === c.notes.selectedId).text).toBe('Heading\nfo\nlder');
+});
+
+test('cross-app Notes and communications commits share an advanced root clock, while failed budgets and stale previews cannot advance it', async () => {
+  const c = consumer();
+  c.files.sceneTime += 3 * 86_400_000;
+  c.select(c.notes.selectedId, 'body', 0, 4);
+  const initial = c.files.sceneTime;
+  const created = await c.perform('create-note');
+  expect(created.status).toBe('applied');
+  expect(c.notes.notes.find(note => note.id === created.target.noteId).createdAt).toBe(initial + 1);
+  expect(c.files.sceneTime).toBe(initial + 1);
+  c.select(c.notes.selectedId, 'title', 0, 4);
+  const delivered = await c.perform('new-mail');
+  expect(delivered.status).toBe('applied');
+  expect(c.state.timeBase).toBe(initial + 2); expect(c.files.sceneTime).toBe(c.state.timeBase);
+  c.files.sceneTime += 86_400_000;
+  const next = c.files.sceneTime;
+  expect((await c.provider('services.draft.set', { value: 'local@example.test' }, { field: 'to' })).status).toBe('applied');
+  expect(c.state.timeBase).toBe(next + 1); expect(c.files.sceneTime).toBe(next + 1);
+  expect((await c.provider('services.draft.set', { value: 'Complete body' }, { field: 'body' })).status).toBe('applied');
+  expect((await c.provider('services.draft.submit')).status).toBe('applied');
+  expect(c.state.outbox[0].createdAt).toBe(next + 3); expect(c.files.sceneTime).toBe(next + 3);
+
+  const denied = consumer(); denied.files.sceneTime += 86_400_000;
+  denied.select(denied.notes.selectedId, 'body', 0, 4); denied.denyCapacity();
+  const before = structuredClone({ notes: denied.notes, communications: denied.state, time: denied.files.sceneTime });
+  expect((await denied.perform('create-note')).error.code).toBe('limit_exceeded');
+  expect({ notes: denied.notes, communications: denied.state, time: denied.files.sceneTime }).toEqual(before);
+
+  const stale = consumer();
+  stale.select(stale.notes.selectedId, 'body', 0, 4);
+  stale.onFocus(() => { stale.files.sceneTime += 86_400_000; });
+  const original = stale.files.sceneTime;
+  expect((await stale.perform('new-mail')).error.code).toBe('stale_target');
+  expect(stale.state.drafts).toEqual([]); expect(stale.files.sceneTime).toBe(original + 86_400_000);
 });

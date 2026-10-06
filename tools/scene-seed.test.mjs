@@ -5,11 +5,21 @@ import { createNote } from '../frontend/src/notes-state.js';
 import { nextMacFileTimestamp, liveMacFileRecords } from '../frontend/src/desktop-file-state.js';
 import { createFile, writeFile } from '../frontend/src/windows11-app-helpers.js';
 import { recordMacAppUse } from '../frontend/src/mac-dock-model.js';
-import { communicationDefaults, draftPreview, createCommunicationDraft, submitCommunicationDraft } from '../frontend/src/communication-state.js';
+import { draftPreview, createCommunicationDraft, submitCommunicationDraft } from '../frontend/src/communication-state.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const fixture = () => createDefaultSceneSeed(profile);
 const validate = seed => validateSceneSeed(seed, profile);
+function commitDraft(seed, preview) {
+  const result = createCommunicationDraft(seed.communications, preview, () => true, seed.files.sceneTime);
+  if (result.status === 'applied') seed.files.sceneTime = Math.max(seed.files.sceneTime, seed.communications.timeBase);
+  return result;
+}
+function submitDraft(seed, draftId) {
+  const result = submitCommunicationDraft(seed.communications, draftId, () => true, seed.files.sceneTime);
+  if (result.status === 'applied') seed.files.sceneTime = Math.max(seed.files.sceneTime, seed.communications.timeBase);
+  return result;
+}
 function rejects(change) {
   const seed = fixture();
   change(seed);
@@ -20,11 +30,10 @@ function rejects(change) {
 
 test('complete Golden seeds require empty real communications independently of the unchanged Messages sample', () => {
   const seed = fixture(), sample = structuredClone(seed.messages);
-  expect(seed.communications).toEqual(communicationDefaults(Date.parse(profile.defaults.sceneTime)));
   expect(validate(seed)).toEqual({ ok: true });
-  const contact = draftPreview(seed.communications, 'contact', { name: 'Local Casey', email: '', phone: '', notes: '  retained\r\n\u{1D11E}  ' });
-  expect(createCommunicationDraft(seed.communications, contact).status).toBe('applied');
-  expect(submitCommunicationDraft(seed.communications, contact.id).status).toBe('applied');
+  const contact = draftPreview(seed.communications, 'contact', { name: 'Local Casey', email: '', phone: '', notes: '  retained\r\n\u{1D11E}  ' }, [], seed.files.sceneTime);
+  expect(commitDraft(seed, contact).status).toBe('applied');
+  expect(submitDraft(seed, contact.id).status).toBe('applied');
   expect(seed.messages).toEqual(sample);
   expect(validate(seed)).toEqual({ ok: true });
   for (const change of [
@@ -41,9 +50,9 @@ test('attachment snapshots survive virtual source changes and deletion; aggregat
   const seed = fixture(), source = seed.files.files.find(file => file.kind === 'document');
   const fields = { to: 'fictional recipient', subject: 'Snapshot', body: ' \r\n\u{1D11E} exact body  ' };
   const attachment = { fileId: source.id, name: source.name, revision: source.revision, content: source.content };
-  const preview = draftPreview(seed.communications, 'mail', fields, [attachment]);
-  expect(createCommunicationDraft(seed.communications, preview).status).toBe('applied');
-  expect(submitCommunicationDraft(seed.communications, preview.id).status).toBe('applied');
+  const preview = draftPreview(seed.communications, 'mail', fields, [attachment], seed.files.sceneTime);
+  expect(commitDraft(seed, preview).status).toBe('applied');
+  expect(submitDraft(seed, preview.id).status).toBe('applied');
   source.content = 'Changed virtual source'; source.revision++; source.deleted = true;
   // Saved attachments are archival snapshots, not live source references.
   expect(seed.communications.outbox[0].attachments[0]).toEqual(attachment);
@@ -54,8 +63,8 @@ test('attachment snapshots survive virtual source changes and deletion; aggregat
   expect(validate(missingSource)).toEqual({ ok: true });
   const large = fixture(), units = 1024 * 1024;
   for (let index = 0; index < 3; index++) {
-    const draft = draftPreview(large.communications, 'contact', { name: `Local ${index}`, email: '', phone: '', notes: 'n'.repeat(units) });
-    expect(createCommunicationDraft(large.communications, draft).status).toBe('applied');
+    const draft = draftPreview(large.communications, 'contact', { name: `Local ${index}`, email: '', phone: '', notes: 'n'.repeat(units) }, [], large.files.sceneTime);
+    expect(commitDraft(large, draft).status).toBe('applied');
   }
   large.notes.notes[0].text = 's'.repeat(units);
   const before = structuredClone(large);
@@ -64,8 +73,8 @@ test('attachment snapshots survive virtual source changes and deletion; aggregat
 });
 
 test('seed replacement preserves complete local draft bytes and rejects invalid communication identities before replacing', async () => {
-  const seed = fixture(), preview = draftPreview(seed.communications, 'message', { to: '', body: '\ufeff  unsent\r\n\u{1D11E} ' });
-  expect(createCommunicationDraft(seed.communications, preview).status).toBe('applied');
+  const seed = fixture(), preview = draftPreview(seed.communications, 'message', { to: '', body: '\ufeff  unsent\r\n\u{1D11E} ' }, [], seed.files.sceneTime);
+  expect(commitDraft(seed, preview).status).toBe('applied');
   const replacements = [], handlers = createSceneSeedCommands({ profile, available: () => true,
     replaceScene: async (value, source) => { replacements.push({ value, source }); } });
   expect((await handlers['scene.replaceSeed']({}, { seed })).status).toBe('applied');
@@ -170,9 +179,7 @@ test('counter boundary accepts the next real increment and rejects collision or 
   seed.files.files.find(file => file.id === 'itinerary').revision = limit;
   seed.dock.usageSequence = limit;
   expect(validate(seed)).toEqual({ ok: true });
-  const noteId = createNote(seed.notes);
-  expect(seed.notes.notes.find(note => note.id === noteId).createdAt).toBe(dateLimit + 1);
-  expect(Number.isFinite(new Date(seed.notes.notes.find(note => note.id === noteId).updatedAt).getTime())).toBe(true);
+  expect(() => createNote(seed.notes, '', seed.files.sceneTime)).toThrow();
   expect(nextMacFileTimestamp(seed.files)).toBe(dateLimit + 1);
   expect(createFile(seed.files, 'desktop', 'New.txt').id).toBe(`file-${limit}`);
   writeFile(seed.files, seed.files.files.find(file => file.id === 'itinerary'), 'New content');

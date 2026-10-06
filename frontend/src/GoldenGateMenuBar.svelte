@@ -12,10 +12,14 @@
   let geometry = $state([]);
   let nativeWrites = 0;
   let locationView = $state(null), locationGeometry = $state(null);
+  let clockWithDateMeter = $state(null);
+  let clockDateAllowed = $state(false);
   const location = $derived(helpMenuLocation(menus, menuState));
   const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
-  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : zone === 'wifi' ? menu.kind === 'wifi' : zone === 'battery' ? menu.kind === 'battery' && menu.showInMenuBar : !['users', 'wifi', 'battery'].includes(menu.kind)));
+  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : zone === 'wifi' ? menu.kind === 'wifi' : zone === 'battery' ? menu.kind === 'battery' && menu.showInMenuBar : zone === 'clock' ? menu.kind === 'clock' : !['users', 'wifi', 'battery', 'clock'].includes(menu.kind)));
   const openMenu = $derived(foreground ? rendered.find(menu => menu.menuId === menuState.menuId) : undefined);
+  const clockMenu = $derived(rendered.find(menu => menu.kind === 'clock'));
+  const clockDateShown = $derived(clockMenu?.showDate === 'always' || clockMenu?.showDate === 'when-space-allows' && clockDateAllowed);
   const panes = $derived.by(() => {
     if (!openMenu) return [];
     const result = [];
@@ -84,7 +88,7 @@
     const menu = rendered.find(menu => menu.menuId === menuId);
     const node = invokers[menuId];
     if (!menu?.enabled || !visible(node)) return false;
-    if (menu.kind === 'battery' && !ownsClip(node)) return false;
+    if (['battery', 'clock'].includes(menu.kind) && !ownsClip(node)) return false;
     const rect = node.getBoundingClientRect(), clip = clipOf(node);
     return rect.right > clip.left && rect.left < clip.right && rect.bottom > clip.top && rect.top < clip.bottom;
   }
@@ -290,6 +294,44 @@
     else request('open', menu.menuId, { position: key === 'ArrowUp' ? 'last' : 'first' });
   }
   function suppressContext(event) { event.preventDefault(); event.stopPropagation(); }
+  function measureClockSpace() {
+    if (zone !== 'clock' || !root?.isConnected || !clockMenu || !clockWithDateMeter?.isConnected) return;
+    const header = root.closest('.golden-gate-menu-bar'), status = root.closest('.golden-gate-status-items');
+    const primary = header?.querySelector('[data-menu-bar="primary"]'), headings = primary?.parentElement;
+    const invoker = invokers.clock;
+    if (!header || !status || !primary || !headings || !invoker) return;
+    const numeric = value => Number.parseFloat(value) || 0;
+    const primaryStyle = getComputedStyle(primary), headerStyle = getComputedStyle(header), headingStyle = getComputedStyle(headings);
+    const buttons = [...primary.querySelectorAll('[data-menu-invoker]')];
+    const primaryWidth = buttons.reduce((width, node) => {
+      const style = getComputedStyle(node), label = node.querySelector('.invoker-label');
+      const padding = numeric(style.paddingLeft) + numeric(style.paddingRight);
+      const content = label ? Math.min(label.scrollWidth, numeric(style.maxWidth) - padding || label.scrollWidth) : node.getBoundingClientRect().width - padding;
+      return width + content + padding + numeric(style.marginLeft) + numeric(style.marginRight);
+    }, Math.max(0, buttons.length - 1) * numeric(primaryStyle.columnGap));
+    const padding = numeric(headerStyle.paddingLeft) + numeric(headerStyle.paddingRight);
+    const otherStatusWidth = status.getBoundingClientRect().width - invoker.getBoundingClientRect().width;
+    const fullClockWidth = clockWithDateMeter.getBoundingClientRect().width;
+    clockDateAllowed = primaryWidth + numeric(headingStyle.marginRight) + numeric(headerStyle.columnGap)
+      + otherStatusWidth + fullClockWidth + padding <= header.getBoundingClientRect().width;
+  }
+  $effect(() => {
+    clockMenu; foreground;
+    if (zone === 'clock') void tick().then(measureClockSpace);
+  });
+  onMount(() => {
+    if (zone !== 'clock') return;
+    const header = root?.closest('.golden-gate-menu-bar');
+    if (!header) return;
+    let scheduled = null;
+    const observer = new ResizeObserver(() => {
+      if (scheduled === null) scheduled = requestAnimationFrame(() => { scheduled = null; measureClockSpace(); });
+    });
+    observer.observe(header);
+    for (const node of [header.querySelector('[data-menu-bar="primary"]'), root.parentElement]) if (node) observer.observe(node);
+    measureClockSpace();
+    return () => { observer.disconnect(); if (scheduled !== null) cancelAnimationFrame(scheduled); };
+  });
   onMount(() => {
     function outside(event) {
       if (!openMenu || nativeWrites || !root?.isConnected) return;
@@ -306,17 +348,30 @@
   });
 </script>
 
-<div class="golden-shared-menu-bar" class:users={zone === 'users'} bind:this={root} data-menu-bar={zone}
-  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : zone === 'battery' ? 'Battery status menu' : 'Application menu bar'}>
+{#snippet clockContents(menu, withDate)}
+  <span class="clock-label">{withDate ? menu.menuWithDate : menu.menuWithoutDate}</span>
+  {#if menu.style === 'analog'}
+    <svg class="analog-clock" viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="10" cy="10" r="8.6" fill="#fffffff0" stroke="#555" stroke-width=".8" />
+      <path d="M10 2v1m7 7h1m-8 7v1M2 10h1" stroke="#555" stroke-width=".7" />
+      <path d="M10 10V5.6" transform={`rotate(${menu.hourAngle} 10 10)`} stroke="#333" stroke-width="1.5" stroke-linecap="round" data-clock-hand="hour" />
+      <path d="M10 10V3.3" transform={`rotate(${menu.minuteAngle} 10 10)`} stroke="#333" stroke-width="1" stroke-linecap="round" data-clock-hand="minute" />
+      <circle cx="10" cy="10" r="1" fill="#333" />
+    </svg>
+  {/if}
+{/snippet}
+
+<div class="golden-shared-menu-bar" class:users={zone === 'users'} class:clock={zone === 'clock'} bind:this={root} data-menu-bar={zone}
+  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : zone === 'battery' ? 'Battery status menu' : zone === 'clock' ? 'Fictional Clock settings menu' : 'Application menu bar'}>
   {#each rendered as menu (menu.menuId)}
-    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'} class:battery={menu.kind === 'battery'}
-      bind:this={invokers[menu.menuId]} type="button" role="menuitem" data-menu-invoker={menu.menuId}
+    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'} class:battery={menu.kind === 'battery'} class:clock={menu.kind === 'clock'}
+      bind:this={invokers[menu.menuId]} type="button" role="menuitem" data-menu-invoker={menu.menuId} data-date-shown={menu.kind === 'clock' ? clockDateShown : undefined}
       disabled={!menu.enabled || !foreground} aria-disabled={!menu.enabled || !foreground}
       class:located={location?.menuId === menu.menuId}
-      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.kind === 'battery' ? `Battery: ${menu.percent} percent, ${menu.statusLabel}${menu.criticalBattery ? ', Critically Low Battery' : menu.lowBattery ? ', Low Battery' : ''}` : menu.label}
+      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.kind === 'battery' ? `Battery: ${menu.percent} percent, ${menu.statusLabel}${menu.criticalBattery ? ', Critically Low Battery' : menu.lowBattery ? ', Low Battery' : ''}` : menu.kind === 'clock' ? `Clock: ${menu.fullDate}, ${menu.fullTime}, ${menu.timeZone} — fictional settings shortcut` : menu.label}
       aria-haspopup="menu" aria-expanded={Boolean(openMenu?.menuId === menu.menuId)} aria-controls={`golden-menu-${menu.menuId}-0`}
       onpointerdown={invokerPointer} onpointerenter={() => hover(menu)} onclick={event => toggle(event, menu)}
-      onkeydown={event => invokerKey(event, menu)} oncontextmenu={suppressContext}>
+      onkeydown={event => invokerKey(event, menu)} oncontextmenu={event => { suppressContext(event); if (menu.kind === 'clock' && available(menu.menuId)) request('open', menu.menuId); }}>
       {#if menu.kind === 'apple'}
         <svg viewBox="0 0 20 24" aria-hidden="true"><path fill="currentColor" d="M13.1 4.1c1-1.1 1.6-2.6 1.4-4.1-1.4.1-3 .9-4 2-1 1.1-1.7 2.6-1.5 4 1.6.1 3.1-.8 4.1-1.9ZM17 12.7c0-2.7 2.2-4 2.3-4.1-1.3-1.9-3.4-2.1-4.1-2.1-1.8-.2-3.5 1.1-4.4 1.1s-2.3-1.1-3.8-1.1C5 6.6 3 7.9 2 9.8c-2.1 3.8-.5 9.3 1.5 12.1 1 1.4 2.1 2.8 3.6 2.7 1.5-.1 2-1 3.8-1s2.3 1 3.9 1c1.6 0 2.6-1.4 3.5-2.8 1.1-1.6 1.6-3.1 1.6-3.2-.1 0-3-1.1-2.9-5.9Z"/></svg>
       {:else if menu.kind === 'wifi'}
@@ -326,6 +381,9 @@
           <path opacity={menu.status === 'connected' ? 1 : .3} fill="currentColor" d="M8.7 14.8a5.7 5.7 0 0 1 6.6 0L12 18Z"/>
           {#if menu.status === 'off'}<path d="m3 1 18 18" stroke="currentColor" stroke-width="2" />{/if}
         </svg>
+      {:else if menu.kind === 'clock'}
+        {@render clockContents(menu, clockDateShown)}
+        <span class="clock-meter" aria-hidden="true" bind:this={clockWithDateMeter}>{@render clockContents(menu, true)}</span>
       {:else if menu.kind === 'battery'}
         {#if menu.showPercentage}<span class="battery-percentage">{menu.percent}%</span>{/if}
         <svg class="battery-symbol" class:low={menu.lowBattery} viewBox="0 0 32 16" aria-hidden="true">
@@ -375,6 +433,10 @@
   .battery-symbol.low { color:#ff5b59; }
   .power-mark { fill:#637153; paint-order:stroke; }
   .battery-percentage { font-size:11px; font-variant-numeric:tabular-nums; }
+  .invoker.clock { position:relative; flex:0 0 auto; max-width:none; margin:0; padding:0; gap:5px; font-variant-numeric:tabular-nums; }
+  .clock-label:empty { display:none; }
+  .invoker .analog-clock { width:18px; height:18px; flex:0 0 18px; }
+  .clock-meter { position:absolute; visibility:hidden; pointer-events:none; display:inline-flex; align-items:center; gap:5px; width:max-content; white-space:nowrap; }
   @media (max-width:380px) {
     .golden-shared-menu-bar { gap:2px; }
     .users .invoker { max-width:40px; }

@@ -1,7 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
 
-  let { profile, power, session, execute, registerView } = $props();
+  let { profile, power, session, clockContext, execute, registerView } = $props();
   let root = $state();
   let activationPending = false;
   let lastPointer = null;
@@ -9,9 +9,9 @@
   const actionLabel = $derived(power.pending?.action === 'restart' ? 'Restart' : 'Shut Down');
   const guestData = $derived(session.users.some(user => user.kind === 'guest' && user.signedIn));
   const identity = $derived(`${profile.id}:${power.phase}:${power.pending?.action ?? ''}`);
-  const sceneDate = $derived(new Date(profile.defaults.sceneTime));
-  const dateLabel = $derived(new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(sceneDate));
-  const timeLabel = $derived(new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' }).format(sceneDate).replace(/\s?[AP]M$/, ''));
+  const sceneDate = $derived(new Date(clockContext.sceneTime));
+  const dateLabel = $derived(new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: clockContext.timeZone }).format(sceneDate));
+  const timeLabel = $derived(new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hourCycle: clockContext.use24Hour ? 'h23' : 'h12', timeZone: clockContext.timeZone }).format(sceneDate).replace(/\s?[AP]M$/, ''));
   const drift = $derived(`translate(${Math.sin(power.elapsedSeconds / 43) * 3.2}%, ${Math.sin(power.elapsedSeconds / 61) * 2.2}%)`);
   const progress = $derived(Math.round(power.startupProgress * 100));
   const surfaceLabel = $derived(confirmation ? `${actionLabel} confirmation` : power.phase === 'saver' ? 'Screen Saver' : power.phase === 'sleeping' ? 'Sleeping fictional Mac' : power.phase === 'off' ? 'Powered-off fictional Mac' : 'Starting fictional Mac');
@@ -144,9 +144,9 @@
     </div>
   {:else if power.phase === 'saver'}
     <div class="saver-art" aria-hidden="true" style:background-image={`url("${profile.assets.wallpaper}")`} style:transform={drift}></div>
-    <div class="clock" aria-label="Fixed fictional scene time">
+    <div class="clock" aria-label="Shared fictional scene time">
       <div class="date">{dateLabel}</div>
-      <time datetime={profile.defaults.sceneTime} class="time">{timeLabel}</time>
+      <time datetime={sceneDate.toISOString()} class="time">{timeLabel}</time>
     </div>
     <button type="button" class="blank-control" data-power-control="wake" aria-label={`Stop screen saver and show the fictional ${session.phase === 'locked' ? 'Lock Screen' : 'Login Window'}`} onclick={wakeOrStart} onpointerdown={consume}></button>
   {:else if power.phase === 'sleeping' || power.phase === 'off'}

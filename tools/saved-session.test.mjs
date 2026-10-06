@@ -146,9 +146,11 @@ function commands({ storage = memoryStorage(), beforeCapture, capture = async ()
 const execute = (handlers, action, target = {}, payload = {}) => handlers[`scene.session.${action}`](target, payload);
 
 function localDraft(scene, kind, fields, attachments = []) {
-  const preview = draftPreview(scene.seed.communications, kind, fields, attachments);
+  const sceneTime = scene.seed.files.sceneTime;
+  const preview = draftPreview(scene.seed.communications, kind, fields, attachments, sceneTime);
   expect(preview).not.toBeNull();
-  expect(createCommunicationDraft(scene.seed.communications, preview).status).toBe('applied');
+  expect(createCommunicationDraft(scene.seed.communications, preview, () => true, sceneTime).status).toBe('applied');
+  scene.seed.files.sceneTime = Math.max(scene.seed.files.sceneTime, scene.seed.communications.timeBase);
   return preview.id;
 }
 function serviceView(entry, field, end = entry.fields[field].length) {
@@ -214,7 +216,8 @@ test('service retained views reject mismatched entities, fields, channels, UTF-1
 test('closed service windows keep the exact saved entity caret and reject an old token for a new selection', () => {
   const snapshot = fixture(), scene = snapshot.locals[0].scene;
   const first = localDraft(scene, 'contact', { name: 'First', email: '', phone: '', notes: 'native bytes' });
-  const recordId = submitCommunicationDraft(scene.seed.communications, first).target.recordId;
+  const recordId = submitCommunicationDraft(scene.seed.communications, first, () => true, scene.seed.files.sceneTime).target.recordId;
+  scene.seed.files.sceneTime = Math.max(scene.seed.files.sceneTime, scene.seed.communications.timeBase);
   const contact = communicationEntry(scene.seed.communications, 'contacts');
   remember(scene, 'contacts', {}, serviceView(contact, 'notes'));
   expect(contact.id).toBe(recordId); expect(validate(snapshot)).toEqual({ ok: true });
@@ -231,7 +234,8 @@ test('saved communication records and snapshot bytes round-trip independently ac
     const scene = local.scene, source = scene.seed.files.files.find(file => file.kind === 'document');
     const attachment = { fileId: source.id, name: source.name, revision: source.revision, content: `\ufeff user ${index}\r\n\u{1D11E} exact bytes ` };
     const draftId = localDraft(scene, 'mail', { to: `local-${index}@example.test`, subject: '', body: ` body ${index}\r\n ` }, [attachment]);
-    expect(submitCommunicationDraft(scene.seed.communications, draftId).status).toBe('applied');
+    expect(submitCommunicationDraft(scene.seed.communications, draftId, () => true, scene.seed.files.sceneTime).status).toBe('applied');
+    scene.seed.files.sceneTime = Math.max(scene.seed.files.sceneTime, scene.seed.communications.timeBase);
     source.content = 'Changed after composition'; source.revision++; source.deleted = true;
     scene.desktop.selectedFileIds = scene.desktop.selectedFileIds.filter(id => id !== source.id);
     if (scene.desktop.selectionAnchorId === source.id) scene.desktop.selectionAnchorId = null;

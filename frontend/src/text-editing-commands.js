@@ -1,9 +1,9 @@
 import { isRecord, rejected } from './feature-commands.js';
-import { visibleNotes, setSearch } from './notes-state.js';
+import { visibleNotes, setSearch, nextNoteTimestamp } from './notes-state.js';
 import { defineCommand, identity, object, empty, choice } from './command-schema.js';
 
 const MAX_TEXT = 1024 * 1024, MAX_TOTAL = 4 * MAX_TEXT, MAX_SEARCH = 4096;
-const MAX_TIME = 8_640_000_000_000_000 - 1, MAX_REVISION = Number.MAX_SAFE_INTEGER - 1;
+const MAX_REVISION = Number.MAX_SAFE_INTEGER - 1;
 const labels = ['typing', 'cut', 'paste', 'replace', 'substitution', 'spelling'];
 const controls = ['title', 'body', 'search'];
 const integer = value => Number.isSafeInteger(value) && value >= 0;
@@ -102,23 +102,17 @@ export function createTextEditingCommands(notes, clipboard, ctx) {
     try { await ctx.finishSelection({ ...target }, { ...range }, revision); } catch { /* Presentation only. */ }
   }
   function timestamp() {
-    let latest = notes.timeBase;
-    if (!integer(latest) || latest > MAX_TIME) return null;
-    for (const note of notes.notes) {
-      if (!integer(note.createdAt) || !integer(note.updatedAt) || note.createdAt > note.updatedAt || note.updatedAt > MAX_TIME) return null;
-      latest = Math.max(latest, note.createdAt, note.updatedAt);
-    }
-    return latest < MAX_TIME ? latest + 1 : null;
+    return nextNoteTimestamp(notes, ctx.getSceneTime?.());
   }
   function searchAllowed(query) {
     return query.length <= MAX_SEARCH && searchRevision < MAX_REVISION
       && stringSize(notes) - notes.search.length + query.length <= MAX_TOTAL
       && (ctx.canCommitSearch?.(query) ?? true);
   }
-  function noteAllowed(note, text) {
-    return text.length <= MAX_TEXT && timestamp() !== null
+  function noteAllowed(note, text, time = timestamp()) {
+    return text.length <= MAX_TEXT && time !== null
       && stringSize(notes) - note.text.length + text.length - notes.search.length <= MAX_TOTAL
-      && (ctx.canCommitNote?.(note, text) ?? true)
+      && (ctx.canCommitNote?.(note, text, time) ?? true)
       && (!notes.search || searchAllowed(''));
   }
   function changeSearch(query, entry) {
@@ -128,13 +122,13 @@ export function createTextEditingCommands(notes, clipboard, ctx) {
     searchRevision++;
     if (entry) record(searchHistory, { ...entry, before, after: query });
   }
-  function changeNote(note, text) {
+  function changeNote(note, text, time) {
     if (note.text === text) return;
-    const time = timestamp();
     if (notes.search) changeSearch('', { control: 'search', label: 'replace',
       beforeSelection: { start: 0, end: 0, direction: 'none' }, afterSelection: { start: 0, end: 0, direction: 'none' } });
     note.text = text;
     note.updatedAt = time;
+    ctx.onTimeChanged?.(time);
   }
   function replaceField(target, value) {
     if (target.control === 'search') return value;
@@ -160,12 +154,13 @@ export function createTextEditingCommands(notes, clipboard, ctx) {
     const prepared = await prepare(target, snapshot, true);
     if (prepared) return prepared;
     // Preparation can change aggregate quotas or the global fictional clock.
-    if (changed && !(snapshot.note ? noteAllowed(snapshot.note, text) : searchAllowed(text))) return limited();
+    const time = snapshot.note && changed ? timestamp() : null;
+    if (changed && !(snapshot.note ? noteAllowed(snapshot.note, text, time) : searchAllowed(text))) return limited();
     const caret = cursor ?? target.start + inserted.length;
     const range = { start: caret, end: caret, direction: 'none' };
     if (changed) {
       const entry = { before, after: text, control: target.control, label, beforeSelection: snapshot.selection, afterSelection: range };
-      if (snapshot.note) { changeNote(snapshot.note, text); record(historyFor(snapshot.note.id), entry); }
+      if (snapshot.note) { changeNote(snapshot.note, text, time); record(historyFor(snapshot.note.id), entry); }
       else changeSearch(text, entry);
     }
     if (cut) putClipboard(copied);
@@ -191,9 +186,10 @@ export function createTextEditingCommands(notes, clipboard, ctx) {
     const prepared = await prepare(target, snapshot, true);
     if (prepared) return prepared;
     if (history.cursor !== cursor || history.entries[redo ? cursor : cursor - 1] !== entry) return stale();
-    if (!(snapshot.note ? noteAllowed(snapshot.note, text) : searchAllowed(text))) return limited();
+    const time = snapshot.note ? timestamp() : null;
+    if (!(snapshot.note ? noteAllowed(snapshot.note, text, time) : searchAllowed(text))) return limited();
     history.cursor += redo ? 1 : -1;
-    if (snapshot.note) changeNote(snapshot.note, text); else changeSearch(text);
+    if (snapshot.note) changeNote(snapshot.note, text, time); else changeSearch(text);
     ctx.onChanged();
     const range = redo ? entry.afterSelection : entry.beforeSelection;
     const revision = snapshot.note ? snapshot.note.updatedAt : searchRevision;
@@ -256,12 +252,13 @@ export function createTextEditingCommands(notes, clipboard, ctx) {
       if (!note || note.id !== notes.selectedId) return stale();
       if (note.deleted) return readOnly();
       if (payload.text === note.text) return applied({ noteId: note.id });
-      if (!noteAllowed(note, payload.text)) return limited();
+      const time = timestamp();
+      if (!noteAllowed(note, payload.text, time)) return limited();
       const control = native?.control ?? (split(note.text)[0] !== split(payload.text)[0] ? 'title' : 'body');
       if (!['title', 'body'].includes(control) || native && (!selection(native.before, noteTextControlValue(note, control).length)
         || !selection(native.after, noteTextControlValue({ text: payload.text }, control).length))) return invalid();
       const before = note.text, range = native?.before ?? { start: 0, end: 0, direction: 'none' };
-      changeNote(note, payload.text);
+      changeNote(note, payload.text, time);
       record(historyFor(note.id), { before, after: payload.text, control, label, beforeSelection: range,
         afterSelection: native?.after ?? { start: noteTextControlValue(note, control).length, end: noteTextControlValue(note, control).length, direction: 'none' } });
       ctx.onChanged();
