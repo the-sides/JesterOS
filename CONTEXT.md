@@ -43,10 +43,13 @@ The scene action that closes an application's windows and ends its running state
 The simulated application supplying the foreground menus and application shortcuts. In a macOS scene it can remain active and running after its last window closes.
 
 **Shared menu owner**:
-The Golden Gate host's single transient provider/path/selection/actual-scroll state, independent of active application, authentication and retained app data. Apple/application/Window/optional users providers supply real enabled/checked items; native panels render and report actual focus/clip ownership. Historical profiles keep their existing private menu implementations.
+The Golden Gate host's single transient provider/path/selection/actual-scroll state, separate from retained app/authentication data. Apple/users are host providers; application/command/Window providers belong strictly to the actual active app. Native panels render live enabled/checked rows and report actual focus/clip ownership. Historical profiles keep their private menu implementations.
 
 **Menu return token**:
 An opaque original editor/selection/scroll capture kept across heading switches, never public or saved. Escape/Tab/explicit dismissal returns to the invoker; leaf execution restores the original before canonical dispatch and keeps the action's resulting focus. Failure restores prior popup/path/scroll/focus; interruption may capture the original through its owning scene, never a popup row or guessed selector.
+
+**App command provider**:
+A represented File/Edit/Format/View/Go/Conversation/History/Bookmarks/Help tree identified by both menuId and active appId. Availability comes from real current selection/document/window/native-input state, not a second selection model. Canonical actions are reused; queued workflows stay disabled. A disabled final highlight recovers to the first enabled row or empty panel; an invalid ancestor closes the path. Window entries are app-owned, not a global window roster.
 
 
 **Simulated desktop item**:

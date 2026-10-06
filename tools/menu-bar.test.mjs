@@ -337,3 +337,46 @@ test('opening a different scrollable parent reveals it before mounting its child
   expect(s.state.levels[0]).toEqual({ parentId: null, itemId: 'later', scrollTop: 80 });
   expect(s.state.levels[1].itemId).toBe('new-child');
 });
+
+test('app-owned command headings preserve original focus across cross-heading navigation and reject another app owner', async () => {
+  const s = consumer([provider('file', [leaf('new-note')], { appId: 'notes' }),
+    provider('edit', [leaf('search')], { appId: 'notes' })]);
+  await s.request('open', 'file');
+  expect(s.state.appId).toBe('notes');
+  expect((await unchanged(s, 'app.commandMenu.execute', { menuId: 'file', appId: 'safari', itemId: 'new-note' })).error.code).toBe('disabled');
+  expect((await unchanged(s, 'app.commandMenu.select', { menuId: 'file', appId: 'unknown', itemId: 'new-note' })).error.code).toBe('not_found');
+  await s.request('navigate', 'file', { key: 'ArrowRight' });
+  expect(s.state.menuId).toBe('edit'); expect(s.state.appId).toBe('notes'); expect(s.captures()).toBe(1);
+  expect((await unchanged(s, 'app.commandMenu.execute', { menuId: 'file', appId: 'notes', itemId: 'new-note' })).error.code).toBe('unavailable');
+  await s.request('execute', 'edit', { itemId: 'search' });
+  expect(s.actions[0].focus.editor).toBe(s.editor); expect(s.state.menuId).toBeNull();
+});
+
+test('document state can disable the highlighted row without trapping navigation or allowing the disabled action', async () => {
+  const s = consumer([provider('file', [leaf('new-note'), leaf('pin-note')], { appId: 'notes' })]);
+  await s.request('open', 'file', { itemId: 'pin-note' });
+  s.menus[0].items[1].enabled = false;
+  expect((await unchanged(s, 'app.commandMenu.execute', { menuId: 'file', appId: 'notes', itemId: 'pin-note' })).error.code).toBe('disabled');
+  await s.request('navigate', 'file', { key: 'ArrowDown' });
+  expect(s.state.levels[0].itemId).toBe('new-note'); expect(s.focus().itemId).toBe('new-note'); expect(s.actions).toEqual([]);
+  s.menus[0].items.shift();
+  await s.request('navigate', 'file', { key: 'Home' });
+  expect(s.state.levels[0].itemId).toBeNull(); expect(s.focus().kind).toBe('panel');
+  await s.request('navigate', 'file', { key: 'Escape' }); expect(s.focus()).toEqual({ kind: 'invoker', menuId: 'file' });
+});
+
+test('an app switch during original-focus return cannot execute a same-named row for the replacement owner', async () => {
+  const s = consumer([provider('file', [leaf('new-window')], { appId: 'notes' })]);
+  await s.request('open', 'file');
+  s.setRestoreHook(() => { s.menus[0].appId = 'safari'; });
+  expect((await unchanged(s, 'app.commandMenu.execute', { menuId: 'file', appId: 'notes', itemId: 'new-window' })).error.code).toBe('not_found');
+  expect(s.actions).toEqual([]); expect(s.state.appId).toBe('notes');
+});
+
+test('canonical preparation rechecks current document enablement after restoring original native focus', async () => {
+  const s = consumer([provider('file', [leaf('new-note'), leaf('delete-note')], { appId: 'notes' })]);
+  await s.request('open', 'file', { itemId: 'delete-note' });
+  s.setRestoreHook(() => { s.menus[0].items[1].enabled = false; });
+  expect((await unchanged(s, 'app.commandMenu.execute', { menuId: 'file', appId: 'notes', itemId: 'delete-note' })).error.code).toBe('disabled');
+  expect(s.actions).toEqual([]); expect(s.editor.text).toBe('Original document');
+});

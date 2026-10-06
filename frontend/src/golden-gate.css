@@ -5,7 +5,7 @@
 .golden-gate-desktop { position: relative; width: 100%; height: 100svh; overflow: hidden; background: #756956 center / cover no-repeat; font-family: var(--golden-gate-font); }
 .golden-gate-menu-bar { position: relative; z-index: 1001; height: 28px; padding: 0 19px; display: flex; justify-content: space-between; align-items: center; color: var(--menu-ink, white); background: transparent; font-size: 13px; text-shadow: 0 1px 3px #0005; }
 .golden-gate-menu-headings, .golden-gate-status-items { display: flex; align-items: center; height: 100%; white-space: nowrap; }
-.golden-gate-menu-headings { gap: 20px; }
+.golden-gate-menu-headings { gap: 20px; min-width: 0; flex: 1; margin-right: 18px; }
 .golden-gate-status-items { gap: 19px; font-weight: 550; font-size: 12px; }
 .golden-gate-status-items svg { display: block; width: 18px; height: 18px; }
 .golden-gate-battery svg { width: 26px; height: 14px; }
@@ -48,7 +48,7 @@
 .golden-gate-launch-toolbar { min-height: 54px; display: flex; align-items: center; gap: 25px; padding: 0 20px; flex-shrink: 0; border-bottom: 1px solid var(--appearance-soft-border, #dcd8d3); background: var(--appearance-toolbar, linear-gradient(#f9f7f3e8, #f0ece5c9)); backdrop-filter: blur(26px) saturate(1.3); color: var(--appearance-ink, #29292c); font-size: 14px; font-weight: 650; }
 .golden-gate-window-position.inactive .golden-gate-launch-toolbar { background: var(--appearance-toolbar-inactive, var(--appearance-toolbar, #f3f0eb)); }
 .golden-gate-launch-content { flex: 1; min-height: 0; overflow: auto; }
-@media (max-width: 900px) { .golden-gate-menu-headings { gap: 13px; } .golden-gate-status-items { gap: 13px; } .golden-gate-optional-menu { display: none; } }
+@media (max-width: 900px) { .golden-gate-menu-headings { gap: 13px; } .golden-gate-status-items { gap: 13px; } }
 @media (max-width: 760px) { .golden-gate-files { right: 9px; width: 86px; gap: 18px; } .golden-gate-file .golden-gate-icon { width: 49px; height: 49px; } .golden-gate-file { font-size: 11px; } .golden-gate-desktop .managed-dock { border-radius: 18px; } }
-@media (max-width: 520px) { .golden-gate-menu-bar { padding: 0 10px; } .golden-gate-menu-headings { gap: 15px; } .golden-gate-static-menu, .golden-gate-battery, .golden-gate-spotlight { display: none; } .golden-gate-status-items { gap: 12px; font-size: 10px; } .golden-gate-files { top: 15px; } }
+@media (max-width: 520px) { .golden-gate-menu-bar { padding: 0 10px; } .golden-gate-menu-headings { gap: 15px; margin-right: 9px; } .golden-gate-battery, .golden-gate-spotlight { display: none; } .golden-gate-status-items { gap: 12px; font-size: 10px; } .golden-gate-files { top: 15px; } }
 .golden-gate-files .stack-icon .golden-gate-icon { width: 100%; height: 100%; }

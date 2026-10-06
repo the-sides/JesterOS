@@ -9,7 +9,7 @@
   import { fictionalPowerDefaults, createFictionalPowerCommands, powerTargets } from './fictional-power.js';
   import { createSceneSeedCommands } from './scene-seed.js';
   import { createSavedSessionCommands, clearSavedSession, savedSessionStorageKey } from './saved-session.js';
-  import { menuBarDefaults, createMenuBarCommands, menuBarTargets } from './menu-bar.js';
+  import { menuBarDefaults, createMenuBarCommands, menuBarTargets, menuBarRequest } from './menu-bar.js';
 
   let { profile: profileInput, adapter: adapterInput, seed: seedInput, seedSource = 'default', savedSession: savedSessionInput,
     resetScene, restoreScene, registerCommands, selectProfile } = $props();
@@ -127,7 +127,7 @@
       : activeController()?.execute({ command, target, payload }) ?? rejected('unavailable', 'The retained desktop is being prepared.');
   }
   const menuOperations = createMenuBarCommands({
-    profile, state: menuBar, getMenus: () => menuDefinitions,
+    profile, state: menuBar, getMenus: sharedMenuDefinitions,
     getView: menuId => menuViews.get(menuKey(session.activeUserId, menuId)),
     available: () => interactive() && scenes.get(session.activeUserId)?.menusAvailable() === true,
     settle, captureFocus: () => scenes.get(session.activeUserId)?.capture(),
@@ -141,7 +141,24 @@
     if (!id) return;
     const provider = menuDefinitions.find(menu => menu.menuId === id);
     if (!interactive() || !provider?.enabled || scenes.get(session.activeUserId)?.menusAvailable() !== true
-      || (id === 'application' && provider.appId !== menuBar.appId)) menuLifecycle.clear();
+      || (provider.appId !== undefined && provider.appId !== menuBar.appId)) { menuLifecycle.clear(); return; }
+    let items = provider.items;
+    for (let level = 0; level < menuBar.levels.length; level++) {
+      const selectedId = menuBar.levels[level].itemId;
+      const selected = items.find(item => item.id === selectedId);
+      const last = level === menuBar.levels.length - 1;
+      const valid = selectedId === null ? !items.some(item => item.enabled && !item.separator)
+        : selected?.enabled && !selected.separator && (last || selected.children);
+      if (!valid) {
+        const levels = menuBar.levels;
+        const request = menuBarRequest(last ? 'navigate' : 'close', id, menuDefinitions, { key: 'Home' });
+        // A disabled native button loses focus. Recover only this unchanged path;
+        // never overwrite a later actor selection or revive a dismissed menu.
+        queueMicrotask(() => { if (menuBar.menuId === id && menuBar.levels === levels) void execute(request); });
+        return;
+      }
+      if (!last) items = selected.children;
+    }
   });
   function clearStoredSession() {
     try {
@@ -182,7 +199,7 @@
       if (!interactive() && targets.windows) targets.windows = targets.windows.map(window => ({ ...window,
         presentationInteractive: false, ...(session.phase !== 'desktop' || power.phase !== 'awake' ? { presentationVisible: false } : {}),
         ...(window.resize ? { resize: { ...window.resize, available: false } } : {}) }));
-      return { ...targets, menuBar: menuBarTargets(menuBar, menuDefinitions,
+      return { ...targets, menuBar: menuBarTargets(menuBar, sharedMenuDefinitions(),
         menuId => menuViews.get(menuKey(session.activeUserId, menuId))), session: { ...sessionTargets(session, surfaceView), desktopAvailable: interactive(),
         boundaries: { ...sessionTargets(session).boundaries, savedSessions: true, guestSaved: false, credentialsSaved: false } },
         power: powerTargets(power, powerView),

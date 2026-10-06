@@ -1,6 +1,7 @@
 import { isRecord, rejected } from './feature-commands.js';
+import { APP_COMMAND_MENU_IDS } from './app-command-menus.js';
 
-const MENU_IDS = ['apple', 'application', 'window', 'users'];
+const MENU_IDS = ['apple', 'application', 'window', 'users', ...APP_COMMAND_MENU_IDS];
 const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Space', 'Escape', 'Tab'];
 const MAX_LEVELS = 8;
 const identity = value => typeof value === 'string' && value.length > 0;
@@ -53,15 +54,15 @@ function findItem(items, itemId) {
   return null;
 }
 
-function pathItems(menu, levels) {
+function pathItems(menu, levels, recoverSelection = false) {
   if (!levels.length || levels.length > MAX_LEVELS || levels[0].parentId !== null) return { error: missing() };
   const items = [menu.items];
   for (let index = 0; index < levels.length; index += 1) {
     const level = levels[index];
     if (!offset(level.scrollTop)) return { error: unavailable() };
     const selected = level.itemId === null ? null : items[index].find(item => item.id === level.itemId);
-    if (level.itemId !== null && !selected) return { error: missing() };
-    if (selected && !enabled(selected)) return { error: disabled() };
+    if (level.itemId !== null && !selected && !(recoverSelection && index === levels.length - 1)) return { error: missing() };
+    if (selected && !enabled(selected) && !(recoverSelection && index === levels.length - 1)) return { error: disabled() };
     if (index + 1 < levels.length) {
       if (!selected?.children || levels[index + 1].parentId !== selected.id) return { error: missing() };
       items.push(selected.children);
@@ -80,6 +81,8 @@ const observePayload = payload => fields(payload, ['observe'], [])
   && (!own(payload, 'observe') || typeof payload.observe === 'boolean');
 const menuTarget = (target, item = false, nullable = false) => fields(target, item ? ['menuId', 'itemId'] : ['menuId'])
   && MENU_IDS.includes(target.menuId) && (!item || identity(target.itemId) || (nullable && target.itemId === null));
+const commandMenuTarget = (target, item = false) => fields(target, item ? ['menuId', 'appId', 'itemId'] : ['menuId', 'appId'])
+  && APP_COMMAND_MENU_IDS.includes(target.menuId) && identity(target.appId) && (!item || identity(target.itemId));
 const scrollPayload = (payload, withLevel) => fields(payload, withLevel ? ['top', 'observe', 'level'] : ['top', 'observe'], ['top'])
   && offset(payload.top) && (!own(payload, 'observe') || typeof payload.observe === 'boolean')
   && (!withLevel || !own(payload, 'level') || (Number.isInteger(payload.level) && payload.level >= 0 && payload.level < MAX_LEVELS));
@@ -120,12 +123,12 @@ export function createMenuBarCommands(ctx) {
     return { menu };
   }
 
-  function current(menuId) {
+  function current(menuId, recoverSelection = false) {
     if (state.menuId !== menuId) return { error: unavailable() };
     const result = provider(menuId);
     if (result.error) return result;
-    if (menuId === 'application' && state.appId !== result.menu.appId) return { error: missing() };
-    return { ...result, ...pathItems(result.menu, state.levels) };
+    if (result.menu.appId !== undefined && state.appId !== result.menu.appId) return { error: missing() };
+    return { ...result, ...pathItems(result.menu, state.levels, recoverSelection) };
   }
 
   function mounted(menuId, level) {
@@ -135,8 +138,8 @@ export function createMenuBarCommands(ctx) {
       && offset(native.scrollTop(menuId, level));
   }
 
-  function row(menuId, itemId, closedWindow = false) {
-    const result = state.menuId === null && closedWindow ? provider(menuId) : current(menuId);
+  function row(menuId, itemId, closedWindow = false, recoverSelection = false) {
+    const result = state.menuId === null && closedWindow ? provider(menuId) : current(menuId, recoverSelection);
     if (result.error) return result;
     const item = itemId === null ? null : findItem(result.menu.items, itemId);
     if (itemId !== null && !item) return { error: missing() };
@@ -210,7 +213,7 @@ export function createMenuBarCommands(ctx) {
     const result = provider(menuId);
     if (result.error) return result.error;
     const { menu } = result;
-    if (menuId === 'application' && appId !== undefined && appId !== menu.appId) {
+    if (menu.appId !== undefined && appId !== undefined && appId !== menu.appId) {
       return own(profile.applications ?? {}, appId) ? disabled() : missing();
     }
     const eligible = menu.items.filter(enabled);
@@ -218,7 +221,7 @@ export function createMenuBarCommands(ctx) {
       : payload.position === 'last' ? eligible.at(-1) : eligible[0];
     if (own(payload, 'itemId') && !selected) return missing();
     if (selected && !enabled(selected)) return disabled();
-    const next = { menuId, appId: menuId === 'application' ? menu.appId : null,
+    const next = { menuId, appId: menu.appId ?? null,
       levels: [{ parentId: null, itemId: selected?.id ?? null, scrollTop: 0 }] };
     const opened = await transition(next, () => focusLevel(menuId, 0, next.levels[0].itemId), true, state.menuId === null);
     if (opened.status !== 'applied') return opened;
@@ -239,7 +242,7 @@ export function createMenuBarCommands(ctx) {
   }
 
   async function select(menuId, itemId, observe = false) {
-    const result = row(menuId, itemId);
+    const result = row(menuId, itemId, false, true);
     if (result.error) return result.error;
     const { level } = result, native = view(menuId);
     if (observe && native.focusedItem(menuId, level) !== itemId) return unavailable();
@@ -279,7 +282,7 @@ export function createMenuBarCommands(ctx) {
   }
 
   async function pop(menuId) {
-    const result = current(menuId);
+    const result = current(menuId, true);
     if (result.error) return result.error;
     const level = state.levels.length - 1;
     if (level === 0 || !mounted(menuId, level)) return unavailable();
@@ -292,7 +295,7 @@ export function createMenuBarCommands(ctx) {
     if (result.error) return result.error;
     const { item } = result;
     if (!item || item.children || !item.request) return disabled();
-    const wasOpen = state.menuId !== null, version = lifecycleVersion;
+    const wasOpen = state.menuId !== null, version = lifecycleVersion, appId = result.menu.appId;
     const invoke = async () => {
       if (wasOpen && (!hasReturnFocus || !await ctx.restoreFocus(returnFocus))) return unavailable();
       if (version !== lifecycleVersion) return unavailable();
@@ -302,7 +305,7 @@ export function createMenuBarCommands(ctx) {
       const currentItem = findItem(live.menu.items, itemId);
       if (!currentItem) return missing();
       if (!enabled(currentItem) || currentItem.children || !currentItem.request) return disabled();
-      if (menuId === 'application' && live.menu.appId !== result.menu.appId) return missing();
+      if (live.menu.appId !== appId) return missing();
       const downstream = await ctx.invoke(currentItem.request);
       if (downstream.status !== 'applied') return downstream;
       return applied(menuId === 'window' ? { menuId, itemId, windowId: currentItem.request.target?.windowId ?? downstream.target?.windowId }
@@ -319,7 +322,7 @@ export function createMenuBarCommands(ctx) {
   }
 
   async function scroll(menuId, payload) {
-    const result = current(menuId);
+    const result = current(menuId, true);
     if (result.error) return result.error;
     const level = payload.level ?? state.levels.length - 1;
     if (!mounted(menuId, level)) return unavailable();
@@ -348,7 +351,7 @@ export function createMenuBarCommands(ctx) {
       const opened = await open(providers[(index + step + providers.length) % providers.length].menuId, {});
       return opened.status === 'applied' ? applied(navigationTarget()) : opened;
     }
-    const result = current(menuId);
+    const result = current(menuId, true);
     if (result.error) return result.error;
     const level = state.levels.length - 1;
     if (!mounted(menuId, level)) return unavailable();
@@ -358,7 +361,7 @@ export function createMenuBarCommands(ctx) {
     else if (key === 'Tab') moved = await close(menuId);
     else if (key === 'ArrowLeft' && level > 0) moved = await pop(menuId);
     else if ((key === 'ArrowRight' || key === 'Enter' || key === 'Space') && item?.children) moved = await submenu(menuId, itemId);
-    else if (key === 'Enter' || key === 'Space') moved = item ? await execute(menuId, itemId) : applied();
+    else if (key === 'Enter' || key === 'Space') moved = item ? await execute(menuId, itemId) : itemId === null ? applied() : missing();
     else if ((key === 'ArrowLeft' || key === 'ArrowRight') && level === 0) {
       const providers = menus().filter(menu => menu.enabled && view(menu.menuId)?.available(menu.menuId));
       const index = providers.findIndex(menu => menu.menuId === menuId), step = key === 'ArrowLeft' ? -1 : 1;
@@ -372,7 +375,7 @@ export function createMenuBarCommands(ctx) {
         moved = await select(menuId, null);
       } else {
         const index = eligible.findIndex(item => item.id === itemId);
-        if (itemId !== null && index < 0) return unavailable();
+        if (itemId !== null && index < 0 && semantic.some(item => item.id === itemId)) return unavailable();
         const selected = key === 'Home' ? eligible[0] : key === 'End' ? eligible.at(-1)
           : eligible[index < 0 ? (key === 'ArrowUp' ? eligible.length - 1 : 0)
             : (index + (key === 'ArrowUp' ? -1 : 1) + eligible.length) % eligible.length];
@@ -381,6 +384,21 @@ export function createMenuBarCommands(ctx) {
     } else moved = applied();
     return moved.status === 'applied' ? applied(navigationTarget()) : moved;
   }
+  async function commandMenu(action, target, payload) {
+    const item = action === 'select' || action === 'execute';
+    if (!commandMenuTarget(target, item) || !(action === 'open' ? openPayload(payload) : action === 'close'
+      ? closePayload(payload) : action === 'select' ? observePayload(payload) : fields(payload, []))) return invalid();
+    const owned = provider(target.menuId);
+    if (owned.error) return owned.error;
+    if (owned.menu.appId !== target.appId) return own(profile.applications ?? {}, target.appId) ? disabled() : missing();
+    const result = action === 'open' ? await open(target.menuId, payload, target.appId)
+      : action === 'close' ? await close(target.menuId, payload.restoreFocus !== false)
+      : action === 'select' ? await select(target.menuId, target.itemId, payload.observe === true)
+      : await execute(target.menuId, target.itemId);
+    return result.status === 'applied' ? applied({ menuId: target.menuId, appId: target.appId,
+      itemId: action === 'execute' ? target.itemId : action === 'close' ? null : state.levels.at(-1)?.itemId ?? null }) : result;
+  }
+
 
   const handlers = {
     'desktop.scroll': async (target, payload) => {
@@ -414,6 +432,10 @@ export function createMenuBarCommands(ctx) {
       const result = await scroll('application', payload);
       return result.status === 'applied' ? applied({ top: result.target.top }) : result;
     },
+    'app.commandMenu.open': (target, payload) => commandMenu('open', target, payload),
+    'app.commandMenu.close': (target, payload) => commandMenu('close', target, payload),
+    'app.commandMenu.select': (target, payload) => commandMenu('select', target, payload),
+    'app.commandMenu.execute': (target, payload) => commandMenu('execute', target, payload),
     'session.menu.open': (target, payload) => menuTarget(target) && ['apple', 'users'].includes(target.menuId) && openPayload(payload) ? open(target.menuId, payload) : invalid(),
     'session.menu.close': async (target, payload) => {
       if (!fields(target, []) || !closePayload(payload)) return invalid();
@@ -441,7 +463,7 @@ export function createMenuBarCommands(ctx) {
     'menu.scroll': (target, payload) => menuTarget(target) && scrollPayload(payload, true) ? scroll(target.menuId, payload) : invalid(),
   };
   return Object.fromEntries(Object.entries(handlers).map(([name, handler]) => [name, async (target, payload) => {
-    const capability = name.startsWith('app.') ? 'app.visibility' : name.startsWith('session.') ? 'session.fictional'
+    const capability = name.startsWith('app.commandMenu.') ? 'shell.menu-bar' : name.startsWith('app.') ? 'app.visibility' : name.startsWith('session.') ? 'session.fictional'
       : ['menu.open', 'menu.close', 'menu.select', 'menu.execute', 'desktop.scroll'].includes(name) ? 'shell.window-menu' : 'shell.menu-bar';
     return profile.id !== 'macos-golden-gate-27.0.1' || !profile.capabilities.includes(capability)
       ? rejected('unsupported_profile', 'The shared menu controller is available only in Golden Gate.') : await handler(target, payload);
@@ -481,6 +503,13 @@ export function menuBarRequest(action, menuId, menus, args = {}) {
   if (!['open', 'close', 'select', 'execute', 'scroll'].includes(action)) throw new RangeError(`Unknown menu action: ${action}`);
   const menu = menus.find(menu => menu.menuId === menuId);
   if (action === 'open' && menuId === 'application' && !menu) throw new RangeError('The application menu needs its current owner definition.');
+  if (APP_COMMAND_MENU_IDS.includes(menuId)) {
+    if (!menu) throw new RangeError('The app command menu needs its current owner definition.');
+    return { command: `app.commandMenu.${action}`, target: { menuId, appId: menu.appId,
+      ...(['select', 'execute'].includes(action) ? { itemId: args.itemId } : {}) },
+    payload: action === 'open' ? pick(args, ['position', 'itemId']) : action === 'close' ? pick(args, ['restoreFocus'])
+      : action === 'select' ? pick(args, ['observe']) : {} };
+  }
   if (menuId === 'application') {
     return { command: `app.menu.${action}`, target: action === 'open' ? { appId: menu.appId }
       : ['select', 'execute'].includes(action) ? { itemId: args.itemId } : {},

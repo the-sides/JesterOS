@@ -45,6 +45,7 @@
   import { createNotesCommands } from './notes-commands.js';
   import { commandCatalog } from './command-catalog.js';
   import { visibleNotes } from './notes-state.js';
+  import { appCommandMenuProviders } from './app-command-menus.js';
   import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
@@ -345,7 +346,7 @@
       if (point && (dockStackAnchor?.x !== point.x || dockStackAnchor?.y !== point.y)) dockStackAnchor = point;
     });
   });
-  let notesView = null;
+  let notesView = $state.raw(null);
   const applicationViews = new Map();
   let initialized = $state(false);
   let starting = false;
@@ -1422,12 +1423,24 @@
       'show-all': { command: 'app.showAll' },
       quit: { command: 'app.quit', target: { appId } },
     };
+    const enabled = Boolean(app && runningAppIds.includes(appId) && !pendingQuitAppIds.includes(appId));
+    const appWindows = windows.filter(window => window.appId === appId);
+    const original = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus?.node : document.activeElement;
+    const control = original?.dataset?.notesControl;
+    const textControl = ['title', 'body', 'search'].includes(control)
+      && original.closest('[data-window-id]')?.dataset.windowId === appWindows.find(window => window.appId === 'notes')?.id
+      ? control : null;
+    const commandMenus = appCommandMenuProviders({ profile, appId, enabled, activeWindow: active,
+      notes: appId === 'notes' ? { available: Boolean(notesView && appWindows.some(window => !window.minimized && windowPresented(window))),
+        selected: visibleNotes(notesState).find(note => note.id === notesState.selectedId),
+        sidebarVisible: notesState.sidebarVisible, textControl, hasText: Boolean(textControl && original.value.length) } : null });
     return [
       { menuId: 'application', kind: 'application', label: app?.name ?? '', appId,
-        enabled: Boolean(app && runningAppIds.includes(appId) && !pendingQuitAppIds.includes(appId)),
+        enabled,
         items: applicationMenuItems(switching, profile, appId, runningAppIds, pendingQuitAppIds)
           .map(item => ({ ...item, request: applicationActions[item.id] })) },
-      { menuId: 'window', kind: 'window', label: 'Window', enabled: true, items: [
+      ...commandMenus.filter(menu => menu.menuId !== 'help'),
+      { menuId: 'window', kind: 'window', label: 'Window', appId, enabled, items: [
         { id: 'close', label: 'Close', shortcut: '⌘W', enabled: Boolean(active), request: request('window.close') },
         { id: 'minimize', label: 'Minimize', shortcut: '⌘M', enabled: ordinary,
           request: request('window.setMinimized', active, { minimized: true }) },
@@ -1449,12 +1462,13 @@
           { id: 'exit-full-screen', label: 'Exit Full Screen', enabled: Boolean(active?.fullScreen),
             request: request('window.setFullScreen', active, { fullScreen: false }) },
         ] },
-        ...(windows.length ? [{ id: 'separator-windows', label: '', enabled: false, separator: true }] : []),
-        ...windows.map(window => ({ id: `window:${window.id}`, label: window.title,
+        ...(appWindows.length ? [{ id: 'separator-windows', label: '', enabled: false, separator: true }] : []),
+        ...appWindows.map(window => ({ id: `window:${window.id}`, label: window.title,
           shortcut: window.minimized ? 'Minimized' : undefined, checked: window.id === activeWindowId, radio: true,
           enabled: !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId),
           request: request('window.focus', window) })),
       ] },
+      ...commandMenus.filter(menu => menu.menuId === 'help'),
     ];
   }
   function captureSwitchingFocus() {

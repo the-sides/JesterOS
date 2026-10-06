@@ -42,8 +42,7 @@
     registerView,
     onlayout,
   } = $props();
-  const primaryMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'apple' || menu.menuId === 'application'));
-  const windowMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'window'));
+  const primaryMenus = $derived(menuBarMenus.filter(menu => menu.menuId !== 'users'));
   const userMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'users'));
 
   const applications = $derived(profile.applications);
@@ -500,14 +499,6 @@
     <div class="golden-gate-menu-headings">
       <GoldenGateMenuBar {profile} menus={primaryMenus} state={menuBarState} execute={executeSession}
         registerView={registerSessionView} {foreground} />
-      <span class="golden-gate-static-menu">File</span><span class="golden-gate-static-menu">Edit</span>
-      {#if activeApp.id === 'notes'}<span class="golden-gate-static-menu">Format</span>{/if}
-      {#if activeApp.id === 'safari'}<span class="golden-gate-static-menu">View</span><span class="golden-gate-optional-menu">History</span><span class="golden-gate-optional-menu">Bookmarks</span>{:else}<span class="golden-gate-static-menu">View</span>{/if}
-      {#if activeApp.id === 'messages'}<span class="golden-gate-optional-menu">Conversation</span>{/if}
-      {#if activeApp.id === 'finder'}<span class="golden-gate-optional-menu">Go</span>{/if}
-      <GoldenGateMenuBar {profile} menus={windowMenus} state={menuBarState} execute={executeSession}
-        registerView={registerSessionView} {foreground} />
-      <span class="golden-gate-optional-menu">Help</span>
     </div>
     <div class="golden-gate-status-items">
       {#if session?.fastUserSwitching}

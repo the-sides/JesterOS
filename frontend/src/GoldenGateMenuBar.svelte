@@ -319,4 +319,5 @@
   .users .invoker { max-width: min(150px, 24vw); }
   @media (max-width: 900px) { .golden-shared-menu-bar { gap: 13px; } }
   @media (max-width: 520px) { .invoker.application { max-width: 105px; } }
+  @media (max-width: 520px) { .golden-shared-menu-bar { gap: 6px; } .invoker { margin: 0; padding: 0 1px; } }
 </style>

@@ -1,12 +1,15 @@
-import { defineCommand, NONE, identity, flag, offset, choice, object, empty } from './command-schema.js';
+import { defineCommand, NONE, identity, flag, offset, choice, object, empty, match } from './command-schema.js';
+import { APP_COMMAND_MENU_IDS } from './app-command-menus.js';
 
 const profiles = ['macos-golden-gate-27.0.1'];
-const menuId = choice('apple', 'application', 'window', 'users');
+const menuId = choice('apple', 'application', 'window', 'users', ...APP_COMMAND_MENU_IDS);
+const commandMenuId = choice(...APP_COMMAND_MENU_IDS);
+const commandOwner = object({ menuId: commandMenuId, appId: identity });
 const nullable = schema => ({ oneOf: [schema, { type: 'null' }] });
 const level = { type: 'integer', minimum: 0, maximum: 7 };
 const target = object({ menuId });
 const selection = object({ menuId: nullable(menuId), itemId: nullable(identity), level: nullable(level) });
-const mounted = 'Matching current provider/owner and available native popup; hidden, inert, stale, disabled or wrong-provider targets reject before mutation.';
+const mounted = 'Matching current provider/owner and available native presentation: live invoker for opening/idempotent close, owned popup for selection/execution/scroll. Hidden, inert, stale, disabled or wrong-provider targets reject before mutation.';
 const define = (name, requestTarget, payload, requires, effects, result) => {
   const entry = defineCommand(profiles, name, 'shell.menu-bar', requestTarget, payload, requires, effects,
     ['Only transient host-owned menuBar selection/path/actual scroll; no authentication, retained document, application or window changes except a selected existing canonical leaf action.'], NONE, result);
@@ -14,7 +17,8 @@ const define = (name, requestTarget, payload, requires, effects, result) => {
   return entry;
 };
 
-/** Golden Gate navigation only; opening/execution retain provider API names. */
+/** Golden Gate navigation and explicitly owned represented app command trees. */
+const commandSelection = object({ menuId: commandMenuId, appId: identity, itemId: nullable(identity) });
 export const menuBarCatalog = Object.fromEntries([
   define('menu.navigate', target, object({ key: choice('ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Space', 'Escape', 'Tab') }),
     [mounted, 'Left/Right on a visible enabled closed invoker instead opens the adjacent available provider. All other keys require the matching open menu.'],
@@ -31,4 +35,19 @@ export const menuBarCatalog = Object.fromEntries([
     [mounted, 'level defaults to the deepest open level; explicit 0..7 must exist and be physically available, never a covered/inert ancestor.'],
     ['Scroll only the owned native popup and retain its actual DOM-clamped offset. observe:true records actual native scrolling rather than trusting top. Ancestor scrolling does not change selection or child path.'],
     object({ menuId, level, top: offset })),
+  define('app.commandMenu.open', commandOwner, {
+    ...object({ position: choice('first', 'last'), itemId: identity }, []),
+    not: match({ position: true, itemId: true }),
+  }, [mounted, 'appId must be the actual active app that supplies this represented command heading; position and itemId are mutually exclusive.'],
+  ['Open the real app-owned File/Edit/Format/View/Go/Conversation/History/Bookmarks/Help provider at its native heading; select first/last/exact enabled root row, or null for an empty enabled set.'],
+  commandSelection),
+  define('app.commandMenu.close', commandOwner, object({ restoreFocus: flag }, []),
+    [mounted, 'The requested app still owns this provider; a different open provider rejects.'],
+    ['Dismiss the matching provider and restore its own invoker by default; false preserves outside/native focus. Already closed is idempotent for the current owner.'], commandSelection),
+  define('app.commandMenu.select', object({ menuId: commandMenuId, appId: identity, itemId: identity }), object({ observe: flag }, []),
+    [mounted, 'Exact enabled mounted row belongs to this current active app; observe:true additionally requires its actual native focus.'],
+    ['Select/reveal/focus the row under the single shared host path; ancestor selection truncates children. No app, document or window mutation.'], commandSelection),
+  define('app.commandMenu.execute', object({ menuId: commandMenuId, appId: identity, itemId: identity }), empty,
+    [mounted, 'Exact enabled leaf has a real existing canonical request, not a queued workflow; app owner must remain current after original focus is restored.'],
+    ['Dismiss and restore original focus before invoking the selected current request. Re-read selected record, document/window availability and owner after settling; disabled/stale rows reject without dispatch. Canonical failure restores the popup/native focus. Keep the real action’s focus on applied.'], commandSelection),
 ]);
