@@ -61,6 +61,8 @@
   import { createTextToolsCommands } from './text-tools-commands.js';
   import { selectNativeText, documentControlRange, controlDocumentOffset } from './text-native-selection.js';
   import { createNativeClipboardCommands } from './native-clipboard.js';
+  import { validateViewing, notesViewProjection, finderPresentationDefaults, notesPresentationDefaults } from './viewing-state.js';
+  import { createViewWorkflowCommands } from './view-workflow-commands.js';
   import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
@@ -84,6 +86,7 @@
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
+  const hasViewWorkflows = profile.capabilities.includes('shell.view-workflows');
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
@@ -118,11 +121,21 @@
   let editingEpoch = $state(0), dictionaryStatus = $state('idle');
   let textEditing, finderEditing, nativeClipboard;
   let textTools = $state.raw(null);
+  let viewWorkflows = $state.raw(null);
+  let viewPresentation = $state({ options: null, nextOptionsId: 1, error: null });
   let editingPreferenceRevision = 0, fileHistoryBatch = 0;
   const textAssistance = hasEditWorkflows ? createTextAssistance() : null;
   const textInputSelections = new WeakMap();
   $effect(() => {
     if (hasFileWorkflows && !foreground) fileDialogController?.suspend();
+  });
+  $effect(() => {
+    const options = viewPresentation.options;
+    if (!hasViewWorkflows || !options || !viewWorkflows) return;
+    const window = windows.find(window => window.id === options.windowId);
+    if (!foreground || !window || window.minimized || isAppHidden(window.appId)
+      || pendingQuitAppIds.includes(window.appId) || window.folderId !== options.folderId
+      || !liveFile(macFiles, options.folderId)) viewWorkflows.dismissOptions();
   });
   let switcherControls = $state();
   let applicationMenuControls = $state();
@@ -295,6 +308,8 @@
   let appearanceState = $state(macDesktop ? initialData.appearance ?? appearanceDefaults(profile) : undefined);
   let printingState = $state(hasFileWorkflows ? initialData.printing : undefined);
   let editingPreferences = $state(hasEditWorkflows ? initialData.editing : undefined);
+  let viewing = $state(hasViewWorkflows ? initialData.viewing : undefined);
+  const notesProjection = $derived(hasViewWorkflows ? notesViewProjection(notesState, viewing) : notesState);
   $effect(() => {
     if (appearanceOwner) return applyAppearance(document.documentElement, profile, macDesktop ? appearanceState
       : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
@@ -464,7 +479,7 @@
       const window = windows.find(entry => entry.id === target.windowId && entry.appId === 'finder' && !entry.utilityKind);
       const folder = liveFile(macFiles, target.folderId);
       if (!window || !folder || folder.kind !== 'folder') return rejected('not_found', 'The Finder window or folder no longer exists.');
-      window.folderId = folder.id; window.title = folder.name;
+      setFinderFolder(window, folder.id); window.title = folder.name;
       window.finderSelectedFileIds = [];
       const result = await handlers['window.focus']({ windowId: window.id }, {});
       return result.status === 'applied' ? { status: 'applied', target: { windowId: window.id, folderId: folder.id } } : result;
@@ -643,7 +658,7 @@
         const window = windows.find(window => window.id === windowId);
         liveFile(macFiles, file.id).lastOpenedAt = nextMacFileTimestamp(macFiles);
         if (file.kind === 'application') return;
-        if (file.kind === 'folder') window.folderId = file.id;
+        if (file.kind === 'folder') setFinderFolder(window, file.id);
         else window.fileId = file.id;
       },
       focusDesktop,
@@ -653,6 +668,11 @@
   );
   if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
     getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes' && !window.utilityKind).id),
+    prepareFocus: target => {
+      if (!hasViewWorkflows || !['title', 'body'].includes(target.control)) return;
+      const window = windows.find(window => window.appId === 'notes' && !window.utilityKind);
+      if (window?.notesPresentation) window.notesPresentation.documentVisible = true;
+    },
     isVisible: () => sceneInteractionsAvailable() && !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
       && windows.some(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window)),
   }));
@@ -700,6 +720,7 @@
         const window = windows.find(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window));
         if (!window) return false;
         focusWindow(window.id);
+        if (hasViewWorkflows) window.notesPresentation.documentVisible = true;
         return focusApplicationServiceBody(window.id);
       },
       notesCreated: async (noteId, focus) => {
@@ -777,6 +798,31 @@
     });
     Object.assign(handlers, nativeClipboard.handlers);
   }
+  if (hasViewWorkflows) {
+    const ownedViewWorkflows = createViewWorkflowCommands(viewing, viewPresentation, {
+      available: windowInteractionsAvailable,
+      windowAvailable: viewWindowAvailable,
+      getWindow: id => windows.find(window => window.id === id) ?? null,
+      getNotes: () => notesState, getFiles: () => macFiles,
+      prepare: async windowId => {
+        if (!viewWindowAvailable(windowId)) return false;
+        await tick(); await tick();
+        return viewWindowAvailable(windowId);
+      },
+      selectNote: (_windowId, noteId) => handlers['notes.select']({ noteId }, {}),
+      finishNotes: finishNotesView, finishFinder: finishFinderView,
+      captureFocus: captureNativeFocus,
+      restoreFocus: (token, guard) => (!guard || guard()) && sceneInteractionsAvailable()
+        ? restoreNativeFocus(token) : false,
+      focusOptions: focusFinderViewOptions, scrollOptions: scrollFinderViewOptions,
+      getOptionsControls: finderViewOptionsControls,
+      validateCandidate: next => validateViewing(next, { notes: notesState, files: macFiles }, profile).ok
+        && workflowTextSize() - persistentStringUnits(viewing) + persistentStringUnits(next) <= 4 * 1024 * 1024,
+      changed: () => editingEpoch++,
+    });
+    viewWorkflows = ownedViewWorkflows;
+    Object.assign(handlers, ownedViewWorkflows.handlers);
+  }
   if (hasApplicationMenu) Object.assign(handlers, createApplicationMenuCommands({
     profile, notes: notesState,
     available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
@@ -823,6 +869,7 @@
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
+      ...(hasViewWorkflows ? { viewing, viewPresentation: viewingTargets() } : {}),
       ...(nativeState ? { native: nativeState } : {}),
       ...(hasRetention ? { retention: { closedWindows, automaticPersistence: false, reopen: 'last-ordinary-window-current-desktop' } } : {}),
     }),
@@ -950,6 +997,8 @@
         ...(window.infoSections ? { infoSections: { ...window.infoSections } } : {}),
         ...(window.finderSelectedFileIds ? { selectedFileIds: [...window.finderSelectedFileIds] } : {}),
         ...(window.settingsPane ? { settingsPane: window.settingsPane } : {}),
+        ...(hasViewWorkflows && window.finderPresentation ? { finderPresentation: { ...window.finderPresentation } } : {}),
+        ...(hasViewWorkflows && window.notesPresentation ? { notesPresentation: { ...window.notesPresentation } } : {}),
         ...(desktopState.dock?.appWindows ? { presentationVisible: Boolean(dockWindowBounds[window.id]),
           ...(dockWindowBounds[window.id] ? { overviewBounds: { ...dockWindowBounds[window.id] } } : {}) } : {}),
         ...(switching.switcher?.kind === 'windows' ? { presentationVisible: Boolean(switcherWindowBounds[window.id]),
@@ -973,6 +1022,7 @@
           ({ jobId: id, title, status, copies, pageCount, pageFrom, pageTo, printedPages })),
       } } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets() } : {}),
+      ...(hasViewWorkflows ? { viewing: viewingTargets() } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
 
@@ -1132,7 +1182,7 @@
       if (created.status !== 'applied') return created;
       window = windows.find(window => window.id === created.target.windowId);
     }
-    window.folderId = folder.id; window.title = folder.name; window.finderSelectedFileIds = [file.id];
+    setFinderFolder(window, folder.id); window.title = folder.name; window.finderSelectedFileIds = [file.id];
     const focused = await handlers['window.focus']({ windowId: window.id }, {});
     if (focused.status !== 'applied') return focused;
     await tick();
@@ -1258,7 +1308,7 @@
           seen.add(folderId); folderId = previous.get(folderId)?.parentId;
         }
         if (folderId && byId.has(folderId) && folderId !== window.folderId) {
-          window.folderId = folderId; window.finderSelectedFileIds = [];
+          setFinderFolder(window, folderId); window.finderSelectedFileIds = [];
         }
         if (byId.has(window.folderId)) {
           window.title = byId.get(window.folderId).name;
@@ -1424,6 +1474,89 @@
     body.focus({ preventScroll: true });
     return document.activeElement === body;
   }
+  function setFinderFolder(window, folderId) {
+    if (hasViewWorkflows) {
+      const currentMode = viewWorkflows?.finderForWindow(window.id)?.view.mode ?? window.finderBrowseMode ?? 'icons';
+      window.finderBrowseMode = viewing.finder.folderViews[folderId]?.mode ?? currentMode;
+    }
+    window.folderId = folderId;
+  }
+  function viewWindowAvailable(windowId) {
+    if (!hasViewWorkflows || !windowInteractionsAvailable() || switching.switcher || presentation.pairing
+      || activeWindowId !== windowId) return false;
+    const window = windows.find(window => window.id === windowId);
+    return Boolean(window && !window.utilityKind && !window.minimized && activeAppId === window.appId
+      && !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId)
+      && windowPresented(window) && windowInteractive(window));
+  }
+  async function finishNotesView(windowId, kind, noteId = notesState.selectedId, focus) {
+    await tick(); await tick();
+    if (!viewWindowAvailable(windowId) || notesState.selectedId !== noteId) return;
+    if (kind === 'preserve') {
+      if (focus && [document.body, document.documentElement].includes(document.activeElement)) await restoreNativeFocus(focus);
+      return;
+    }
+    const root = managedWindowElement(windowId);
+    const node = kind === 'body' ? root?.querySelector('[data-notes-control="body"]')
+      : [...(root?.querySelectorAll('[data-notes-control="row"]') ?? [])].find(node => node.dataset.noteId === noteId);
+    if (!node?.isConnected || !node.getClientRects().length || node.disabled || node.closest('[inert]')) return;
+    node.focus({ preventScroll: true });
+    if (kind === 'body') node.setSelectionRange(node.value.length, node.value.length);
+    else node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    notesViewState.focusedControl = kind === 'body' ? { control: 'body' } : { control: 'row', noteId };
+  }
+  async function finishFinderView(windowId, focus) {
+    await tick(); await tick();
+    if (!viewWindowAvailable(windowId)) return;
+    const root = managedWindowElement(windowId);
+    const current = document.activeElement;
+    if (root?.contains(current) && current.getClientRects().length && !current.disabled && !current.closest('[inert]')) return;
+    const window = windows.find(window => window.id === windowId);
+    const nodes = [...(root?.querySelectorAll('[data-finder-file-id]') ?? [])];
+    const originalFileId = focus?.node?.dataset?.finderFileId;
+    const node = nodes.find(node => node.dataset.finderFileId === originalFileId
+      && window.finderSelectedFileIds?.includes(originalFileId) && node.getClientRects().length)
+      ?? nodes.find(node => window.finderSelectedFileIds?.includes(node.dataset.finderFileId) && node.getClientRects().length)
+      ?? root?.querySelector('.folder-contents');
+    if (node?.getClientRects().length) node.focus({ preventScroll: true });
+  }
+  function finderViewOptionsPanel(windowId, optionsId) {
+    const options = viewPresentation.options;
+    if (!viewWindowAvailable(windowId) || options?.id !== optionsId || options.windowId !== windowId) return null;
+    const window = windows.find(window => window.id === windowId);
+    if (window.folderId !== options.folderId) return null;
+    const panel = managedWindowElement(windowId)?.querySelector('[data-view-options-id]');
+    return panel?.isConnected && panel.dataset.viewOptionsId === optionsId
+      && panel.dataset.viewOptionsWindowId === windowId && panel.dataset.viewOptionsFolderId === options.folderId
+      && panel.getClientRects().length && !panel.closest('[inert]') ? panel : null;
+  }
+  async function focusFinderViewOptions(windowId, optionsId, control) {
+    await tick(); await tick();
+    const panel = finderViewOptionsPanel(windowId, optionsId);
+    const node = panel && (control === 'panel' ? panel : [...panel.querySelectorAll('[data-view-options-control]')]
+      .find(node => node.dataset.viewOptionsControl === control));
+    if (!node?.getClientRects().length || node.disabled) return false;
+    node.focus({ preventScroll: true });
+    node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    return document.activeElement === node && Boolean(finderViewOptionsPanel(windowId, optionsId));
+  }
+  function finderViewOptionsControls(windowId, optionsId) {
+    const panel = finderViewOptionsPanel(windowId, optionsId);
+    if (!panel) return [];
+    return [panel, ...panel.querySelectorAll('[data-view-options-control]')].map(node => ({
+      control: node.dataset.viewOptionsControl,
+      disabled: Boolean(node.disabled), focused: document.activeElement === node,
+      ...(node.matches('input,select') ? { value: node.type === 'checkbox' ? node.checked : node.value } : {}),
+      ...(node.type === 'range' ? { min: Number(node.min), max: Number(node.max), step: Number(node.step) } : {}),
+    }));
+  }
+  function scrollFinderViewOptions(windowId, optionsId, offsets) {
+    const panel = finderViewOptionsPanel(windowId, optionsId);
+    if (!panel) return null;
+    panel.scrollTop = offsets.top;
+    if (offsets.left !== undefined) panel.scrollLeft = offsets.left;
+    return { top: panel.scrollTop, left: panel.scrollLeft };
+  }
   function ownedNotesWindow(windowId) {
     if (!hasEditWorkflows || !windowInteractionsAvailable() || activeAppId !== 'notes' || activeWindowId !== windowId
       || isAppHidden('notes') || pendingQuitAppIds.includes('notes')) return null;
@@ -1432,6 +1565,7 @@
   }
   function ownedTextDocument(target) {
     const window = ownedNotesWindow(target.windowId);
+    if (hasViewWorkflows && window?.notesPresentation?.mode === 'gallery' && !window.notesPresentation.documentVisible) return null;
     const note = window && visibleNotes(notesState).find(note => note.id === target.noteId && note.id === notesState.selectedId);
     return note ? { window, note } : null;
   }
@@ -2063,7 +2197,7 @@
   }
   function fileWorkflowOtherTextSize() {
     return persistentStringUnits({ version: 1, notes: null, files: null, printing: null,
-      editing: editingPreferences, messages: messagesState, appearance: appearanceState, dock: persistentDockData() });
+      editing: editingPreferences, viewing, messages: messagesState, appearance: appearanceState, dock: persistentDockData() });
   }
   function workflowTextSize() {
     return fileWorkflowOtherTextSize() + persistentStringUnits(notesState) + persistentStringUnits(printingState)
@@ -2097,6 +2231,72 @@
     if (menuBarState?.menuId) await dismissMenuBar?.();
     const result = await commands.execute(request);
     if (result.status === 'rejected' && activeAppId === 'notes') textToolsState.error = result.error.message;
+  }
+  function viewingTargets() {
+    return {
+      ...viewWorkflows.targets(),
+      notesWindows: windows.filter(window => window.appId === 'notes' && !window.utilityKind)
+        .map(window => viewWorkflows.notesForWindow(window.id)),
+      finderWindows: windows.filter(window => window.appId === 'finder' && !window.utilityKind)
+        .map(window => viewWorkflows.finderForWindow(window.id)).filter(Boolean),
+    };
+  }
+  async function performViewRequest(request) {
+    if (!request) return;
+    if (menuBarState?.menuId) await dismissMenuBar?.();
+    await commands.execute(request);
+  }
+  function viewKeydown(event) {
+    if (!hasViewWorkflows || !foreground || disposed || event.defaultPrevented || event.isComposing) return;
+    const original = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus?.node : null;
+    if (!sceneRoot?.contains(event.target) && !sceneRoot?.contains(original)
+      && event.target !== document.body && event.target !== document.documentElement) return;
+    const window = windows.find(window => window.id === activeWindowId), key = event.key.toLowerCase();
+    const pane = event.target?.closest?.('[data-view-options-id]');
+    let request;
+    if (pane && (key === 'escape' || event.metaKey && key === 'w') && !event.altKey) {
+      request = { command: 'finder.view.options.close', target: { windowId: pane.dataset.viewOptionsWindowId,
+        optionsId: pane.dataset.viewOptionsId }, payload: {} };
+    } else if (!event.metaKey) return;
+    else if (activeAppId === 'notes' && window && !window.utilityKind) {
+      const source = viewWorkflows.notesForWindow(window.id);
+      if (!source) return;
+      if (!event.altKey && event.ctrlKey && !event.shiftKey && key === 's')
+        request = { command: 'notes.setSidebarVisible', payload: { visible: !notesState.sidebarVisible } };
+      else if (!event.altKey && !event.ctrlKey && !event.shiftKey && ['1', '2'].includes(key))
+        request = { command: 'notes.view.set', target: { windowId: window.id, folder: notesState.folder },
+          payload: { mode: key === '1' ? 'list' : 'gallery' } };
+      else if (!event.altKey && !event.ctrlKey && event.shiftKey && source.noteId) {
+        const action = event.code === 'Period' || key === '.' || key === '>' ? 'in'
+          : event.code === 'Comma' || key === ',' || key === '<' ? 'out'
+            : event.code === 'Digit0' || key === '0' || key === ')' ? 'reset' : null;
+        if (action) request = { command: 'notes.view.zoom', target: { windowId: window.id, noteId: source.noteId }, payload: { action } };
+      } else if (!event.altKey && !event.ctrlKey && !event.shiftKey && key === 'enter' && source.noteId)
+        request = source.presentation.mode === 'gallery'
+          ? { command: 'notes.view.return', target: { windowId: window.id } }
+          : { command: 'notes.focus', target: { control: 'row', noteId: source.noteId } };
+    } else if (activeAppId === 'finder' && !event.ctrlKey) {
+      const source = window && !window.utilityKind ? viewWorkflows.finderForWindow(window.id) : null;
+      if (!event.altKey && !event.shiftKey && key === 'j')
+        request = window?.utilityKind === 'desktop-view-options' ? { command: 'window.close', target: { windowId: window.id } }
+          : source?.options ? { command: 'finder.view.options.close', target: { windowId: window.id, optionsId: source.options.id } }
+            : source ? { command: 'finder.view.options.open', target: { windowId: window.id, folderId: source.folderId } }
+              : !window ? { command: 'desktop.view.open' } : null;
+      else if (source && !event.altKey && !event.shiftKey && ['1', '2', '3', '4'].includes(key))
+        request = { command: 'finder.view.set', target: { windowId: window.id, folderId: source.folderId },
+          payload: { mode: ['icons', 'list', 'columns', 'gallery'][Number(key) - 1] } };
+      else if (source) {
+        const chrome = event.altKey && !event.shiftKey ? key === 't' ? 'toolbarVisible' : key === 's' ? 'sidebarVisible'
+          : key === 'p' ? 'pathBarVisible' : null
+          : !event.altKey && event.shiftKey && key === 'p' ? 'previewVisible'
+            : !event.altKey && !event.shiftKey && key === '/' ? 'statusBarVisible' : null;
+        if (chrome) request = { command: 'finder.chrome.set', target: { windowId: window.id },
+          payload: { [chrome]: !source.chrome[chrome] } };
+      }
+    }
+    if (!request) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (!event.repeat) void performViewRequest(request);
   }
   function editingKeydown(event) {
     if (!hasEditWorkflows || !foreground || disposed || event.defaultPrevented || event.isComposing) return;
@@ -2193,6 +2393,13 @@
     const finderIds = finderWindow?.finderSelectedFileIds ?? (finderDesktop ? desktopState.selectedFileIds : []);
     const commandMenus = appCommandMenuProviders({ profile, appId, enabled, activeWindow: active,
       ...(hasEditWorkflows ? { editing: editingTargets() } : {}),
+      ...(hasViewWorkflows ? { viewing: {
+        notes: active?.appId === 'notes' && viewWindowAvailable(active.id) ? viewWorkflows.notesForWindow(active.id) : null,
+        finder: finderWindow && viewWindowAvailable(finderWindow.id) ? viewWorkflows.finderForWindow(finderWindow.id) : null,
+        desktop: { available: appId === 'finder' && (!active || active.utilityKind === 'desktop-view-options'),
+          sortBy: desktopState.sortBy, stacks: desktopState.stacks,
+          optionsWindowId: windows.find(window => window.utilityKind === 'desktop-view-options')?.id ?? null },
+      } } : {}),
       notes: appId === 'notes' ? { available: Boolean(notesView && appWindows.some(window => !window.utilityKind && !window.minimized && windowPresented(window))),
         documentAvailable: Boolean(active?.appId === 'notes' && !active.utilityKind && !active.minimized && windowPresented(active)),
         selected: visibleNotes(notesState).find(note => note.id === notesState.selectedId),
@@ -2589,6 +2796,7 @@
       listen(window, 'keydown', dashboardKeydown, true),
       listen(window, 'keydown', spacesKeydown, true),
       listen(window, 'keydown', fullScreenKeydown, true),
+      listen(window, 'keydown', viewKeydown, true),
       listen(window, 'keydown', editingKeydown, true),
       listen(sceneRoot, 'beforeinput', observeTextBeforeInput, true),
       listen(sceneRoot, 'input', observeDraftInput, true),
@@ -2619,6 +2827,7 @@
     }, 1000) : null;
     return () => {
       disposed = true; stopScene?.(); unregister(); unregisterSession?.();
+      viewWorkflows?.dismissOptions();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -2695,6 +2904,12 @@
       ...(hasSpaces ? { spaceId: spaceState.lastDesktopId } : {}),
       ...(macDesktop && appId === 'finder' && !utilityKind ? { folderId: remembered?.window.folderId ?? 'desktop' } : {}),
       ...(hasDockContext && appId === 'settings' && !utilityKind ? { settingsPane: remembered?.window.settingsPane ?? 'dock' } : {}),
+      ...(hasViewWorkflows && !utilityKind && appId === 'finder'
+        ? { finderPresentation: remembered?.window.finderPresentation ?? finderPresentationDefaults(),
+          finderBrowseMode: remembered?.window.finderBrowseMode
+            ?? viewing.finder.folderViews[remembered?.window.folderId ?? 'desktop']?.mode ?? 'icons' } : {}),
+      ...(hasViewWorkflows && !utilityKind && appId === 'notes'
+        ? { notesPresentation: remembered?.window.notesPresentation ?? notesPresentationDefaults(viewing.notes.mode) } : {}),
     });
     if (remembered) pendingWindowViews.set(id, remembered.view);
     if (!runningAppIds.includes(appId)) runningAppIds.push(appId);
@@ -2909,7 +3124,7 @@
     return $state.snapshot({
       seed: { version: 1, notes: notesState, files: { files: macFiles.files.filter(file => !file.readOnly),
         nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime }, messages: messagesState, appearance: appearanceState,
-        printing: printingState, editing: editingPreferences, dock: persistentDockData() },
+        printing: printingState, editing: editingPreferences, viewing, dock: persistentDockData() },
       catalogTimes: Object.fromEntries(macFiles.files.filter(file => file.readOnly).map(file =>
         [file.id, { createdAt: file.createdAt, modifiedAt: file.modifiedAt, addedAt: file.addedAt, lastOpenedAt: file.lastOpenedAt }])),
       dockOrder: { mainOrderAppIds: dock.mainOrderAppIds, secondaryOrderItemIds: dock.secondaryOrderItemIds },
@@ -2983,6 +3198,8 @@
             registerView={registerNotesView}
             {...(hasEditWorkflows ? { windowId: window.id, editing: editingPreferences, dictionaryStatus,
               textTools: textTools.targets(), ontextinput: editNativeText, ontextbeforeinput: observeTextBeforeInput } : {})}
+            {...(hasViewWorkflows ? { workflowView: viewWorkflows.notesForWindow(window.id), sortedState: notesProjection,
+              onviewoptions: () => executeSession({ command: 'app.commandMenu.open', target: { menuId: 'view', appId: 'notes' }, payload: {} }) } : {})}
             active={active && interactive}
             zoomed={window.zoomed}
             fullScreen={window.fullScreen}
@@ -3020,7 +3237,9 @@
         {:else if window.utilityKind === 'desktop-view-options'}
           <MacDesktopViewOptions {profile} options={desktopState.viewOptions} sortBy={desktopState.sortBy} stacks={desktopState.stacks} execute={commands.execute} />
         {:else if macDesktop && window.appId === 'finder'}
-          <MacDesktopFolder {profile} windowId={window.id} folderId={window.folderId} files={macFiles.files} selectedFileIds={window.finderSelectedFileIds ?? []} dockState={desktopState.dock} execute={commands.execute} />
+          <MacDesktopFolder {profile} windowId={window.id} folderId={window.folderId} files={macFiles.files}
+            selectedFileIds={window.finderSelectedFileIds ?? []} dockState={desktopState.dock} execute={commands.execute}
+            {...(hasViewWorkflows ? { viewing, viewPresentation, viewState: viewWorkflows.finderForWindow(window.id), sceneTime: macFiles.sceneTime } : {})} />
         {/if}
       </Window>
 {/snippet}

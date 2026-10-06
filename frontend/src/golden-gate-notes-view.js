@@ -4,7 +4,7 @@ export function createGoldenGateNotesView({ execute, state, presentation, refs, 
   const selected = () => state().notes.find((note) => note.id === state().selectedId);
   const firstLine = (note) => note.text.split('\n', 1)[0];
   const bodyText = (note) => { const newline = note.text.indexOf('\n'); return newline < 0 ? '' : note.text.slice(newline + 1); };
-  const newNote = () => command('create', {}, { focus: true });
+  const newNote = () => execute({ command: 'notes.document.create', target: {}, payload: {} });
   const edit = (title, body) => command('edit', { noteId: selected().id }, { text: body ? `${title}\n${body}` : title });
 
   function controlElement(target) {

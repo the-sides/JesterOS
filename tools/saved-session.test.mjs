@@ -9,6 +9,7 @@ import { desktopStacksDefaults, desktopStacks } from '../frontend/src/desktop-st
 import { macDesktopItems } from '../frontend/src/desktop-file-state.js';
 import { spacesDefaults, spacesItems } from '../frontend/src/spaces.js';
 import { applicationBundleId, createMacApplicationFiles } from '../frontend/src/mac-application-files.js';
+import { finderPresentationDefaults, notesPresentationDefaults } from '../frontend/src/viewing-state.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const bounds = () => ({ x: 140, y: 80, width: 848, height: 592, scale: 0.8 });
@@ -39,7 +40,10 @@ function addWindow(scene, appId, fields = {}, userId = 'local-alex') {
   const id = fields.id ?? `${userId === 'local-casey' ? 'local-casey--' : ''}${appId}-window-${allocation}`;
   const window = { id, appId, title: profile.applications[appId].name, minimized: false, fullScreen: false, zoomed: false,
     bounds: bounds(), restoreBounds: null, spaceId: scene.spaces.lastDesktopId,
-    ...(appId === 'finder' ? { folderId: 'desktop' } : {}), ...(appId === 'settings' ? { settingsPane: 'dock' } : {}), ...fields };
+    ...(appId === 'finder' ? { folderId: 'desktop' } : {}), ...(appId === 'settings' ? { settingsPane: 'dock' } : {}),
+    ...(!fields.utilityKind && appId === 'finder' ? { finderPresentation: finderPresentationDefaults(),
+      finderBrowseMode: scene.seed.viewing.finder.folderViews.desktop?.mode ?? 'icons' } : {}),
+    ...(!fields.utilityKind && appId === 'notes' ? { notesPresentation: notesPresentationDefaults(scene.seed.viewing.notes.mode) } : {}), ...fields };
   scene.windows.push(window);
   scene.views[id] = emptyView();
   if (!scene.runningAppIds.includes(appId)) scene.runningAppIds.push(appId);
@@ -554,4 +558,19 @@ test('restored app utilities reject duplicate owners, unsupported Settings owner
       scene.views[window.id].selections = [{ key: 'notes-body', noteId: 'note-1', start: 0, end: 10, direction: 'none' }]; },
     (_, scene) => { const window = addWindow(scene, 'notes', { utilityKind: 'application-about' }); scene.views[window.id].focusKey = 'notes-body'; },
   ]) rejects(change);
+});
+
+test('Saved View state rejects impossible chrome, hidden List documents, invalid browsing modes and utility contamination atomically', () => {
+  rejects((snapshot, scene) => {
+    addWindow(scene, 'finder', { finderPresentation: { ...finderPresentationDefaults(), toolbarVisible: false } });
+  });
+  rejects((snapshot, scene) => {
+    addWindow(scene, 'notes', { notesPresentation: { mode: 'list', documentVisible: false } });
+  });
+  rejects((snapshot, scene) => {
+    addWindow(scene, 'finder', { finderBrowseMode: 'tiles' });
+  });
+  rejects((snapshot, scene) => {
+    addWindow(scene, 'notes', { utilityKind: 'application-about', finderBrowseMode: 'icons' });
+  });
 });

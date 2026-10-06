@@ -71,10 +71,12 @@ export function visibleNotes(state) {
       if (!deleted && a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       if (state.preferences) {
         const sortBy = state.preferences.sortBy;
-        if (sortBy === 'title') return titleOrder.compare(noteTitle(a), noteTitle(b)) || compareIds(a, b);
+        const direction = state.preferences.sortDirection === 'ascending' ? 1
+          : state.preferences.sortDirection === 'descending' ? -1 : sortBy === 'title' ? 1 : -1;
+        if (sortBy === 'title') return direction * titleOrder.compare(noteTitle(a), noteTitle(b)) || compareIds(a, b);
         const primary = sortBy === 'date-created' ? 'createdAt' : 'updatedAt';
         const secondary = sortBy === 'date-created' ? 'updatedAt' : 'createdAt';
-        return b[primary] - a[primary] || b[secondary] - a[secondary] || compareIds(a, b);
+        return direction * (a[primary] - b[primary] || a[secondary] - b[secondary]) || compareIds(a, b);
       }
       return b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || a.id.localeCompare(b.id);
     });

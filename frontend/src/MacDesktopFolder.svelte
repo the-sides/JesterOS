@@ -3,10 +3,12 @@
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
   import GoldenGateIcon from './GoldenGateIcon.svelte';
+  import GoldenGateFinderWindow from './GoldenGateFinderWindow.svelte';
   import { isTrashed } from './windows11-app-helpers.js';
   import { dockFolderItemId } from './mac-dock-folders.js';
 
-  let { profile, windowId, folderId, files, selectedFileIds = [], dockState, execute } = $props();
+  let { profile, windowId, folderId, files, selectedFileIds = [], dockState, execute,
+    viewing, viewPresentation, viewState, sceneTime } = $props();
   const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : profile.renderer === 'sonoma' ? SonomaIcon
     : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   const store = $derived({ files });
@@ -50,6 +52,10 @@
   }
 </script>
 
+{#if profile.capabilities.includes('shell.view-workflows')}
+  <GoldenGateFinderWindow {profile} {windowId} {folderId} {files} {selectedFileIds} {dockState} {execute}
+    {viewing} {viewPresentation} {viewState} {sceneTime} />
+{:else}
 <section class="mac-folder" class:sonoma={profile.capabilities.includes('shell.window-green-menu')} aria-label={`${folder?.name ?? 'Folder'} contents`} data-folder-id={folderId}>
   <nav class="folder-navigation" aria-label="Folder navigation">
     <button type="button" aria-label="Enclosing folder" title="Enclosing folder" disabled={!parent || parent.kind !== 'folder'} onclick={() => navigate(parent.id)}>
@@ -97,6 +103,7 @@
   </div>
   <footer class="folder-status">{contents.length} {contents.length === 1 ? 'item' : 'items'}</footer>
 </section>
+{/if}
 
 <style>
   .mac-folder { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--appearance-surface, white); color: var(--appearance-ink, #242424); font-family: var(--ui-font); font-size: 12px; }

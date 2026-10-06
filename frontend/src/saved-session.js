@@ -8,6 +8,7 @@ import { STACK_GROUPS, STACK_SORTS, desktopStacks } from './desktop-stacks-model
 import { spacesItems, windowSpaceId } from './spaces.js';
 import { macDockApps } from './mac-dock-model.js';
 import { dockFolderItemId } from './mac-dock-folders.js';
+import { finderPresentationSchema, notesPresentationSchema } from './viewing-state.js';
 
 const PROFILE_ID = 'macos-golden-gate-27.0.1';
 const STORAGE_KEY = `jesteros:${PROFILE_ID}:saved-session:v1`;
@@ -43,6 +44,8 @@ const windowRecord = object({
   id: { ...identity, maxLength: 256 }, appId: identity, title: string(4096), minimized: flag, fullScreen: flag, zoomed: flag,
   bounds, restoreBounds: nullable(bounds), spaceId: desktopId,
   folderId: safeKey(), finderSelectedFileIds: ids(safeKey()), settingsPane: choice('dock', 'appearance'),
+  finderPresentation: finderPresentationSchema, notesPresentation: notesPresentationSchema,
+  finderBrowseMode: choice('icons', 'list', 'columns', 'gallery'),
   utilityKind: choice('desktop-info', 'desktop-view-options', 'application-about', 'application-settings'), fileId: safeKey(), infoSections: object({ general: flag, name: flag }),
 }, ['id', 'appId', 'title', 'minimized', 'fullScreen', 'zoomed', 'bounds', 'restoreBounds', 'spaceId']);
 const rootSnapshot = object({
@@ -215,7 +218,9 @@ function validateRoot(scene, userId, profile) {
     if (window.zoomed !== (window.restoreBounds !== null)) return invalid('Zoomed windows require retained normal restore bounds; unzoomed windows must not have restore bounds.');
     if (window.utilityKind) {
       if (Object.hasOwn(window, 'folderId') || Object.hasOwn(window, 'finderSelectedFileIds')
-        || Object.hasOwn(window, 'settingsPane')) return invalid('Utilities cannot contain ordinary Finder or System Settings window fields.');
+        || Object.hasOwn(window, 'finderPresentation') || Object.hasOwn(window, 'notesPresentation')
+        || Object.hasOwn(window, 'finderBrowseMode')
+        || Object.hasOwn(window, 'settingsPane')) return invalid('Utilities cannot contain ordinary app window presentation fields.');
       if (window.utilityKind === 'application-about' || window.utilityKind === 'application-settings') {
         if (window.utilityKind === 'application-settings' && window.appId !== 'notes') return invalid('Only Notes has a represented app Settings utility.');
         if (Object.hasOwn(window, 'fileId') || Object.hasOwn(window, 'infoSections')) return invalid('App utilities cannot contain desktop-file metadata.');
@@ -231,6 +236,14 @@ function validateRoot(scene, userId, profile) {
       if (Object.hasOwn(window, 'infoSections') || (window.appId === 'finder' ? !Object.hasOwn(window, 'folderId')
         : Object.hasOwn(window, 'folderId') || Object.hasOwn(window, 'finderSelectedFileIds'))) return invalid('Only ordinary Finder windows have folder and Finder selection state.');
       if (window.appId === 'settings' ? !Object.hasOwn(window, 'settingsPane') : Object.hasOwn(window, 'settingsPane')) return invalid('Only System Settings windows have a required Golden Gate settings pane.');
+      if (window.appId === 'finder' ? !Object.hasOwn(window, 'finderPresentation') || !Object.hasOwn(window, 'finderBrowseMode')
+        : Object.hasOwn(window, 'finderPresentation') || Object.hasOwn(window, 'finderBrowseMode')) return invalid('Only ordinary Finder windows require Finder presentation and browsing mode.');
+      if (window.appId === 'notes' ? !Object.hasOwn(window, 'notesPresentation')
+        : Object.hasOwn(window, 'notesPresentation')) return invalid('Only ordinary Notes windows require Notes presentation state.');
+      if (window.finderPresentation && !window.finderPresentation.toolbarVisible
+        && window.finderPresentation.sidebarVisible) return invalid('The Finder sidebar cannot be visible without its toolbar.');
+      if (window.notesPresentation?.mode === 'list'
+        && !window.notesPresentation.documentVisible) return invalid('Notes List view requires its document editor.');
       if (Object.hasOwn(window, 'folderId') && (files.has(window.folderId)
         ? files.get(window.folderId).kind !== 'folder' : !matches(window.folderId, identity))) return invalid('Finder locations must be existing folders or safe retained user-folder identities.');
       if (window.finderSelectedFileIds?.some(id => files.has(id)

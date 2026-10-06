@@ -1,6 +1,9 @@
 // Golden Gate represented app menus. Launch-only apps expose shell/window rows,
 // File uses real represented document/location operations; broader Edit/View/Help have their own backlog items.
 import { controlDocumentOffset } from './text-native-selection.js';
+import { FINDER_VIEW_FIELDS } from './finder-view-model.js';
+import { STACK_GROUPS, STACK_SORTS, STACK_LABELS } from './desktop-stacks-model.js';
+import { DESKTOP_SORTS } from './desktop-context-model.js';
 export const APP_COMMAND_MENU_IDS = ['file', 'edit', 'format', 'view', 'go', 'conversation', 'history', 'bookmarks', 'help'];
 const commonHeadings = ['file', 'edit', 'view', 'help'];
 const appHeadings = {
@@ -90,8 +93,98 @@ function editMenuItems({ appId, window, selected, noteView, editing, finder }) {
   return rows;
 }
 
+function viewMenuItems({ appId, window, notes, finder, viewing }) {
+  const separator = id => ({ id, label: '', enabled: false, separator: true });
+  if (appId === 'notes') {
+    const source = viewing?.notes, available = Boolean(source && window && !window.utilityKind);
+    const owner = available ? { windowId: window.id, folder: source.folder } : null;
+    const set = payload => request('notes.view.set', owner ?? {}, payload);
+    const zoomOwner = available && source.noteId ? { windowId: window.id, noteId: source.noteId } : null;
+    const editableSort = available && source.folder === 'notes';
+    return [
+      leaf('sidebar', notes?.sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar', available,
+        request('notes.setSidebarVisible', {}, { visible: !notes?.sidebarVisible }), { shortcut: '⌃⌘S' }),
+      leaf(`notes-list:${window?.id}`, 'as List', available, set({ mode: 'list' }),
+        { shortcut: '⌘1', checked: source?.view.mode === 'list', radio: true }),
+      leaf(`notes-gallery:${window?.id}`, 'as Gallery', available, set({ mode: 'gallery' }),
+        { shortcut: '⌘2', checked: source?.view.mode === 'gallery', radio: true }),
+      unavailable('attachments-browser', 'Show Attachments Browser', '⌘3'),
+      separator('separator-note-view'),
+      leaf('show-note-count', 'Show Note Count', available, set({ showNoteCount: !source?.view.showNoteCount }),
+        { checked: source?.view.showNoteCount ?? false }),
+      { id: 'sort-notes', label: 'Sort By', enabled: editableSort, children: [
+        ...[['default', 'Use Default Sort Order'], ['date-edited', 'Date Edited'], ['date-created', 'Date Created'], ['title', 'Title']]
+          .map(([key, text]) => leaf(`note-sort-${key}`, text, editableSort, set({ sortBy: key }),
+            { checked: source?.view.sortBy === key, radio: true })),
+        separator('separator-note-sort-direction'),
+        ...[['default', 'Default Order'], ['ascending', 'Ascending'], ['descending', 'Descending']]
+          .map(([key, text]) => leaf(`note-order-${key}`, text, editableSort, set({ sortDirection: key }),
+            { checked: source?.view.sortDirection === key, radio: true })),
+      ] },
+      separator('separator-note-zoom'),
+      leaf('zoom-in', 'Zoom In', zoomOwner && source.presentation.documentVisible && source.zoom < 2,
+        request('notes.view.zoom', zoomOwner ?? {}, { action: 'in' }), { shortcut: '⇧⌘.' }),
+      leaf('zoom-out', 'Zoom Out', zoomOwner && source.presentation.documentVisible && source.zoom > .5,
+        request('notes.view.zoom', zoomOwner ?? {}, { action: 'out' }), { shortcut: '⇧⌘,' }),
+      leaf('zoom-default', 'Actual Size', zoomOwner && source.presentation.documentVisible,
+        request('notes.view.zoom', zoomOwner ?? {}, { action: 'reset' }), { shortcut: '⇧⌘0' }),
+    ];
+  }
+  if (appId !== 'finder') return [unavailable('show-toolbar', 'Show Toolbar')];
+  const source = viewing?.finder, desktop = Boolean(viewing?.desktop?.available);
+  const chromeAvailable = Boolean(source && window && !window.utilityKind);
+  const available = chromeAvailable && source.folderAvailable;
+  const owner = available ? { windowId: window.id, folderId: source.folderId } : null;
+  const set = payload => request('finder.view.set', owner ?? {}, payload);
+  const chrome = (key, value) => request('finder.chrome.set', { windowId: window?.id }, { [key]: value });
+  const modes = [['icons', 'as Icons'], ['list', 'as List'], ['columns', 'as Columns'], ['gallery', 'as Gallery']];
+  return [
+    ...modes.map(([mode, text], index) => leaf(`finder-view-${mode}:${window?.id ?? 'desktop'}:${source?.folderId ?? 'desktop'}`,
+      text, available, set({ mode }), { shortcut: `⌘${index + 1}`, checked: available ? source.view.mode === mode : desktop && mode === 'icons', radio: true })),
+    separator('separator-finder-arrangement'),
+    { id: 'finder-sort', label: 'Sort By', enabled: available || desktop, children:
+      (desktop ? (viewing.desktop.stacks?.enabled ? STACK_SORTS : DESKTOP_SORTS)
+        .map(key => [key, key === 'none' ? 'None' : STACK_LABELS[key]]) : Object.entries(FINDER_VIEW_FIELDS))
+        .map(([key, text]) => leaf(`finder-sort-${key}`, text, available || desktop,
+          desktop ? request(viewing.desktop.stacks?.enabled ? 'desktop.stacks.sort' : 'desktop.sort', {}, { by: key }) : set({ sortBy: key }),
+          { checked: desktop ? (viewing.desktop.stacks?.enabled ? viewing.desktop.stacks.sortBy : viewing.desktop.sortBy) === key
+            : source?.view.sortBy === key, radio: true })) },
+    { id: 'finder-group', label: desktop ? 'Group Stacks By' : 'Group By',
+      enabled: available || desktop && viewing?.desktop.stacks?.enabled, children:
+      (desktop ? STACK_GROUPS.map(key => [key, STACK_LABELS[key]])
+        : [['none', 'None'], ...Object.entries(FINDER_VIEW_FIELDS).filter(([key]) => key !== 'name')])
+        .map(([key, text]) => leaf(`finder-group-${key}`, text,
+          available || desktop && viewing?.desktop.stacks?.enabled,
+          desktop ? request('desktop.stacks.group', {}, { by: key }) : set({ groupBy: key }),
+          { checked: desktop ? viewing?.desktop.stacks?.groupBy === key : source?.view.groupBy === key, radio: true })) },
+    ...(desktop ? [
+      leaf('finder-use-stacks', 'Use Stacks', true, request('desktop.stacks.set', {}, { enabled: !viewing?.desktop.stacks?.enabled }),
+        { checked: viewing?.desktop.stacks?.enabled ?? false }),
+      leaf('finder-clean-up', 'Clean Up', viewing?.desktop.sortBy === 'none' && !viewing?.desktop.stacks?.enabled, request('desktop.cleanup')),
+    ] : []),
+    separator('separator-finder-chrome'),
+    leaf('finder-toolbar', source?.chrome.toolbarVisible ? 'Hide Toolbar' : 'Show Toolbar', chromeAvailable,
+      chrome('toolbarVisible', !source?.chrome.toolbarVisible), { shortcut: '⌥⌘T' }),
+    leaf('finder-sidebar', source?.chrome.sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar', chromeAvailable && source.chrome.toolbarVisible,
+      chrome('sidebarVisible', !source?.chrome.sidebarVisible), { shortcut: '⌥⌘S' }),
+    leaf('finder-preview', source?.chrome.previewVisible ? 'Hide Preview' : 'Show Preview', chromeAvailable,
+      chrome('previewVisible', !source?.chrome.previewVisible), { shortcut: '⇧⌘P' }),
+    leaf('finder-path', source?.chrome.pathBarVisible ? 'Hide Path Bar' : 'Show Path Bar', chromeAvailable,
+      chrome('pathBarVisible', !source?.chrome.pathBarVisible), { shortcut: '⌥⌘P' }),
+    leaf('finder-status', source?.chrome.statusBarVisible ? 'Hide Status Bar' : 'Show Status Bar', chromeAvailable,
+      chrome('statusBarVisible', !source?.chrome.statusBarVisible), { shortcut: '⌘/' }),
+    separator('separator-finder-options'),
+    leaf('finder-view-options', source?.options || desktop && viewing.desktop.optionsWindowId ? 'Hide View Options' : 'Show View Options', available || desktop,
+      desktop ? viewing.desktop.optionsWindowId
+        ? request('window.close', { windowId: viewing.desktop.optionsWindowId }) : request('desktop.view.open') : source?.options
+        ? request('finder.view.options.close', { windowId: window.id, optionsId: source.options.id })
+        : request('finder.view.options.open', owner ?? {}), { shortcut: '⌘J' }),
+    unavailable('customize-toolbar', 'Customize Toolbar…'),
+  ];
+}
+
 /** Inputs are the current owner and real document/window presentation, never a second menu selection model. */
-export function appCommandMenuProviders({ profile, appId, enabled, activeWindow, notes, finder, editing }) {
+export function appCommandMenuProviders({ profile, appId, enabled, activeWindow, notes, finder, editing, viewing }) {
   const app = profile.applications[appId];
   if (!app) return [];
   const window = activeWindow?.appId === appId ? activeWindow : null;
@@ -158,8 +251,10 @@ export function appCommandMenuProviders({ profile, appId, enabled, activeWindow,
       ] }] : []),
     ],
     format: [unavailable('bold', 'Bold', '⌘B'), unavailable('italic', 'Italic', '⌘I'), unavailable('underline', 'Underline', '⌘U')],
-    view: appId === 'notes' ? [leaf('sidebar', notes?.sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar', noteView,
-      request('notes.setSidebarVisible', {}, { visible: !notes?.sidebarVisible }))] : [unavailable('show-toolbar', 'Show Toolbar')],
+    view: profile.capabilities.includes('shell.view-workflows')
+      ? viewMenuItems({ appId, window, notes, finder, viewing })
+      : appId === 'notes' ? [leaf('sidebar', notes?.sidebarVisible ? 'Hide Sidebar' : 'Show Sidebar', noteView,
+        request('notes.setSidebarVisible', {}, { visible: !notes?.sidebarVisible }))] : [unavailable('show-toolbar', 'Show Toolbar')],
     go: [unavailable('go-to-folder', 'Go to Folder…', '⇧⌘G')],
     conversation: [unavailable('new-conversation', 'New Conversation'), unavailable('details', 'Details')],
     history: [unavailable('back', 'Back', '⌘['), unavailable('forward', 'Forward', '⌘]')],

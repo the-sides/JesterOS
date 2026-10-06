@@ -6,7 +6,7 @@ import { visibleNotes, createNote, updateNote, togglePin, trashNote, restoreNote
  * {control,noteId?,folder?,item?}; scroll targets use {area:'list'|'editor'}.
  * Data commands work while unmounted. Only explicit presentation/focus requests
  * use the registered view, and never reopen a closed or minimized window. */
-export function createNotesCommands(noteState, viewState, { getView, focusWindow, isVisible }) {
+export function createNotesCommands(noteState, viewState, { getView, focusWindow, isVisible, prepareFocus }) {
   viewState.scroll ??= { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } };
   const invalid = () => rejected('invalid_arguments', 'Invalid Notes target or payload.');
   const unavailable = () => rejected('unavailable', 'Notes presentation is not available.');
@@ -38,6 +38,7 @@ export function createNotesCommands(noteState, viewState, { getView, focusWindow
     if (viewState.focusedControl && !validControl(viewState.focusedControl)) viewState.focusedControl = null;
   }
   async function focus(target, select = false, activate = true) {
+    prepareFocus?.(target);
     if (activate) focusWindow();
     await tick();
     if (!mounted() || !validControl(target)) return;

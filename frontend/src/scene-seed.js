@@ -2,6 +2,7 @@ import { createNotesState, visibleNotes } from './notes-state.js';
 import { notesPreferencesDefaults, notesPreferencesSchema } from './notes-preferences.js';
 import { printingDefaults, printingSchema, validatePrintingState } from './printing-state.js';
 import { editingPreferencesDefaults, editingPreferencesSchema, validateEditingPreferences } from './editing-state.js';
+import { viewingDefaults, viewingSchema, validateViewing } from './viewing-state.js';
 import { createMacDesktopFileStore, validMacDesktopName, liveMacFileRecords } from './desktop-file-state.js';
 import { appearanceDefaults, appearancePresets } from './appearance.js';
 import { macDockDefaults } from './mac-dock-model.js';
@@ -44,6 +45,7 @@ export const sceneSeedSchema = {
     nextFileId: counter(1), sceneTime: timestamp }),
     printing: printingSchema,
     editing: editingPreferencesSchema,
+    viewing: viewingSchema,
     messages: object({ pinned: array(object({ ...avatar, selected: flag }), 128),
       conversations: array(object({ ...avatar, time: string(256), preview: string(4096) })),
       thread: object({ ...avatar, timestampLabel: string(256), timestamp: { ...string(32, 1),
@@ -72,6 +74,7 @@ export function createDefaultSceneSeed(profile) {
     files: createMacDesktopFileStore(profile, sceneTime),
     printing: printingDefaults(),
     editing: editingPreferencesDefaults(),
+    viewing: viewingDefaults(),
     messages: {
       pinned: [
         { name: 'Casey', initials: 'CR', tint: '#d39a72', selected: false },
@@ -166,6 +169,8 @@ export function validateSceneSeed(seed, profile) {
   if (!printing.ok) return printing;
   const editing = validateEditingPreferences(seed.editing);
   if (!editing.ok) return editing;
+  const viewing = validateViewing(seed.viewing, { notes: seed.notes, files: seed.files }, profile);
+  if (!viewing.ok) return viewing;
 
   const store = seed.files, files = new Map(store.files.map(file => [file.id, file]));
   const icons = new Set(['drive', 'folder', 'pdf', ...(profile.capabilities.includes('shell.file-workflows') ? ['document'] : []),
