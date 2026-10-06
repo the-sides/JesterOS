@@ -1,8 +1,8 @@
 import { defineCommand, NONE, identity, flag, offset, choice, object, empty } from './command-schema.js';
 
-const macProfiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0'];
+const macProfiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const allProfiles = [...macProfiles, 'windows11-23h2-22631.2428'];
-const sonoma = ['macos-sonoma-14.0'];
+const modernMacProfiles = ['macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const window = object({ windowId: identity }), item = object({ itemId: identity });
 const side = choice('left', 'right'), ratio = { type: 'number', minimum: 0.2, maximum: 0.8 };
 const nullableIdentity = { oneOf: [identity, { type: 'null' }] };
@@ -11,12 +11,12 @@ const picking = object({ windowId: identity, side, selectedWindowId: nullableIde
 const visible = 'The original managed stage is mounted and laid out, with no native global modal.';
 const eligible = 'An installed original managed window is live, visible, nonminimized, and not pending application quit.';
 const picker = 'The foreground initiator owns a mounted picker; the target is an exact live eligible original candidate rendered there.';
-const menu = 'The visible active Sonoma window owns a mounted native green-button menu and the exact requested enabled rendered item.';
+const menu = 'The visible active modern macOS window owns a mounted native green-button menu and the exact requested enabled rendered item.';
 const membership = ['windows[].fullScreen', 'presentation.splitViews'];
 const presentation = ['presentation.pairing', 'presentation.greenMenu', 'presentation.revealed'];
 const focus = ['activeWindowId', 'activeAppId'];
 const define = (name, capability, target, payload, requires, effects, data, result) => defineCommand(
-  capability === 'shell.window-green-menu' ? sonoma : capability === 'shell.split-view' ? macProfiles : allProfiles,
+  capability === 'shell.window-green-menu' ? modernMacProfiles : capability === 'shell.split-view' ? macProfiles : allProfiles,
   name, capability, target, payload, requires, effects, data, NONE, result);
 const full = (...args) => define(args[0], 'shell.full-screen', ...args.slice(1));
 const split = (...args) => define(args[0], 'shell.split-view', ...args.slice(1));

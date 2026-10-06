@@ -1,6 +1,6 @@
 import { defineCommand, NONE, identity, flag, offset, choice, object, empty, match } from './command-schema.js';
 
-const profiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0'];
+const profiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const capability = 'shell.dock-stacks';
 const define = (...args) => {
   const [name, descriptor] = defineCommand(profiles, args[0], capability, ...args.slice(1));

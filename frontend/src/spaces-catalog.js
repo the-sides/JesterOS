@@ -1,6 +1,6 @@
 import { defineCommand, NONE, identity, flag, offset, choice, object, empty } from './command-schema.js';
 
-const macProfiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0'];
+const macProfiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const space = object({ spaceId: identity }), window = object({ windowId: identity });
 const item = object({ itemId: identity }), region = choice('windows', 'spaces');
 const ids = { type: 'array', items: identity };

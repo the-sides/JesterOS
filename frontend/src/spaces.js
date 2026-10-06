@@ -1,6 +1,6 @@
 import { isRecord, rejected } from './feature-commands.js';
 
-const macProfiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0'];
+const macProfiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const supported = profile => profile?.family === 'macos' && macProfiles.includes(profile.id)
   && profile.capabilities.includes('shell.mission-control');
 const identity = value => typeof value === 'string' && value.length > 0;

@@ -2,8 +2,10 @@ import { applications, desktopFiles } from './mojave-applications.js';
 import { highSierraProfile } from './high-sierra-profile.js';
 import { sonomaProfile } from './sonoma-profile.js';
 import { windows11Profile } from './windows11-profile.js';
+import { goldenGateProfile } from './golden-gate-profile.js';
 
-export const DEFAULT_PROFILE_ID = 'macos-mojave-10.14';
+export const MOJAVE_PROFILE_ID = 'macos-mojave-10.14';
+export const DEFAULT_PROFILE_ID = goldenGateProfile.id;
 
 function freezeTree(value) {
   if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -14,8 +16,8 @@ function freezeTree(value) {
 }
 
 const profiles = freezeTree({
-  [DEFAULT_PROFILE_ID]: {
-    id: DEFAULT_PROFILE_ID,
+  [MOJAVE_PROFILE_ID]: {
+    id: MOJAVE_PROFILE_ID,
     name: 'macOS Mojave',
     family: 'macos',
     version: '10.14',
@@ -42,6 +44,7 @@ const profiles = freezeTree({
   [highSierraProfile.id]: highSierraProfile,
   [sonomaProfile.id]: sonomaProfile,
   [windows11Profile.id]: windows11Profile,
+  [goldenGateProfile.id]: goldenGateProfile,
 });
 
 export function getOSProfile(id) {

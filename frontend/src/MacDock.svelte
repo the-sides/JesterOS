@@ -3,6 +3,7 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
   import MacDockTrash from './MacDockTrash.svelte';
 
   let {
@@ -10,8 +11,8 @@
     execute, renderWindowTile, presentationVisible, missionControlOpen = false, launchpadOpen = false, element = $bindable(),
   } = $props();
 
-  const modern = $derived(profile.renderer === 'sonoma');
-  const Icon = $derived(modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const modern = $derived(profile.capabilities.includes('shell.window-green-menu'));
+  const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   const preferences = $derived(dockState.preferences);
   const main = $derived(applications.main);
   const recent = $derived(profile.renderer === 'high-sierra' || !preferences.showRecent ? [] : applications.recent);

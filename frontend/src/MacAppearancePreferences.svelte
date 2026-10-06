@@ -3,7 +3,7 @@
   import { appearancePresets, appearanceOptions, appearanceColor } from './appearance.js';
 
   let { profile, state: appearance, execute } = $props();
-  const modern = $derived(profile.renderer === 'sonoma');
+  const modern = $derived(profile.capabilities.includes('shell.window-green-menu'));
   const highSierra = $derived(profile.renderer === 'high-sierra');
   const options = $derived(appearanceOptions(profile));
   const accents = $derived(appearancePresets.filter(preset => options.accents.includes(preset.id)));

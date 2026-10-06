@@ -56,7 +56,7 @@ export function macDockContextItems(profile, state, windows, runningAppIds, acti
   if (state.context?.kind === 'dock') return [
     { id: 'auto-hide', label: state.preferences.autoHide ? 'Turn Hiding Off' : 'Turn Hiding On', enabled: true },
     { id: 'magnification', label: state.preferences.magnification ? 'Turn Magnification Off' : 'Turn Magnification On', enabled: true },
-    { id: 'dock-preferences', label: profile.renderer === 'sonoma' ? 'Dock Settings…' : 'Dock Preferences…', enabled: true, separatorBefore: true },
+    { id: 'dock-preferences', label: profile.capabilities.includes('shell.window-green-menu') ? 'Dock Settings…' : 'Dock Preferences…', enabled: true, separatorBefore: true },
   ];
   const appId = state.context?.appId;
   if (!appId || !Object.hasOwn(profile.applications, appId)) return [];

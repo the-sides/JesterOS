@@ -3,6 +3,7 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
 
   let { profile, state: overview, spaces, windows, activeSpaceId, execute, onlayout, sceneRect } = $props();
   let root = $state();
@@ -23,8 +24,8 @@
   let dragFrame = 0;
   let suppressedClick = null;
   const pendingScroll = { windows: null, spaces: null };
-  const modern = $derived(profile.renderer === 'sonoma');
-  const Icon = $derived(modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const modern = $derived(profile.capabilities.includes('shell.window-green-menu'));
+  const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   const desktopCount = $derived(spaces.filter(space => space.type === 'desktop').length);
   const request = (command, target = {}, payload = {}) => execute({ command, target, payload });
   const mission = (name, target = {}, payload = {}) => request(`shell.missionControl.${name}`, target, payload);
@@ -135,7 +136,7 @@
     let cancelled = false;
     const ancestors = [];
     for (let node = container.parentElement; node; node = node.parentElement) ancestors.push(node);
-    const dock = container.closest('[data-profile-id]')?.querySelector('[data-dock-root]') ?? document.querySelector('[data-dock-root]');
+    const dock = container.closest('[data-profile-id]')?.querySelector('[data-dock-root]');
     function measure() {
       if (cancelled || !container.isConnected || root !== container) return;
       const viewport = window.visualViewport, origin = container.getBoundingClientRect();

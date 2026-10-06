@@ -82,7 +82,7 @@ export function applicationMenuItems(state, profile, appId, runningAppIds, pendi
   return [
     { id: 'about', label: `About ${app.name}`, enabled: false },
     { id: 'separator-about', label: '', enabled: false, separator: true },
-    { id: 'preferences', label: profile.renderer === 'sonoma' ? 'Settings…' : 'Preferences…', shortcut: '⌘,', enabled: false },
+    { id: 'preferences', label: profile.capabilities.includes('shell.window-green-menu') ? 'Settings…' : 'Preferences…', shortcut: '⌘,', enabled: false },
     { id: 'separator-preferences', label: '', enabled: false, separator: true },
     { id: 'services', label: 'Services', enabled: false, submenu: true },
     { id: 'separator-services', label: '', enabled: false, separator: true },

@@ -1,0 +1,181 @@
+/* Authored Golden Gate document surfaces; guide-informed geometry, not VM measurements. */
+.golden-gate-notes,
+.golden-gate-messages {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  color: var(--appearance-ink, #242426);
+  font-family: var(--golden-gate-font, sans-serif);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--appearance-panel, #f2f2f3) 88%, transparent);
+  backdrop-filter: blur(30px) saturate(1.25);
+  container-type: inline-size;
+}
+.golden-gate-notes *,
+.golden-gate-messages * { box-sizing: border-box; }
+.golden-gate-notes button,
+.golden-gate-messages button,
+.golden-gate-notes input,
+.golden-gate-messages input,
+.golden-gate-notes textarea { font: inherit; color: inherit; }
+.golden-gate-document-symbol { width: 19px; height: 19px; flex-shrink: 0; display: block; }
+.golden-gate-document-tool {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: default;
+}
+.golden-gate-document-capsule,
+.golden-gate-document-tool-group,
+.golden-gate-document-search {
+  border: 1px solid var(--appearance-light-edge, rgb(255 255 255 / 86%));
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--appearance-card, #fff) 74%, transparent);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 5%), inset 0 0 0 1px rgb(128 128 128 / 4%);
+}
+.golden-gate-document-tool-group { display: flex; align-items: center; padding: 1px 3px; }
+.golden-gate-document-tool:disabled { opacity: .38; }
+.golden-gate-document-tool:hover:not(:disabled) { background: var(--appearance-hover, rgb(0 0 0 / 7%)); }
+.golden-gate-notes button:focus-visible,
+.golden-gate-messages button:focus-visible { outline: 2px solid var(--appearance-focus, #b78a20); outline-offset: -2px; }
+.golden-gate-document-search { display: flex; align-items: center; gap: 5px; height: 32px; padding: 0 9px; color: var(--appearance-muted, #78787d); }
+.golden-gate-document-search .golden-gate-document-symbol { width: 15px; height: 15px; }
+.golden-gate-document-search input { min-width: 0; width: 100%; padding: 0; border: 0; outline: none; background: none; font-size: 12px; }
+.golden-gate-document-search input::placeholder { color: var(--appearance-muted, #818186); opacity: 1; }
+.golden-gate-document-search:focus-within { outline: 2px solid var(--appearance-focus, #c99a28); outline-offset: 1px; }
+
+/* A single continuous toolbar, floating controls, edge-to-edge folder material. */
+.golden-gate-notes { --golden-gate-folder-width: 166px; --golden-gate-list-width: 202px; display: grid; grid-template-rows: 54px minmax(0, 1fr); }
+.golden-gate-notes-toolbar { display: grid; grid-template-columns: var(--golden-gate-folder-width) var(--golden-gate-list-width) minmax(0, 1fr); align-items: center; min-width: 0; gap: 0; padding-right: 10px; background: color-mix(in srgb, var(--appearance-panel, #f7f7f8) 64%, transparent); }
+.golden-gate-notes-window-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px 0 16px; }
+.golden-gate-notes-collection-tools { display: flex; align-items: center; gap: 7px; justify-content: space-between; min-width: 0; padding: 0 12px; }
+.golden-gate-notes-collection-title { display: flex; min-width: 0; flex-direction: column; line-height: 16px; }
+.golden-gate-notes-collection-title strong { font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.golden-gate-notes-collection-title > span { font-size: 10px; color: var(--appearance-muted, #828287); }
+.golden-gate-notes-writing-tools { display: flex; align-items: center; gap: 7px; min-width: 0; padding-left: 8px; }
+.golden-gate-notes-search { margin-left: auto; width: 130px; min-width: 60px; flex: 1 1 110px; }
+.golden-gate-notes-columns { display: grid; grid-template-columns: var(--golden-gate-folder-width) var(--golden-gate-list-width) minmax(0, 1fr); min-height: 0; min-width: 0; }
+.golden-gate-notes.folders-hidden .golden-gate-notes-columns { grid-template-columns: var(--golden-gate-list-width) minmax(0, 1fr); }
+.golden-gate-notes.folders-hidden .golden-gate-notes-toolbar { grid-template-columns: 118px 126px minmax(0, 1fr); }
+.golden-gate-notes.folders-hidden .golden-gate-notes-window-tools { padding-right: 0; }
+.golden-gate-notes-folders { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; min-height: 0; padding: 10px 7px 12px; background: color-mix(in srgb, var(--appearance-panel, #efeff1) 67%, transparent); }
+.golden-gate-notes-folder-content { overflow: auto; }
+.golden-gate-notes-folders h2 { margin: 0 9px 6px; color: var(--appearance-muted, #7d7d82); font-size: 11px; font-weight: 650; }
+.golden-gate-notes-folder-content button { width: 100%; min-height: 31px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 9px; padding: 4px 8px; margin: 2px 0; background: none; text-align: left; cursor: default; font-size: 12px; }
+.golden-gate-notes-folder-content button > .golden-gate-document-symbol { color: #b38a25; width: 17px; height: 17px; }
+.golden-gate-notes-folder-content button > span:not(.golden-gate-notes-folder-count) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.golden-gate-notes-folder-content button.selected { background: var(--appearance-inactive-selection, rgb(0 0 0 / 8%)); }
+.golden-gate-notes-folder-content button:hover:not(.selected) { background: var(--appearance-hover, rgb(0 0 0 / 4%)); }
+.golden-gate-notes-folder-count { margin-left: auto; color: var(--appearance-muted, #77777c); font-size: 11px; }
+.golden-gate-notes-new-folder { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0 8px; color: var(--appearance-disabled, #96969b) !important; text-align: left; font-size: 11px !important; }
+.golden-gate-notes-new-folder .golden-gate-document-symbol { width: 15px; height: 15px; }
+.golden-gate-notes-list { min-height: 0; min-width: 0; overflow: auto; padding: 7px 7px 14px; background: var(--appearance-surface, #fff); border-right: 1px solid var(--appearance-soft-border, #eeeeef); }
+.golden-gate-notes-list-heading { margin: 3px 7px 8px; font-size: 12px; font-weight: 650; }
+.golden-gate-notes-row { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; margin: 2px 0; padding: 9px 12px; border: 0; border-radius: 10px; background: none; text-align: left; cursor: default; }
+.golden-gate-notes-row:not(.selected) + .golden-gate-notes-row:not(.selected) { border-top: 1px solid var(--appearance-soft-border, #f0f0f1); border-top-left-radius: 0; border-top-right-radius: 0; }
+.golden-gate-notes-row.selected { background: var(--appearance-note-row, #f6df95); color: var(--appearance-note-row-ink, #332b17); }
+.golden-gate-notes-row-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
+.golden-gate-notes-row-summary { display: flex; gap: 5px; width: 100%; font-size: 11px; line-height: 15px; }
+.golden-gate-notes-row-summary time { flex-shrink: 0; }
+.golden-gate-notes-row-summary > span { color: var(--appearance-muted, #85858b); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.golden-gate-notes-row-folder { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--appearance-muted, #85858b); }
+.golden-gate-notes-row-folder .golden-gate-document-symbol { width: 12px; height: 12px; }
+.golden-gate-notes-row.selected .golden-gate-notes-row-summary > span,
+.golden-gate-notes-row.selected .golden-gate-notes-row-folder { color: var(--appearance-note-row-muted, #7b6b40); }
+.golden-gate-notes.inactive .golden-gate-notes-row.selected { background: var(--appearance-inactive-selection, #e2e2e4); color: var(--appearance-ink, #333); }
+.golden-gate-notes.inactive .golden-gate-notes-row.selected .golden-gate-notes-row-summary > span,
+.golden-gate-notes.inactive .golden-gate-notes-row.selected .golden-gate-notes-row-folder { color: var(--appearance-muted, #85858b); }
+.golden-gate-notes-empty { text-align: center; color: var(--appearance-muted, #888); padding: 16px 5px; font-size: 12px; }
+.golden-gate-notes-editor { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 0 20px 12px; background: var(--appearance-note-paper, #fff); }
+.golden-gate-notes-modified { padding: 5px 0 10px; color: var(--appearance-muted, #939398); text-align: center; font-size: 10px; line-height: 15px; }
+.golden-gate-notes-title { width: 100%; flex-shrink: 0; border: 0; background: transparent; outline: none; font-size: 21px !important; line-height: 29px; font-weight: 700 !important; padding: 0 0 8px; }
+.golden-gate-notes-title::placeholder { color: var(--appearance-ink, #242426); opacity: .55; }
+.golden-gate-notes-body { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; padding: 0 2px 8px 0; background: transparent; outline: none; font-size: 14px !important; line-height: 1.55; }
+.golden-gate-notes-title,
+.golden-gate-notes-body { caret-color: var(--appearance-caret, #9d7419); }
+.golden-gate-notes-title:focus-visible,
+.golden-gate-notes-body:focus-visible { box-shadow: inset 2px 0 0 var(--appearance-focus, #c99a28); padding-left: 6px; }
+.golden-gate-notes-title::selection,
+.golden-gate-notes-body::selection { background: var(--appearance-highlight, #f5dda1); color: var(--appearance-highlight-ink, #242426); }
+.golden-gate-notes-deleted { padding: 7px 10px; margin-bottom: 9px; border-radius: 8px; background: var(--appearance-note-notice-bg, #fff4cf); color: var(--appearance-note-notice-ink, #876519); font-size: 12px; }
+.golden-gate-notes-editor-empty { display: grid; place-items: center; height: 100%; color: var(--appearance-muted, #96969a); }
+.golden-gate-notes-context { position: absolute; z-index: 30; width: 216px; max-width: calc(100% - 8px); max-height: calc(100% - 8px); overflow: auto; padding: 5px; border: 1px solid var(--appearance-context-border, rgb(255 255 255 / 90%)); border-radius: 14px; background: var(--appearance-context-bg, rgb(250 250 252 / 91%)); color: var(--appearance-context-ink, #252527); backdrop-filter: blur(28px) saturate(1.2); box-shadow: 0 0 0 1px rgb(0 0 0 / 9%), 0 10px 30px rgb(0 0 0 / 22%); }
+.golden-gate-notes-context button { display: flex; align-items: center; gap: 9px; width: 100%; height: 32px; padding: 0 9px; border: 0; border-radius: 8px; background: none; text-align: left; cursor: default; }
+.golden-gate-notes-context button:hover,
+.golden-gate-notes-context button:focus-visible { outline: none; background: var(--appearance-accent, #c79826); color: var(--appearance-accent-ink, #fff); }
+.golden-gate-notes-context [role='separator'] { height: 1px; margin: 4px 8px; background: var(--appearance-soft-border, rgb(0 0 0 / 10%)); }
+
+/* Current Messages structure: pinned contacts, floating recipient, plus composer. */
+.golden-gate-messages { display: grid; grid-template-columns: clamp(190px, 30%, 254px) minmax(0, 1fr); }
+.golden-gate-messages-sidebar { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: color-mix(in srgb, var(--appearance-panel, #eeeeef) 78%, transparent); }
+.golden-gate-messages-sidebar-toolbar { height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 16px; gap: 10px; }
+.golden-gate-messages-sidebar-actions { display: flex; gap: 6px; }
+.golden-gate-messages-search { flex-shrink: 0; margin: 0 9px 10px; height: 30px; }
+.golden-gate-messages-conversation-scroll { min-height: 0; overflow: auto; }
+.golden-gate-messages-pinned { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; list-style: none; margin: 0; padding: 2px 8px 14px; }
+.golden-gate-messages-pinned li { min-width: 0; border-radius: 13px; }
+.golden-gate-messages-pinned li.selected { background: var(--appearance-selection, #148bfa); color: var(--appearance-selection-ink, #fff); }
+.golden-gate-messages-pinned button { display: flex; align-items: center; flex-direction: column; gap: 6px; width: 100%; padding: 7px 2px; border: 0; border-radius: 13px; background: none; opacity: 1; }
+.golden-gate-messages-pinned button > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.golden-gate-messages-avatar { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; color: #fff; font-size: 12px; font-weight: 600; background: radial-gradient(circle at 35% 18%, rgb(255 255 255 / 30%), transparent 72%), var(--avatar-tint, #789d82); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 5%); }
+.golden-gate-messages-pinned .golden-gate-messages-avatar { width: 53px; height: 53px; font-size: 17px; }
+.golden-gate-messages-conversations { list-style: none; margin: 0; padding: 0 6px 12px; }
+.golden-gate-messages-conversations button { width: 100%; display: flex; gap: 9px; padding: 12px 8px; border: 0; border-radius: 11px; background: none; text-align: left; opacity: 1; }
+.golden-gate-messages-conversation-copy { display: block; flex: 1; min-width: 0; }
+.golden-gate-messages-conversation-heading { display: flex; align-items: baseline; gap: 4px; margin-bottom: 3px; }
+.golden-gate-messages-conversation-heading strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 650; }
+.golden-gate-messages-conversation-heading time { flex-shrink: 0; margin-left: auto; font-size: 9px; color: var(--appearance-muted, #77777d); }
+.golden-gate-messages-conversation-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 15px; font-size: 11px; color: var(--appearance-muted, #77777d); }
+.golden-gate-messages-thread { position: relative; display: grid; grid-template-rows: 67px minmax(0, 1fr) 42px 23px; min-width: 0; min-height: 0; background: var(--appearance-surface, #fff); }
+.golden-gate-messages-recipient-toolbar { position: relative; display: flex; justify-content: center; align-items: center; padding: 7px 45px; min-width: 0; background: color-mix(in srgb, var(--appearance-surface, #fff) 93%, transparent); }
+.golden-gate-messages-recipient { display: flex; align-items: center; flex-direction: column; position: relative; min-width: 85px; max-width: 100%; gap: 3px; padding: 4px 14px; border-radius: 18px; color: inherit; opacity: 1; }
+.golden-gate-messages-recipient .golden-gate-messages-avatar { width: 29px; height: 29px; font-size: 10px; }
+.golden-gate-messages-recipient > span:not(.golden-gate-messages-avatar) { font-size: 10px; line-height: 12px; font-weight: 650; }
+.golden-gate-messages-recipient > .golden-gate-document-symbol { position: absolute; width: 9px; height: 9px; right: 5px; bottom: 6px; color: var(--appearance-muted, #8b8b90); }
+.golden-gate-messages-call { position: absolute; right: 12px; top: 12px; }
+.golden-gate-messages-history { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; list-style: none; min-height: 0; overflow: auto; margin: 0; padding: 6px 17px 14px; }
+.golden-gate-messages-timestamp { align-self: center; font-size: 10px; color: var(--appearance-muted, #919196); margin-bottom: 9px; }
+.golden-gate-messages-bubble { display: flex; align-items: flex-start; flex-direction: column; max-width: 82%; }
+.golden-gate-messages-bubble p { margin: 0; padding: 7px 11px; border-radius: 16px; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+.golden-gate-messages-bubble.incoming p { background: var(--appearance-incoming-bubble, #e9e9eb); border-bottom-left-radius: 5px; }
+.golden-gate-messages-bubble.outgoing { align-self: flex-end; align-items: flex-end; }
+.golden-gate-messages-bubble.outgoing p { background: #198ffa; color: #fff; border-bottom-right-radius: 5px; }
+.golden-gate-messages-sender { display: block; font-size: 9px; line-height: 14px; color: var(--appearance-muted, #8c8c92); padding-left: 10px; }
+.golden-gate-messages-artwork { max-width: 84%; width: 310px; }
+.golden-gate-messages-artwork > svg { display: block; width: 100%; height: auto; border-radius: 18px; }
+.golden-gate-messages-delivered { display: block; margin-top: 4px; padding-right: 3px; font-size: 9px; color: var(--appearance-muted, #89898e); }
+.golden-gate-messages-composer { display: flex; gap: 6px; align-items: center; min-width: 0; padding: 3px 10px; background: color-mix(in srgb, var(--appearance-surface, #fff) 93%, transparent); }
+.golden-gate-messages-input { display: flex; min-width: 0; flex: 1; align-items: center; height: 32px; padding: 0 3px 0 11px; border-radius: 20px; border: 1px solid var(--appearance-soft-border, #e5e5e8); background: var(--appearance-input, #fafafa); box-shadow: inset 0 1px 3px rgb(0 0 0 / 2%); }
+.golden-gate-messages-input input { width: 100%; min-width: 0; border: 0; background: none; outline: none; font-size: 12px; }
+.golden-gate-messages-input input::placeholder { color: var(--appearance-disabled, #aaaab0); }
+.golden-gate-messages-input .golden-gate-document-tool { height: 27px; width: 27px; }
+.golden-gate-messages-sample-notice { margin: 0; padding: 1px 9px 6px; text-align: center; font-size: 9px; line-height: 13px; color: var(--appearance-muted, #8a8a90); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@container (max-width: 850px) {
+  .golden-gate-notes-toolbar,
+  .golden-gate-notes-columns { --golden-gate-folder-width: 148px; --golden-gate-list-width: 186px; }
+  .golden-gate-notes-formatting .golden-gate-document-tool:nth-child(n + 4) { display: none; }
+  .golden-gate-notes-writing-tools { gap: 5px; }
+  .golden-gate-notes-search { width: 100px; }
+}
+@container (max-width: 700px) {
+  .golden-gate-notes-toolbar,
+  .golden-gate-notes-columns { --golden-gate-folder-width: 144px; --golden-gate-list-width: 168px; }
+  .golden-gate-notes-formatting { display: none; }
+  .golden-gate-notes-editor { padding-left: 14px; padding-right: 14px; }
+  .golden-gate-notes-collection-tools { padding-left: 8px; padding-right: 8px; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .golden-gate-notes,
+  .golden-gate-messages { background: var(--appearance-panel, #f2f2f3); backdrop-filter: none; }
+  .golden-gate-notes-context { background: var(--appearance-surface, #fafafa); backdrop-filter: none; }
+}

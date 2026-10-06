@@ -1,5 +1,6 @@
 import { mount, unmount, tick } from 'svelte';
 import App from './App.svelte';
+import SessionHost from './SessionHost.svelte';
 import UnsupportedProfile from './UnsupportedProfile.svelte';
 import { DEFAULT_PROFILE_ID, getOSProfile, listOSProfiles } from './os-profiles.js';
 import { getProfileAdapter } from './profile-adapters.js';
@@ -43,7 +44,8 @@ async function mountScene(profile) {
   document.documentElement.dataset.osFamily = profile.family;
   document.documentElement.dataset.osRenderer = profile.renderer;
   adapter.prepareDocument();
-  scene = mount(App, { target, props: { profile, adapter, registerCommands, selectProfile } });
+  scene = mount(profile.capabilities.includes('session.fictional') ? SessionHost : App,
+    { target, props: { profile, adapter, registerCommands, selectProfile } });
   await tick();
 }
 

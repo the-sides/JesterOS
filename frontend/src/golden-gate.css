@@ -1,0 +1,69 @@
+/* Independently authored macOS 27-informed materials; not measured native pixels. */
+@font-face { font-family: 'Golden Gate UI'; src: url('/fonts/InterVariable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+:root[data-os-renderer='golden-gate'] { --golden-gate-font: 'Golden Gate UI', sans-serif; font-family: var(--golden-gate-font); font-size: 13px; color: var(--appearance-ink, #252529); font-synthesis: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+:root[data-os-renderer='golden-gate'].native-apple-font { --golden-gate-font: -apple-system, BlinkMacSystemFont, 'Golden Gate UI', sans-serif; }
+.golden-gate-desktop { position: relative; width: 100%; height: 100svh; overflow: hidden; background: #756956 center / cover no-repeat; font-family: var(--golden-gate-font); }
+.golden-gate-menu-bar { position: relative; z-index: 1000; height: 28px; padding: 0 19px; display: flex; justify-content: space-between; align-items: center; color: var(--menu-ink, white); background: transparent; font-size: 13px; text-shadow: 0 1px 3px #0005; }
+.golden-gate-menu-headings, .golden-gate-status-items { display: flex; align-items: center; height: 100%; white-space: nowrap; }
+.golden-gate-menu-headings { gap: 20px; }
+.golden-gate-status-items { gap: 19px; font-weight: 550; font-size: 12px; }
+.golden-gate-app-menu { font-weight: 650; }
+.golden-gate-apple { display: flex; align-items: center; width: 14px; }
+.golden-gate-apple svg { width: 14px; height: 18px; }
+.golden-gate-status-items svg { display: block; width: 18px; height: 18px; }
+.golden-gate-battery svg { width: 26px; height: 14px; }
+.golden-gate-wifi svg { width: 18px; height: 15px; }
+.golden-gate-window-menu-container { height: 100%; }
+.golden-gate-window-menu-button { height: 100%; margin: 0 -8px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; line-height: 28px; cursor: default; }
+.golden-gate-window-menu-button[aria-expanded='true'] { background: #fff3; box-shadow: inset 0 0 0 1px #fff2; }
+.golden-gate-window-menu-button:focus-visible { outline: 2px solid var(--appearance-focus, #90c6ff); outline-offset: -2px; }
+.golden-gate-window-menu { position: fixed; top: 31px; box-sizing: border-box; width: 264px; max-width: calc(100vw - 8px); max-height: calc(100svh - 39px); overflow: auto; padding: 6px; border: 1px solid var(--appearance-menu-border, #fff9); border-radius: 17px; background: var(--appearance-menu-bg, rgb(245 240 234 / 83%)); color: var(--appearance-menu-ink, #232326); backdrop-filter: blur(34px) saturate(1.45); box-shadow: inset 0 1px 1px #fffa, 0 0 0 1px #0002, 0 12px 32px #0004; text-shadow: none; }
+.golden-gate-window-menu button { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 4px 9px; border: 0; border-radius: 10px; background: transparent; color: inherit; text-align: left; font: inherit; cursor: default; }
+.golden-gate-window-menu button:hover:not(:disabled), .golden-gate-window-menu button:focus-visible { background: var(--appearance-accent, #0878ef); color: var(--appearance-accent-ink, white); outline: none; }
+.golden-gate-window-menu button:disabled { color: var(--appearance-menu-disabled, #8f8b87); }
+.golden-gate-menu-separator { height: 1px; margin: 5px 8px; background: var(--appearance-menu-separator, #0002); }
+.golden-gate-menu-check { width: 12px; flex-shrink: 0; }
+.golden-gate-menu-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.golden-gate-shortcut { margin-left: auto; font-size: 11px; opacity: .65; }
+.golden-gate-workspace { position: absolute; inset: 28px 0 0; }
+.golden-gate-files { position: absolute; top: 20px; right: 18px; display: flex; flex-direction: column; gap: 24px; width: 104px; }
+.golden-gate-file { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; padding: 0; border: 0; background: transparent; color: white; font: 550 12px/16px var(--golden-gate-font); text-align: center; text-shadow: 0 1px 3px #0009; cursor: default; }
+.golden-gate-file .golden-gate-icon { width: 64px; height: 64px; filter: drop-shadow(0 2px 2px #0004); }
+.golden-gate-file-label { max-width: 100%; padding: 1px 4px; border-radius: 5px; }
+.golden-gate-file.selected .golden-gate-file-label { background: var(--appearance-selection, #0878df); color: var(--appearance-selection-ink, white); text-shadow: none; }
+.golden-gate-file.selected .golden-gate-icon { filter: brightness(.78) drop-shadow(0 2px 2px #0004); }
+.golden-gate-file:focus-visible { outline: 2px solid var(--appearance-focus, #bfdcff); outline-offset: 4px; border-radius: 8px; }
+/* Shared Dock supplies physical sizing, hide/reveal and item semantics. */
+.golden-gate-desktop .managed-dock { position: absolute; z-index: 1000; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-end; border: 1px solid var(--appearance-dock-border, #ffffffa0); border-radius: 24px; background: var(--appearance-dock-bg, rgb(230 223 214 / 41%)); backdrop-filter: blur(32px) saturate(1.5); box-shadow: inset 0 1px 1px #ffffffb0, inset 0 -1px 2px #ffffff35, 0 0 0 1px #0002, 0 6px 22px #0003; }
+.golden-gate-desktop .managed-list { display: flex; list-style: none; padding: 0; margin: 0; }
+.golden-gate-desktop .managed-item { position: relative; }
+.golden-gate-desktop :is(.golden-gate-dock-button, .sonoma-dock-button, .dock-button) { display: block; position: relative; width: 100%; height: 100%; border: 0; margin: 0; padding: 0; border-radius: 14px; background: transparent; cursor: default; }
+.golden-gate-desktop :is(.golden-gate-dock-button, .sonoma-dock-button, .dock-button):active { filter: brightness(.8); }
+.golden-gate-desktop :is(.golden-gate-dock-button, .sonoma-dock-button, .dock-button):focus-visible { outline: 2px solid var(--appearance-focus, #438fde); outline-offset: 3px; }
+.golden-gate-desktop .managed-item .golden-gate-icon, .golden-gate-desktop [data-dock-drag-alias] .golden-gate-icon { display: block; width: 100%; height: 100%; filter: drop-shadow(0 2px 1px #0004); }
+.golden-gate-desktop :is(.golden-gate-running-dot, .sonoma-running-dot, .dock-running-dot, .running-dot) { position: absolute; width: 4px; height: 4px; bottom: -8px; left: calc(50% - 2px); border-radius: 50%; background: var(--appearance-dock-dot, #262b31); }
+.golden-gate-window-position { position: absolute; outline: none; font-family: var(--golden-gate-font); }
+.golden-gate-window-surface { position: relative; overflow: hidden; border-radius: 18px; transform-origin: top left; box-shadow: 0 0 0 1px #0003, 0 28px 64px #0005, 0 6px 18px #0002; }
+.golden-gate-window-position.inactive .golden-gate-window-surface { box-shadow: 0 0 0 1px #0002, 0 16px 35px #0003; }
+.golden-gate-window-position [data-window-drag] { touch-action: none; user-select: none; }
+.golden-gate-window-position .window-traffic-lights { position: static; display: flex; align-items: center; flex-shrink: 0; gap: 8px; }
+.golden-gate-window-position .traffic-light { display: grid; position: relative; place-items: center; box-sizing: border-box; width: 12px; height: 12px; padding: 0; margin: 0; border: 1px solid #0000001a; border-radius: 50%; box-shadow: inset 0 1px 1px #ffffff24; cursor: default; }
+.golden-gate-window-position .traffic-light.close { background: var(--appearance-traffic-light-bg, #ff6058); color: var(--appearance-traffic-light-ink, #810e08); }
+.golden-gate-window-position .traffic-light.minimize { background: var(--appearance-traffic-light-bg, #ffbd2f); color: var(--appearance-traffic-light-ink, #8c5300); }
+.golden-gate-window-position .traffic-light.zoom { background: var(--appearance-traffic-light-bg, #28c941); color: var(--appearance-traffic-light-ink, #066811); }
+.golden-gate-window-position .window-traffic-lights.inactive .traffic-light { background: #bfc0c2; }
+.golden-gate-window-position .window-traffic-lights.inactive:hover .close { background: #ff6058; }
+.golden-gate-window-position .window-traffic-lights.inactive:hover .minimize { background: #ffbd2f; }
+.golden-gate-window-position .window-traffic-lights.inactive:hover .zoom { background: #28c941; }
+.golden-gate-window-position .traffic-light svg { width: 10px; height: 10px; opacity: 0; fill: none; stroke: currentColor; stroke-width: 1.4; }
+.golden-gate-window-position .traffic-light .zoom-symbol { fill: currentColor; stroke: none; }
+.golden-gate-window-position .window-traffic-lights:hover svg, .golden-gate-window-position .traffic-light:focus-visible svg { opacity: 1; }
+.golden-gate-window-position .traffic-light:focus-visible { outline: 3px solid var(--appearance-focus, #4f98e8); outline-offset: 3px; }
+.golden-gate-launch-window { width: 100%; height: 100%; display: flex; flex-direction: column; background: var(--appearance-surface, #fff); }
+.golden-gate-launch-toolbar { min-height: 54px; display: flex; align-items: center; gap: 25px; padding: 0 20px; flex-shrink: 0; border-bottom: 1px solid var(--appearance-soft-border, #dcd8d3); background: var(--appearance-toolbar, linear-gradient(#f9f7f3e8, #f0ece5c9)); backdrop-filter: blur(26px) saturate(1.3); color: var(--appearance-ink, #29292c); font-size: 14px; font-weight: 650; }
+.golden-gate-window-position.inactive .golden-gate-launch-toolbar { background: var(--appearance-toolbar-inactive, var(--appearance-toolbar, #f3f0eb)); }
+.golden-gate-launch-content { flex: 1; min-height: 0; overflow: auto; }
+@media (max-width: 900px) { .golden-gate-menu-headings { gap: 13px; } .golden-gate-status-items { gap: 13px; } .golden-gate-optional-menu { display: none; } }
+@media (max-width: 760px) { .golden-gate-files { right: 9px; width: 86px; gap: 18px; } .golden-gate-file .golden-gate-icon { width: 49px; height: 49px; } .golden-gate-file { font-size: 11px; } .golden-gate-desktop .managed-dock { border-radius: 18px; } }
+@media (max-width: 520px) { .golden-gate-menu-bar { padding: 0 10px; } .golden-gate-menu-headings { gap: 15px; } .golden-gate-static-menu, .golden-gate-battery, .golden-gate-spotlight { display: none; } .golden-gate-app-menu { max-width: 105px; overflow: hidden; text-overflow: ellipsis; } .golden-gate-status-items { gap: 12px; font-size: 10px; } .golden-gate-files { top: 15px; } }
+.golden-gate-files .stack-icon .golden-gate-icon { width: 100%; height: 100%; }

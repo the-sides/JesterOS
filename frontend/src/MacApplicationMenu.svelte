@@ -5,7 +5,7 @@
   let panel = $state();
   let geometry = $state(null);
   let observing = 0;
-  const modern = $derived(profile.renderer === 'sonoma');
+  const modern = $derived(profile.capabilities.includes('shell.window-green-menu'));
 
   function request(command, target = {}, payload = {}) {
     return execute({ command: `app.menu.${command}`, target, payload });

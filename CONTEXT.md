@@ -2,6 +2,8 @@
 
 JesterOS simulates operating-system desktops and applications for actors to use as film and television screen props.
 
+**Active implementation target:** latest stable macOS, currently **27 Golden Gate27.0.1**, independently verified against Apple's release table/current guide. It is the default profile. Completed High Sierra/Mojave/Sonoma/Windows profiles remain selectable but are not extended by new slices; conditional Linux research is historical, not active implementation scope.
+
 ## Language
 
 **OS profile**:
@@ -62,7 +64,7 @@ A monotonic scene timestamp in the selected OS era, advanced by actual simulated
 A session-local launcher reference to an installed simulated application or a real simulated folder. Keeping/removing an alias changes neither source records nor application/window lifetime; a running unpinned app alias survives until quit. Folder aliases occupy the file side and reference existing directory IDs, not copied contents.
 
 **Dock recent history**:
-A newest-first, unique application-use sequence advanced by successful scene app opens/new windows, never host time. Mojave/Sonoma display up to three unpinned recent aliases; High Sierra does not expose that presentation. Initial entries are fictional scene seeds, not a claim of observed host usage.
+A newest-first, unique application-use sequence advanced by successful scene app opens/new windows, never host time. Mojave/Sonoma/Golden Gate show up to three unpinned recent aliases; High Sierra does not. Initial entries are fictional scene seeds, not observed host usage.
 
 **Minimized Dock tile**:
 A presentation of an actual minimized managed window, with its live inert interior and an independent exact-window restore control. It is not another application instance, a screenshot, or an app-running marker. Minimize-into-app and App Exposé can own presentation instead without changing retained window data/geometry.
@@ -135,4 +137,14 @@ Accent tints controls, active selections and focus; highlight colors selected te
 
 **Bounded custom highlight**:
 A six-digit sRGB color edited by in-page RGB sliders/Hex, not the complete native Colors panel. Invalid drafts do not alter canonical color; clean focused drafts follow external custom-color changes without losing caret, while a preset removal returns focus to the surviving Highlight control.
+
+**Fictional session**:
+A page-local local/Guest identity and lock/login presentation, not host authentication. Only Golden Gate advertises this capability. Fixed local users retain separate original desktop/model/editor/appearance instances; inactive roots are inert and do not own global app shortcuts or the document palette.
+
+**Retained session return**:
+Restoring connected original focus/selection and all retained scroll offsets after the same desktop becomes interactive. It never reopens or copies the editor; menu invocations may correctly return to their original invoker. Capture/restore is owned by its scene root, not a document-global selector.
+
+**Ephemeral Guest**:
+A new isolated fictional desktop entered after explicit deletion acknowledgement. Cancelled logout retains the original; confirmed deletion destroys only Guest's scene. Re-entry starts fresh and does not discard signed-in locals. Actual FileVault, credentials, user administration and saved sessions remain outside this simulation.
+
 

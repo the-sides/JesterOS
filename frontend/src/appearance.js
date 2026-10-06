@@ -20,7 +20,7 @@ const fields = (value, names) => isRecord(value) && Object.keys(value).length ==
 export function appearanceOptions(profile) {
   const classic = profile.renderer === 'high-sierra';
   return { scope: classic ? 'menu-dock' : 'full', accents: classic ? ['blue', 'graphite'] : [...presetIds],
-    highlights: [...presetIds], modes: ['light', 'dark'], paneName: profile.renderer === 'sonoma' ? 'Appearance' : 'General' };
+    highlights: [...presetIds], modes: ['light', 'dark'], paneName: profile.capabilities.includes('shell.window-green-menu') ? 'Appearance' : 'General' };
 }
 export function appearanceDefaults() { return { mode: 'light', accent: 'blue', highlight: 'blue' }; }
 export function appearanceColor(value, kind = 'highlight') {
@@ -120,7 +120,10 @@ export function appearancePalette(profile, state) {
   palette['--appearance-highlight'] = highlight; palette['--appearance-highlight-ink'] = contrastInk(highlight);
   return palette;
 }
+const appearanceOwners = new WeakMap();
 export function applyAppearance(root, profile, state) {
+  const owner = {};
+  appearanceOwners.set(root, owner);
   const mac = profile.family === 'macos', scope = mac ? appearanceOptions(profile).scope : 'full';
   const palette = mac ? appearancePalette(profile, state) : {};
   for (const name of ownedProperties) {
@@ -131,6 +134,8 @@ export function applyAppearance(root, profile, state) {
   root.dataset.appearanceContent = content; root.dataset.appearanceShell = state.mode;
   root.dataset.appearanceAccent = state.accent; root.style.colorScheme = content;
   return () => {
+    if (appearanceOwners.get(root) !== owner) return;
+    appearanceOwners.delete(root);
     for (const name of ownedProperties) root.style.removeProperty(name);
     delete root.dataset.appearanceContent; delete root.dataset.appearanceShell; delete root.dataset.appearanceAccent;
   };

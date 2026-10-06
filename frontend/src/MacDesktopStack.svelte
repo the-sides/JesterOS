@@ -1,7 +1,7 @@
 <script>
   let { profile, options, stack, viewState, execute, Icon, onnavigate } = $props();
   const selected = $derived(viewState.stacks.focusedStackId === stack.id || stack.fileIds.every(id => viewState.selectedFileIds.includes(id)));
-  const customView = $derived(options.iconSize !== 64 || options.gridSpacing !== (profile.renderer === 'sonoma' ? 24 : 23)
+  const customView = $derived(options.iconSize !== 64 || options.gridSpacing !== (profile.capabilities.includes('shell.window-green-menu') ? 24 : 23)
     || options.textSize !== 12 || options.labelPosition !== 'bottom');
   const label = $derived(stack.browsing && !stack.expanded ? stack.topItem.name : stack.name);
   let wheelDistance = 0;
@@ -56,7 +56,7 @@
     request('browse', { stackId: stack.id }, { direction });
   }
 </script>
-<button type="button" class="desktop-stack" class:desktop-file={profile.renderer === 'mojave'} class:sonoma-file={profile.renderer === 'sonoma'} class:modern={profile.renderer === 'sonoma'} class:custom-view={customView} class:selected class:right-label={options.labelPosition === 'right'}
+<button type="button" class="desktop-stack" class:desktop-file={profile.renderer === 'mojave'} class:sonoma-file={profile.renderer === 'sonoma'} class:golden-gate-file={profile.renderer === 'golden-gate'} class:modern={profile.capabilities.includes('shell.window-green-menu')} class:custom-view={customView} class:selected class:right-label={options.labelPosition === 'right'}
   data-stack-id={stack.id} aria-label={`${label}, stack, ${stack.fileIds.length} ${stack.fileIds.length === 1 ? 'item' : 'items'}`} aria-expanded={stack.expanded}
   style:--stack-custom-size={`${options.iconSize}px`} style:--stack-custom-text={`${options.textSize}px`}
   onpointerdown={pointerdown} onclick={click} ondblclick={(event) => { event.preventDefault(); event.stopPropagation(); request('open'); }} oncontextmenu={context} onkeydown={keydown} onwheel={wheel}

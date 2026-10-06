@@ -4,7 +4,7 @@
   function set(option, value) { return execute({ command: 'desktop.view.set', target: {}, payload: { option, value } }); }
   function sort(event) { return execute({ command: stacks?.enabled ? 'desktop.stacks.sort' : 'desktop.sort', target: {}, payload: { by: event.currentTarget.value } }); }
 </script>
-<div class="view-inspector" class:modern={profile.renderer === 'sonoma'}>
+<div class="view-inspector" class:modern={profile.capabilities.includes('shell.window-green-menu')}>
   <h2>Desktop</h2>
   {#if stacks?.enabled}<label class="row"><span>Group By:</span><select aria-label="Group Stacks By" value={stacks.groupBy} onchange={(event) => execute({ command: 'desktop.stacks.group', target: {}, payload: { by: event.currentTarget.value } })}>{#each STACK_GROUPS as by}<option value={by}>{STACK_LABELS[by]}</option>{/each}</select></label>{/if}
   <label class="row"><span>Sort By:</span><select aria-label="Sort By" value={stacks?.enabled ? stacks.sortBy : sortBy} onchange={sort}>{#each stacks?.enabled ? STACK_SORTS : ['none', 'name', 'kind', 'size'] as by}<option value={by}>{by === 'none' ? 'None' : STACK_LABELS[by]}</option>{/each}</select></label>

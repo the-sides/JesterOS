@@ -2,8 +2,9 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
   let { profile, full } = $props();
-  const Icon = $derived(profile.renderer === 'sonoma' ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : profile.renderer === 'sonoma' ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
 </script>
 
 <span class="trash-artwork" class:full aria-hidden="true">

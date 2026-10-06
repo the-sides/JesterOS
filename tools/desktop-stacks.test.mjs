@@ -1,12 +1,12 @@
 import { test, expect } from 'bun:test';
-import { DEFAULT_PROFILE_ID, getOSProfile } from '../frontend/src/os-profiles.js';
+import { MOJAVE_PROFILE_ID, getOSProfile } from '../frontend/src/os-profiles.js';
 import { createMacDesktopFileStore, macDesktopItems, nextMacFileTimestamp } from '../frontend/src/desktop-file-state.js';
 import { createFile, liveFile } from '../frontend/src/windows11-app-helpers.js';
 import { trashVirtualFiles } from '../frontend/src/windows11-explorer.js';
 import { desktopStacks, desktopStacksDefaults, desktopStackLayout, reconcileDesktopStacks } from '../frontend/src/desktop-stacks-model.js';
 
 const base = Date.UTC(2018, 8, 24, 17, 42);
-const scene = () => createMacDesktopFileStore(getOSProfile(DEFAULT_PROFILE_ID), base);
+const scene = () => createMacDesktopFileStore(getOSProfile(MOJAVE_PROFILE_ID), base);
 const enabled = () => ({ ...desktopStacksDefaults(), enabled: true });
 
 test('Trash removal replaces a browsed cover without resurrecting it or grouping real folders', () => {

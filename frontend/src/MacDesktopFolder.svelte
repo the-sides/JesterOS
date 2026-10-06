@@ -2,11 +2,12 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
   import { isTrashed } from './windows11-app-helpers.js';
   import { dockFolderItemId } from './mac-dock-folders.js';
 
   let { profile, windowId, folderId, files, selectedFileIds = [], dockState, execute } = $props();
-  const Icon = $derived(profile.renderer === 'sonoma' ? SonomaIcon
+  const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : profile.renderer === 'sonoma' ? SonomaIcon
     : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   const store = $derived({ files });
   const folder = $derived(files.find(file => file.id === folderId));
@@ -39,7 +40,7 @@
   }
 </script>
 
-<section class="mac-folder" class:sonoma={profile.renderer === 'sonoma'} aria-label={`${folder?.name ?? 'Folder'} contents`} data-folder-id={folderId}>
+<section class="mac-folder" class:sonoma={profile.capabilities.includes('shell.window-green-menu')} aria-label={`${folder?.name ?? 'Folder'} contents`} data-folder-id={folderId}>
   <nav class="folder-navigation" aria-label="Folder navigation">
     <button type="button" aria-label="Enclosing folder" title="Enclosing folder" disabled={!parent || parent.kind !== 'folder'} onclick={() => navigate(parent.id)}>
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 3-5 5 5 5" /></svg>

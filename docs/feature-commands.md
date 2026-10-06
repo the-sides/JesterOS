@@ -10,7 +10,7 @@ The mounted desktop exposes `globalThis.jesteros` with:
 - `inspect()`: a detached snapshot of supported command names and current window/application state. Changing this snapshot does not change the scene.
 - `describe(command?)`: detached, JSON-serializable version-1 catalog for every command, or one requested command. Includes supported profile IDs, capability, request/success-result JSON Schemas, runtime requirements, data/presentation effects, completion semantics, and current target identities. Unknown names reject with unsupported_command; non-string arguments reject with invalid_arguments. Querying never activates a window or changes the scene.
 
-This browser-local feature interface is intended for a future transport adapter, not a WebSocket endpoint or controller UI. Mojave 10.14 exposes 178 reduced-slice commands, Sonoma 14.0 exposes 163, High Sierra 10.13 exposes 170, and Windows 11 23H2 build 22631.2428 exposes 190 native/shared commands. The public object is stable across native scene remounts; retained references dispatch into the active scene. During transition dispatch/discovery reject unavailable, and inspect reports profile:null/transitioning:true rather than exposing outgoing state. The `CORE-04` registry defines immutable profile identity/assets/defaults/stock coverage, selected-profile capabilities and native adapter boundaries; it is not a theme selector.
+The default Golden Gate27.0.1 exposes159 commands; preserved Mojave178/Sonoma163/High Sierra170/Windows190 remain selectable. New feature work is latest macOS only. The stable public object follows native remounts; during transition dispatch/discovery reject unavailable and inspect reports profile:null/transitioning:true. Immutable profile identity/coverage and native adapters are not a theme selector. Rust transport/controller remain deferred.
 
 Requests contain `command`, optional `requestId`, `target`, and `payload`. Command targets/payloads are plain JSON objects; omitted target/payload become empty objects. Explicit null, arrays, unrecognized request fields, unknown commands, and invalid command arguments are rejected. A supplied requestId must be a nonempty string and is echoed in results.
 
@@ -18,7 +18,7 @@ Results are `{ status: 'applied', target: ... }` or `{ status: 'rejected', error
 
 ## Machine-readable catalog
 
-`frontend/src/command-catalog.js` composes the canonical inventory from shared schemas and native shell/app catalogs. Registration requires exact descriptor/handler parity for the selected profile and seals the handler map. Globally known but unsupported names reject unsupported_profile, not unsupported_command; unregistered features are never advertised. Adding a slice must publish its contract in the same change. Keep the human behavior tables and working notes current.
+`frontend/src/command-catalog.js` composes the canonical shared/native/session inventory. Registration requires exact descriptor/handler parity for the selected layer and seals handlers. Golden Gate's `SessionHost` owns session operations and delegates the private App layer; legacy scenes omit that capability but know the names and reject unsupported_profile before writes. Unregistered features are never advertised. Keep behavior tables and working notes current.
 
 `jesteros.describe()` returns `{ version:1, profile, profiles, commands, targets }`. Active profile metadata and snapshots identify the actual native scene. Profiles list supported IDs; targets.profiles lists installed profile IDs/names/family/version. Each commands entry has:
 
@@ -52,7 +52,7 @@ The tables below identify profile support for each implemented slice. Unexpected
 | --- | --- | --- | --- |
 | `scene.selectProfile` | `{ profileId }` | `{}` | Selects an installed native profile. Same ID preserves state. A different ID disposes the old scene and mounts fresh native data/windows/menu/focus/scroll state; completion waits for the new DOM and command registration. Unknown IDs reject unsupported_profile before mutation. |
 
-This is profile selection, not migration of incompatible open documents. The default remains Mojave. Subsequent edits/creation use the new profile's fictional Notes epoch, including when its collection is empty.
+This is selection, not migration of incompatible open documents. Default is Golden Gate27.0.1. Each profile uses its own fictional Notes epoch, including empty-collection creation; replacing a session-enabled profile also discards its fictional user roots.
 
 ### Apps and windows
 
@@ -72,9 +72,9 @@ Resize coordinates use the same physical workspace origin as `window.move`, not 
 
 All installed profiles support `shell.window-create` and `app.lifecycle`. macOS browser-delivered Command/Ctrl+N creates an allowed active-app window outside editable controls; Command/Ctrl+Q quits the active app. Notes keeps its own new-note shortcut. Windows native New Window/Exit controls use the same contracts; Explorer/Edge use Ctrl+N and Notepad uses Ctrl+Shift+N, leaving Ctrl+N as new tab. These do not override shortcuts intercepted by the host.
 
-### Page-contained full screen, Split View and Sonoma green menus
+### Page-contained full screen, Split View and modern Mac green menus
 
-All four installed profiles advertise `shell.full-screen` and the first two commands. Only macOS advertises `shell.split-view` and the eight common pairing commands. Only Sonoma advertises `shell.window-green-menu` and the final seven commands. Unsupported known names reject `unsupported_profile` without mutation; Windows has no Mac pair/green UI.
+All five profiles advertise `shell.full-screen`. Mac profiles additionally expose pairing; Sonoma/Golden Gate advertise bounded `shell.window-green-menu`. Unsupported known names reject unsupported_profile without mutation; Windows has no Mac pair/green UI.
 
 | Command | Target | Payload | Behavior / result.target |
 | --- | --- | --- | --- |
@@ -88,7 +88,7 @@ All four installed profiles advertise `shell.full-screen` and the first two comm
 | `window.splitView.resize` | `{}` | `{ ratio:number }` | Foreground live pair; finite0.2–0.8 browser clamp, no ordinary geometry/data changes. Returns ratio. |
 | `window.splitView.swap` | `{}` | `{}` | Swaps only foreground pair members, preserving ratio, owner/focus, normal geometry and background groups. Returns leftWindowId/rightWindowId. |
 | `window.splitView.scroll` | `{}` | `{ top:number,left:number }` | Mounted picker including empty state; finite nonnegative offsets. Returns and retains actual DOM-clamped top/left. |
-| `window.greenMenu.open` | `{ windowId }` | `{}` | Eligible Sonoma original; activates it, reveals its actual green anchor if full screen, mounts native state-specific menu and focuses first enabled item. Returns windowId/itemId. |
+| `window.greenMenu.open` | `{ windowId }` | `{}` | Eligible Sonoma/Golden Gate original; activates/reveals its real green anchor and focuses the first enabled native menu item. Returns windowId/itemId. |
 | `window.greenMenu.close` | `{}` | `{ restoreFocus?:boolean }` | Idempotent close, actual original control/frame focus by default; false preserves outside focus. Returns closed. |
 | `window.greenMenu.select` | `{ itemId }` | `{}` | Actual current enabled rendered leaf; focus/reveal and retain menu scroll. Returns itemId. |
 | `window.greenMenu.execute` | `{ itemId }` | `{}` | Requires actual open menu. Runs shared real full-screen/tiling/replacement/desktop/solo transition; preserves downstream rejection and atomic rollback. Returns windowId/action (item ID). |
@@ -106,7 +106,7 @@ Primary inputs: [Mojave full screen](https://support.apple.com/guide/mac-help/us
 
 ### Mission Control and retained Spaces
 
-All three installed Mac profiles advertise `shell.mission-control` and these twelve commands. Windows advertises none and rejects known names with `unsupported_profile` without mutation. Global native modals block transitions. Selection/focus is not application or Space activation.
+All four Mac profiles advertise `shell.mission-control` and these twelve commands. Windows rejects unsupported_profile without mutation. Global modal/session ownership blocks transitions. Selection/focus is not app/Space activation.
 
 | Command | Target | Payload | Behavior / `result.target` |
 | --- | --- | --- | --- |
@@ -135,7 +135,7 @@ Primary inputs: [Mojave Mission Control](https://support.apple.com/guide/mac-hel
 
 ### Launchpad
 
-All seventeen commands require the macOS `shell.launchpad` capability. Arrangement changes require an open, unsearched launcher and no name draft; activation uses the existing app.open handler, including classic windowless Dashboard with a null window identity. Finder/self and unrelated shell presentations remain excluded. Results below are inside `result.target`. Stable tile identities are `app:<appId>` and `folder:<folderId>`; folders use monotonic `launchpad-folder-N` IDs.
+These seventeen commands require historical High Sierra/Mojave/Sonoma `shell.launchpad`; Golden Gate/Windows reject unsupported_profile. Golden Gate's Spotlight Apps interface is not implemented. Arrangement needs an open unsearched launcher with no draft; activation shares app.open, including classic Dashboard's null window ID. Stable identities are `app:<appId>` and monotonic `folder:<folderId>`.
 
 | Command | Target | Payload | Applied target |
 | --- | --- | --- | --- |
@@ -171,7 +171,7 @@ Primary inputs: [Mojave Launchpad](https://support.apple.com/guide/mac-help/open
 
 ### Classic Dashboard
 
-All22 commands require `shell.dashboard` in High Sierra10.13 or Mojave10.14. Sonoma/Windows reject known names with unsupported_profile before mutation. Default mode is Off; enable the actual Mission Control preference selector. Results below are `result.target`.
+All22 commands require High Sierra/Mojave `shell.dashboard`. Sonoma/Golden Gate/Windows reject unsupported_profile before mutation. Default is Off; the real classic Mission Control selector enables it. Results below are result.target.
 
 | Command | Target | Payload | Applied target |
 | --- | --- | --- | --- |
@@ -215,12 +215,12 @@ Primary inputs: pinned [Mojave Dashboard](https://support.apple.com/guide/mac-he
 
 ### Shared appearance and selected-text highlight
 
-All three Mac profiles advertise `shell.appearance`; Windows keeps its existing `win11.settings.preference` controls `theme`/`accent` and rejects these four names as unsupported_profile without mutation.
+All four Mac profiles advertise `shell.appearance`; Windows keeps native Settings theme/accent and rejects these four names without mutation.
 
 | Command | Target | Payload | Applied target / behavior |
 | --- | --- | --- | --- |
-| `appearance.setMode` | `{}` | `{mode:'light'|'dark'}` | `{mode,scope:'full'|'menu-dock'}`. High Sierra Dark affects menu bar/Dock only; Mojave/Sonoma also resolve participating app surfaces. |
-| `appearance.setAccent` | `{}` | `{color}` | `{color}`. Mojave/Sonoma: blue/purple/pink/red/orange/yellow/green/graphite; High Sierra: blue/graphite. A changed accent resets highlight to the matching preset; unchanged accent preserves independent highlight. |
+| `appearance.setMode` | `{}` | `{mode:'light'|'dark'}` | `{mode,scope:'full'|'menu-dock'}`. High Sierra affects shell only; Mojave/Sonoma/Golden Gate also resolve participating app surfaces. |
+| `appearance.setAccent` | `{}` | `{color}` | `{color}`. Mojave/Sonoma/Golden Gate: eight shared colors; High Sierra: blue/graphite. A changed accent resets highlight; unchanged accent preserves independent highlight. |
 | `appearance.setHighlight` | `{}` | `{color}` | `{color}`. The eight shared preset IDs or exactly `#RRGGBB`; custom values normalize lowercase. No alpha/custom accent/CSS expression is accepted. |
 | `appearance.preferences.open` | `{}` | `{}` | `{appId:'settings',windowId}`. Opens the actual retained singleton General/Appearance pane through existing managed-app lifetime. |
 
@@ -231,6 +231,33 @@ Native pane controls invoke these same commands. Other… exposes actual0–255 
 Appearance is outside Launchpad/Dashboard return snapshots and does not reset original editors, app data, windows, bounds or scroll. Semantic UI roles, selection/focus/disabled/hover states and Graphite traffic lights consume owned optional tokens; default Light/Blue retains existing role literals. Text highlight applies to actual native browser selection. Icons/photos/wallpaper, outgoing message semantics, Paint/Snipping media, authored Edge pages, explicit Terminal document theme and Dashboard widget skins remain independent.
 
 The shared highlight inventory, RGB values/contrast policy, same-accent idempotence and inline custom editor are declared browser policies, not factory palette/storage/picker-timing equivalence. High Sierra's exact factory highlight menu is unestablished. Sonoma manual Light/Dark/eight-Mojave-accent support is bounded; Auto/Multicolor, wallpaper tinting and host settings are absent. Sources and era distinctions: [Mojave](mojave-fidelity.md#os-18-appearance-research-inputs--not-implementation-proof), [High Sierra](high-sierra-profile.md#os-18-appearance-research-inputs--high-sierra-boundary), [Sonoma](sonoma-profile.md#os-18-appearance-research-inputs--sonoma-distinctions).
+
+### Fictional login, lock and user switching — Golden Gate only
+
+Thirteen names require `session.fictional` in `macos-golden-gate-27.0.1`. Other installed profiles omit them and reject known requests as unsupported_profile before mutation. Results are closed result.target objects; requestId is echoed. Ordinary app/shell mutation is unavailable while locked/login/Guest confirmation owns input; profile selection remains a setup action.
+
+| Command | Target | Payload | Applied target / behavior |
+| --- | --- | --- | --- |
+| `session.lock` | `{}` | `{}` | `{phase:'locked',userId}`. Lock signed-in active user; retain original desktop and show actual credentials. |
+| `session.login.open` | `{}` | `{}` | `{phase:'login'}`. Lock/retain current desktop and show fixed user choices. |
+| `session.user.select` | `{userId}` | `{}` | `{userId}`. Show selected local credentials or Guest acknowledgement; never activate before sign-in. |
+| `session.login.submit` | `{}` | `{passcode?,acknowledgeGuest?}` | `{userId,accepted}`. Local passcode is fictional `scene`; valid-shape wrong input returns accepted:false with visible error. Guest requires acknowledgeGuest:true and no passcode. Prepare/resume exact isolated original before activation. |
+| `session.login.back` | `{}` | `{}` | `{phase:'login'}`. Return to user choices, never unlock. |
+| `session.menu.open` | `{menuId:'apple'|'users'}` | `{}` | `{menuId}`. Require actual visible invoker; users additionally requires enablement. Focus first enabled leaf. |
+| `session.menu.close` | `{}` | `{}` | `{menuId:string|null}`. Dismiss and restore real invoker/original return focus. |
+| `session.menu.focus` | `{menuId,itemId}` | `{}` | `{menuId,itemId}`. Focus actual enabled item in matching open menu. |
+| `session.menu.select` | `{menuId,itemId}` | `{}` | `{menuId,itemId}`. Invoke same Lock/Login/selected-user/Guest logout action as UI. |
+| `session.focus` | `{controlId}` | `{}` | `{controlId}`. Focus actually rendered enabled lock/login/Guest control; never hidden retained desktop. |
+| `session.fastUserSwitching.set` | `{}` | `{enabled:boolean}` | `{enabled}`. Bounded fictional enablement; not native Menu Bar settings/administrator control. |
+| `session.guest.end` | `{}` | `{}` | `{confirmationRequired:true}`. Show deletion confirmation over retained inert Guest desktop. |
+| `session.guest.respond` | `{}` | `{accept:boolean}` | `{accepted,phase:'desktop'|'login'}`. Cancel restores original Guest; accept discards only Guest and returns choices. |
+
+Fixed user IDs are local-alex/local-casey/guest. `inspect().state.session` publishes phase, selected/active identity, login view/error, signed-in/locked flags, optional menu/focus and Guest confirmation—not credential drafts. `targets.session` exposes current enabled control IDs, visible bounds, native menu items/bounds, fictional passcode, keyboard delivery and explicit security/storage boundaries. Hidden menu/surface bounds are null. Real controls use the same handlers; Tab stays in the credential/confirmation surface, arrows/Home/End navigate native menus/choices, Escape/Back do not bypass sign-in.
+
+Delivered Control+Command+Q and page alias Control+Shift+F7 lock; F8 remains window cycling and F9 full-screen. Original independent user roots retain models, window/full-screen/HOME state, exact editor/selection/scroll and appearance. Only foreground roots handle global app input; palette ownership prevents inactive cleanup from clearing the active user's theme. Confirmed Guest disposal clears only its root/return tokens; re-entry starts fresh.
+
+No host auth/accounts/credentials, providers, saved sessions, actual FileVault, Touch ID/recovery, user creation or local logout. Fictional FileVault is off, so Guest receives a full page-local desktop; reload/profile replacement discards all users. Source27 native Menu Bar settings differ from the disclosed local checkbox. Primary inputs: [latest version](https://support.apple.com/en-us/109033), [Golden Gate overview](https://www.apple.com/os/macos/), [versioned roster](https://support.apple.com/guide/mac-help/apps-on-your-mac-mchl110b00b7/27/mac/27), [fast switching](https://support.apple.com/en-is/guide/mac-help/mchlp2439/mac), [Guest](https://support.apple.com/te-in/guide/mac-help/mh11784). Original artwork/open font and source-informed presentation are not a native VM/factory screenshot.
+
 
 ### Desktop and Window menu
 
@@ -292,9 +319,9 @@ Windows uses the same nine context/create/trash/sort/cleanup/view command suffix
 Native functional sources: [Mojave desktop organization](https://support.apple.com/guide/mac-help/ways-to-organize-files-on-your-mac-desktop-mh35951/10.14/mac/10.14), [High Sierra desktop organization](https://support.apple.com/guide/mac-help/ways-to-organize-files-on-your-desktop-mh35951/10.13/mac/10.13), [Sonoma desktop organization](https://support.apple.com/guide/mac-help/ways-to-organize-files-on-your-mac-desktop-mh35951/14.0/mac/14.0), [Mojave view options](https://support.apple.com/guide/mac-help/change-options-icon-list-column-gallery-view-mchldaafb302/10.14/mac/10.14), [Mojave Trash](https://support.apple.com/guide/mac-help/delete-files-and-folders-on-mac-mchlp1093/10.14/mac/10.14), and Microsoft's functional references above. Unsupported date/tag sort fields are not fabricated; dimensions/rasterization are simulation constraints, not exact installer screenshots.
 
 
-### Mojave and Sonoma desktop Stacks
+### Supported modern/classic desktop Stacks
 
-Only `macos-mojave-10.14` and `macos-sonoma-14.0` advertise `shell.desktop-stacks`. High Sierra/Windows omit all eight commands and reject known Stack requests with unsupported_profile before mutation. General menu-bar implementation remains separate; these native actions are available through desktop context menus, view options, keyboard and real stack headers.
+Mojave/Sonoma/Golden Gate advertise `shell.desktop-stacks`; High Sierra/Windows omit all eight names and reject unsupported_profile before mutation. Context menus, view options, keyboard and real headers invoke shared file-backed actions.
 
 | Command | Target | Payload | Behavior |
 | --- | --- | --- | --- |
@@ -317,7 +344,7 @@ Native functional evidence: [Apple's versioned Mojave Stacks guide](https://supp
 
 ### Native macOS Dock management, menus and app windows
 
-All three Mac profiles advertise `shell.dock-context` and `shell.dock-management`; Mojave/Sonoma additionally advertise `shell.dock-recents`. Windows omits these 21 commands and rejects them with unsupported_profile before mutation. Actors share handlers: pointer alias/secondary reorder, real Finder bundle HTML drag, drag-away unpin, separator resize, right-click/Control-click/Shift+F10 context, Command-click reveal, Control+F3 focus and Control+Down App Exposé. Finder stays first, Trash last, and app/file sections cannot cross.
+All four Mac profiles expose Dock context/management; Mojave/Sonoma/Golden Gate additionally expose recents. Windows rejects these21 names before mutation. Actors share real alias/bundle drag, removal, separator resize, native context, Command-click reveal, Control+F3 and Control+Down handlers. Finder/Trash and app/file boundaries remain fixed.
 
 | Command | Target | Payload | Behavior |
 | --- | --- | --- | --- |
@@ -347,7 +374,7 @@ All three Mac profiles advertise `shell.dock-context` and `shell.dock-management
 
 Shared `MacDock` and `MacDockAppWindows` project the original managed Window/content snippet with optional inert presentation bounds, not screenshots or copied views. Minimized tiles retain edited content and restore their exact window; minimize-into-app removes only that tile presentation, while App Exposé owns projection without a duplicate footer view. Normal/minimized/zoom/restore state and data remain authoritative; actual viewport refitting still applies. Inert interiors reject presentation commands. Responsive fit keeps all registered aliases inside the viewport; cosine magnification/adjacent spacing never changes footer base height or settled window geometry. Auto-hide reserves zero workspace even during temporary edge/keyboard/context reveal.
 
-`mac-application-files.js` creates readonly simulated bundles under the existing disk, independently of running/pinned state. Finder is under System/Library/CoreServices; legacy apps under Applications; Sonoma separates System/Applications, Utilities, Safari in Applications and DVD Player in CoreServices/Applications. These are **virtual catalog placement policies**, not a factory manifest or host filesystem. Actual successful app.open/window.create advances monotonic history; focus, queries, failed actions and app/folder alias editing do not. Fictional initial history seeds are explicit. Mojave/Sonoma show at most three unpinned recents; High Sierra has no recent control/section, and older running apps remain reachable. Sonoma's native “Show suggested and recent apps in Dock” label does not fabricate cloud suggestions. Remaining preferences, Hide and Open at Login belong to separate queued features.
+Readonly virtual app bundles outlive pins/running apps. Finder is in CoreServices; legacy apps in Applications; Sonoma/Golden Gate have explicit modern System/Applications/Utilities policies with Safari in Applications and DVD Player in CoreServices/Applications. These are virtual catalog placements, not a factory manifest or host filesystem. Only successful open/new-window advances app history.
 
 Native functional sources: [High Sierra Dock](https://support.apple.com/guide/mac-help/the-dock-mh35859/10.13/mac/10.13), [Mojave Dock](https://support.apple.com/guide/mac-help/dock-mh35859/10.14/mac/10.14), [Sonoma Dock](https://support.apple.com/guide/mac-help/open-apps-from-the-dock-mh35859/14.0/mac/14.0), [Mojave app-window overview shortcut](https://support.apple.com/guide/mac-help/open-windows-spaces-mission-control-mh35798/10.14/mac/10.14), [Apple filesystem overview](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/FileSystemProgrammingGuide/FileSystemOverview/FileSystemOverview.html), and [2019 system/data separation](https://developer.apple.com/videos/play/wwdc2019/710/). Browser geometry/artwork is not a pixel-exact WindowServer capture.
 
@@ -355,7 +382,7 @@ Preference sources: [High Sierra Dock preferences](https://support.apple.com/gui
 
 ### Native macOS Dock folders and Trash occupancy
 
-All three Mac profiles advertise `shell.dock-stacks`; Windows omits these ten additional commands and rejects unsupported_profile before mutation. Canonical alias keys are `downloads` or `folder:<actual fileId>`; `folder:downloads` is not an alternate key. Only actual live eligible folders may be pinned, including readonly simulated bundle directories; Trash and the disk volume are not folder-alias sources. Alias edits do not move files, open windows or advance app-use history.
+All four Mac profiles advertise `shell.dock-stacks`; Windows rejects these ten names before mutation. Alias keys are downloads or folder:<actual fileId>, not folder:downloads. Only live eligible folders may be pinned; aliases never move files/open windows/advance history.
 
 | Command | Target | Payload | Behavior |
 | --- | --- | --- | --- |
@@ -487,3 +514,6 @@ Application families are `win11.explorer.*`, `win11.notepad.*`, `win11.terminal.
 28. **OS-17 Dashboard proof.** All22 names ran through source/Rust-served requests; strict174/159/166/190 catalogs compile. Native High Sierra all-five-widget configuration/arithmetic/memory/calendar/weather/converter/error/add/remove/mode actors and Mojave pointer cancellation, honest empty/re-add, dense16 and560×420/320×240 scroll/focus hit ownership passed. Final production retains original Notes node/text/caret/lifetime, returns from Space/MC to the editor, resumes covered Dashboard through alias/app.open, keeps native Error/Escape owned and supports nullable app/Dock/bundle/Launchpad consumers. Disabled Launchpad rollback preserves its view plus the live Dock proxy; subsequent native Dashboard pin/activation returns exact Dock focus. Seven semantic and nonordinary Space guards preserve state; Sonoma/Windows reject all22 atomically. Default screenshot comparison0(0);123 tests/1607 assertions pass, and build has only the existing bundle advisory. Native version/artwork/service/category limits remain explicit.
 
 29. **OS-18 shared appearance proof.** Native source controls exercised all eight Mojave accents/highlights, custom RGB endpoints/invalid recovery, High Sierra Blue/Graphite/shell-only Dark, Sonoma participating surfaces and Windows native Colors/all ten apps. Strict178/163/170/190 catalogs compile; final Rust-served twelve Mac applied requests/results validate and all four Windows unsupported requests preserve canonical state. Graphite resolves three gray native traffic lights in each Mac era. Original Notes DOM/data/caret/scroll/bounds and Dashboard preference retention passed; actual production Hex external sync preserves caret3 and preset removal returns Highlight focus without stale commits. Fixed the preferences prop/store-rune collision and draft ownership/synchronization bugs. Windows authored SVG/media and Terminal override survive native theme changes; the independently reproduced existing activation-only Notepad DOM-scroll reset remains disclosed. Narrow320×240/DPR1.25 native preference scrolling/hit ownership and Windows560×900 keyboard Colors passed.129 tests/1665 assertions and final production build pass without component warnings, with the existing bundle advisory; fresh production errors are empty. Default comparison against OS-17 is0 (0); no native dark/palette pixel-identity claim.
+
+30. **OS-19 latest-profile/session proof.** Source-verified Golden Gate27.0.1 is default; independently authored shell/Notes/Messages and13 session names replace no historical renderer. Strict159 request/result schemas compile;25 applied real-browser session requests cover all13 names. Native Control+Command+Q/F7, wrong/correct input, fixed choices/optional menu, isolated Alex/Casey edits/palette/bounds, Guest acknowledgement/cancel/delete/fresh re-entry and320×240 trapped focus/internal scrolling passed. Direct return preserves original Notes DOM/text/selection/scroll/geometry; final Rust-served path restores exact edited state/focus and rejects locked mutation. Modern green/full-screen retention, actual Mission Control/Escape, Stacks and Appearance pane were exercised. Legacy178/163/170/190 catalogs compile and all reject session.lock atomically.135 tests/1732 assertions; final frontend/Rust build has no component warnings, native source/production page errors are empty. Large-bundle advisory and lack of native VM/factory-pixel measurements remain explicit.
+

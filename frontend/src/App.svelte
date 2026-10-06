@@ -48,7 +48,10 @@
   import { clampPosition, expandedBounds, resizeBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
 
-  let { profile: profileInput, adapter: adapterInput, registerCommands, selectProfile } = $props();
+  let { profile: profileInput, adapter: adapterInput, registerCommands, selectProfile,
+    registerSessionScene, registerSessionView, session, executeSession,
+    foreground = true, appearanceOwner = true, windowNamespace = '' } = $props();
+  let sceneRoot;
   // One immutable profile per scene instance. A profile change mounts a fresh
   // instance instead of relabeling incompatible application/view state.
   const profile = untrack(() => profileInput);
@@ -66,6 +69,7 @@
   const hasLaunchpad = profile.capabilities.includes('shell.launchpad');
   const hasDashboard = profile.capabilities.includes('shell.dashboard');
   const hasAppearance = profile.capabilities.includes('shell.appearance');
+  const modernMac = macDesktop && profile.capabilities.includes('shell.window-green-menu');
   const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
   const desktopUtilityApps = macDesktop ? {
     'desktop-info': { ...applications.finder, width: 360, height: 560, minimumSize: { width: 300, height: 300 } },
@@ -247,8 +251,10 @@
   let notesState = $state(initialData.notes);
   let nativeState = $state(initialData.native);
   let appearanceState = $state(macDesktop ? appearanceDefaults(profile) : undefined);
-  $effect(() => applyAppearance(document.documentElement, profile, macDesktop ? appearanceState
-    : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent }));
+  $effect(() => {
+    if (appearanceOwner) return applyAppearance(document.documentElement, profile, macDesktop ? appearanceState
+      : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
+  });
   let macFiles = $state(macDesktop ? createMacSceneFiles() : undefined);
   const desktopFileStore = macDesktop ? macFiles : nativeState.apps;
   const desktopFilePolicy = macDesktop ? { validateName: validMacDesktopName } : {};
@@ -330,7 +336,9 @@
   });
   let notesView = null;
   const applicationViews = new Map();
-  let initialized = false;
+  let initialized = $state(false);
+  let starting = false;
+  let startup = Promise.resolve(null);
   const activeApp = $derived(applications[activeAppId]);
   $effect(() => {
     const live = new Set(desktopItems.map(item => item.id));
@@ -610,7 +618,8 @@
   for (const name of Object.keys(handlers)) {
     if (!Object.hasOwn(commandCatalog, name)) throw new Error(`Missing native command descriptor: ${name}`);
   }
-  const sceneCatalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) => descriptor.profiles.includes(profile.id)));
+  const sceneCatalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) =>
+    descriptor.profiles.includes(profile.id) && descriptor.capability !== 'session.fictional'));
   // Composite callbacks capture this binding, so they use the same sealed,
   // capability-guarded registry after native profile selection.
   handlers = Object.fromEntries(Object.entries(handlers).filter(([name]) => Object.hasOwn(sceneCatalog, name)));
@@ -828,7 +837,7 @@
   }
 
   function sceneInteractionsAvailable() {
-    return !disposed && (adapter.windowInteractionsAvailable?.(nativeState) ?? true);
+    return !disposed && (foreground || starting || !initialized) && (adapter.windowInteractionsAvailable?.(nativeState) ?? true);
   }
   function windowInteractionsAvailable() {
     return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view && !dashboardOpen;
@@ -842,7 +851,7 @@
   }
 
   function managedWindowElement(id) {
-    return [...document.querySelectorAll('.managed-window[data-window-id]')].find(element => element.dataset.windowId === id);
+    return [...(sceneRoot?.querySelectorAll('.managed-window[data-window-id]') ?? [])].find(element => element.dataset.windowId === id);
   }
   async function focusKeyboardWindow(id) {
     await tick();
@@ -877,7 +886,7 @@
     if (result.status !== 'applied') return result;
     const window = windows.find(window => window.id === result.target.windowId);
     window.settingsPane = 'dock';
-    window.title = profile.renderer === 'sonoma' ? 'Desktop & Dock' : 'Dock';
+    window.title = modernMac ? 'Desktop & Dock' : 'Dock';
     await tick();
     return { status: 'applied', target: { appId: 'settings', windowId: window.id } };
   }
@@ -894,7 +903,7 @@
     const result = await handlers['app.open']({ appId: 'settings' }, {});
     if (result.status !== 'applied') return result;
     const window = windows.find(window => window.id === result.target.windowId);
-    window.settingsPane = 'appearance'; window.title = profile.renderer === 'sonoma' ? 'Appearance' : 'General';
+    window.settingsPane = 'appearance'; window.title = modernMac ? 'Appearance' : 'General';
     await tick();
     return { status: 'applied', target: { appId: 'settings', windowId: window.id } };
   }
@@ -912,7 +921,7 @@
     const focused = await handlers['window.focus']({ windowId: window.id }, {});
     if (focused.status !== 'applied') return focused;
     await tick();
-    const root = [...document.querySelectorAll('[data-window-id]')].find(element => element.dataset.windowId === window.id);
+    const root = managedWindowElement(window.id);
     const target = [...(root?.querySelectorAll('[data-folder-item-id]') ?? [])].find(element => element.dataset.folderItemId === file.id);
     if (!target) throw new Error('The real Finder application bundle did not render after reveal.');
     const pane = target.closest('.folder-contents'), bounds = target.getBoundingClientRect(), area = pane.getBoundingClientRect();
@@ -1171,11 +1180,11 @@
     return windowPresented(window);
   }
   function windowInteractive(window) {
-    return !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
+    return foreground && !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
       && fullScreenStage.mode !== 'pairing' && windowPresented(window);
   }
   function measureStageArea() {
-    const workspace = document.querySelector(macDesktop ? '.desktop-workspace, .sonoma-workspace' : '.win11-workspace');
+    const workspace = sceneRoot?.querySelector(macDesktop ? '.desktop-workspace, .sonoma-workspace, .golden-gate-workspace' : '.win11-workspace');
     const root = workspace?.parentElement;
     if (!root) return;
     const scene = root.getBoundingClientRect(), area = workspace.getBoundingClientRect();
@@ -1255,7 +1264,7 @@
     const topLocked = Boolean(presentation.greenMenu || switching.appMenu || desktopState.windowMenuOpen);
     const topLimit = presentation.revealed.top ? stageArea.menuHeight + 50 : 2;
     revealFullScreen('top', topLocked || event.clientY <= topLimit);
-    const footer = document.querySelector(macDesktop ? '.dock, .sonoma-dock' : '.win11-taskbar');
+    const footer = sceneRoot?.querySelector(macDesktop ? '.dock, .sonoma-dock, .golden-gate-dock' : '.win11-taskbar');
     const bounds = footer?.getBoundingClientRect();
     const locked = Boolean(desktopState.dock?.context || desktopState.dock?.folderStack || desktopState.dock?.appWindows
       || desktopState.dock?.focusedItemId || nativeState?.shell.panel);
@@ -1295,7 +1304,7 @@
     if (isAppHidden(appId)) switching.hiddenAppIds = switching.hiddenAppIds.filter(id => id !== appId);
   }
   function applicationHeader(appId) {
-    return [...document.querySelectorAll('[data-application-menu-button]')]
+    return [...(sceneRoot?.querySelectorAll('[data-application-menu-button]') ?? [])]
       .find(node => node.dataset.appId === appId && node.isConnected);
   }
   function applicationHeaderRect(appId) {
@@ -1314,13 +1323,14 @@
   }
   async function focusSceneWorkspace() {
     await tick();
-    const workspace = document.querySelector(macDesktop ? '.desktop-workspace, .sonoma-workspace' : '.win11-workspace');
+    const workspace = sceneRoot?.querySelector(macDesktop ? '.desktop-workspace, .sonoma-workspace, .golden-gate-workspace' : '.win11-workspace');
     if (!workspace?.isConnected || workspace.closest('[inert]')) return false;
     workspace.focus({ preventScroll: true });
     return document.activeElement === workspace;
   }
   function captureNativeFocus() {
     const node = document.activeElement;
+    if (!sceneRoot?.contains(node)) return null;
     const attributes = [...node.attributes].filter(attribute => attribute.name.startsWith('data-'));
     const selector = attributes.length
       ? node.localName + attributes.map(attribute => `[${attribute.name}="${CSS.escape(attribute.value)}"]`).join('')
@@ -1333,8 +1343,8 @@
     await tick(); await tick();
     ownedWindowFocus++;
     try {
-      const scope = token?.windowId ? managedWindowElement(token.windowId) : document;
-      const original = token?.node?.isConnected ? token.node
+      const scope = token?.windowId ? managedWindowElement(token.windowId) : sceneRoot;
+      const original = token?.node?.isConnected && sceneRoot?.contains(token.node) ? token.node
         : token?.selector && scope ? scope.querySelector(token.selector) : null;
       if (original?.isConnected && typeof original.focus === 'function' && !original.closest('[inert]')
         && original.getClientRects().length && getComputedStyle(original).visibility === 'visible') {
@@ -1348,6 +1358,21 @@
       return current ? await focusKeyboardWindow(current.id) : await focusSceneWorkspace();
     } finally { ownedWindowFocus--; }
   }
+  function captureSessionDesktop() {
+    const scroll = [];
+    for (const node of sceneRoot.querySelectorAll('*')) {
+      if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)
+        scroll.push({ node, top: node.scrollTop, left: node.scrollLeft });
+    }
+    return { focus: captureNativeFocus(), scroll };
+  }
+  async function restoreSessionDesktop(snapshot) {
+    const focused = await restoreNativeFocus(snapshot?.focus);
+    for (const { node, top, left } of snapshot?.scroll ?? [])
+      if (node.isConnected && sceneRoot.contains(node)) node.scrollTo({ top, left, behavior: 'instant' });
+    await tick();
+    return focused;
+  }
   function captureSwitchingFocus() {
     switchingReturnFocus = captureNativeFocus();
   }
@@ -1358,7 +1383,7 @@
   }
   function captureSpacesScene() {
     const scroll = [];
-    for (const node of document.querySelectorAll('.managed-window, .managed-window *, [data-shell-switcher] *, [data-mission-control] *, [data-launchpad] *, [data-dashboard] *'))
+    for (const node of sceneRoot.querySelectorAll('.managed-window, .managed-window *, [data-shell-switcher] *, [data-mission-control] *, [data-launchpad] *, [data-dashboard] *'))
       if (node.scrollTop || node.scrollLeft) scroll.push({ node, top: node.scrollTop, left: node.scrollLeft });
     return { state: $state.snapshot({ switching, presentation, desktop: desktopState, notesView: notesViewState, launchpad: launchpadState, dashboard: dashboardState }),
       launchpadView: launchpadState.view, dashboardView: dashboardState.view, dashboardReturnState,
@@ -1673,43 +1698,45 @@
 
   onMount(() => {
     const unregister = registerCommands(commands);
+    const unregisterSession = registerSessionScene?.({
+      capture: captureSessionDesktop, restore: restoreSessionDesktop,
+      ready: async () => { await tick(); const result = await startup; return !disposed && initialized && result?.status === 'applied'; },
+    });
     const stopScene = adapter.startScene?.(nativeState, commands.execute);
-    window.addEventListener('keydown', launchpadKeydown, true);
-    window.addEventListener('keydown', dashboardKeydown, true);
+    // Retained scenes keep their DOM, but only the foreground desktop receives
+    // global input. Session-native controls have their own command/focus owner.
+    function listen(target, type, handler, capture = false) {
+      const listener = event => {
+        if (foreground && !event.target?.closest?.('[data-session-control], [data-session-control-root], [data-session-menu], [data-session-surface]')) handler(event);
+      };
+      target.addEventListener(type, listener, capture);
+      return () => target.removeEventListener(type, listener, capture);
+    }
+    const stopListeners = [
+      listen(window, 'keydown', launchpadKeydown, true),
+      listen(window, 'keydown', dashboardKeydown, true),
+      listen(window, 'keydown', spacesKeydown, true),
+      listen(window, 'keydown', fullScreenKeydown, true),
+      listen(document, 'pointermove', stagePointerMove, true),
+      listen(document, 'pointerdown', stagePointerDown, true),
+      listen(document, 'pointerup', stagePointerUp, true),
+      listen(document, 'pointercancel', stagePointerUp, true),
+      listen(window, 'keydown', switchingKeydown, true),
+      listen(window, 'keyup', switchingKeyup, true),
+      listen(window, 'blur', cancelHeldSwitcher),
+      listen(document, 'visibilitychange', switchingVisibility),
+      listen(document, 'pointerdown', switchingOutside, true),
+      listen(document, 'focusin', switchingOutside, true),
+    ];
     const dashboardTimer = hasDashboard ? setInterval(() => {
-      if (!disposed && dashboardState.view && dashboardControls?.available())
+      if (!disposed && foreground && dashboardState.view && dashboardControls?.available())
         commands.execute({ command: 'dashboard.clock.advance', payload: { seconds: 1 } });
     }, 1000) : null;
-    window.addEventListener('keydown', spacesKeydown, true);
-    window.addEventListener('keydown', fullScreenKeydown, true);
-    document.addEventListener('pointermove', stagePointerMove, true);
-    document.addEventListener('pointerdown', stagePointerDown, true);
-    document.addEventListener('pointerup', stagePointerUp, true);
-    document.addEventListener('pointercancel', stagePointerUp, true);
-    window.addEventListener('keydown', switchingKeydown, true);
-    window.addEventListener('keyup', switchingKeyup, true);
-    window.addEventListener('blur', cancelHeldSwitcher);
-    document.addEventListener('visibilitychange', switchingVisibility);
-    document.addEventListener('pointerdown', switchingOutside, true);
-    document.addEventListener('focusin', switchingOutside, true);
     return () => {
-      disposed = true; stopScene?.(); unregister();
-      window.removeEventListener('keydown', launchpadKeydown, true);
-      window.removeEventListener('keydown', dashboardKeydown, true);
+      disposed = true; stopScene?.(); unregister(); unregisterSession?.();
+      for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
-      window.removeEventListener('keydown', switchingKeydown, true);
-      window.removeEventListener('keyup', switchingKeyup, true);
-      window.removeEventListener('keydown', fullScreenKeydown, true);
-      window.removeEventListener('keydown', spacesKeydown, true);
-      document.removeEventListener('pointermove', stagePointerMove, true);
-      document.removeEventListener('pointerdown', stagePointerDown, true);
-      document.removeEventListener('pointerup', stagePointerUp, true);
-      document.removeEventListener('pointercancel', stagePointerUp, true);
       if (stageDrag) stagePointerUp({ pointerId: stageDrag.pointerId, type: 'pointercancel' });
-      window.removeEventListener('blur', cancelHeldSwitcher);
-      document.removeEventListener('visibilitychange', switchingVisibility);
-      document.removeEventListener('pointerdown', switchingOutside, true);
-      document.removeEventListener('focusin', switchingOutside, true);
     };
   });
 
@@ -1762,8 +1789,8 @@
       if (hasDockContext) recordMacAppUse(desktopState.dock, appId);
       return existing.id;
     }
-    const id = nextWindowId === 1 && appId === profile.defaults.startupAppId
-      ? appId : `${appId}-window-${nextWindowId}`;
+    const id = windowNamespace + (nextWindowId === 1 && appId === profile.defaults.startupAppId
+      ? appId : `${appId}-window-${nextWindowId}`);
     nextWindowId++;
     adapter.createWindow?.(nativeState, id, appId, { fresh });
     windows.push({
@@ -1940,8 +1967,9 @@
       }
     }
     if (!initialized) {
-      initialized = true;
-      handlers['app.open']({ appId: profile.defaults.startupAppId }, {});
+      initialized = true; starting = true;
+      startup = Promise.resolve(handlers['app.open']({ appId: profile.defaults.startupAppId }, {}))
+        .finally(() => { starting = false; });
     }
   }
 </script>
@@ -1956,7 +1984,7 @@
         {visible}
         fullScreen={window.fullScreen}
         revealedTop={fullScreenStage.topRevealed}
-        modernGreenMenu={profile.renderer === 'sonoma'}
+        modernGreenMenu={modernMac}
         onfullscreen={() => toggleWindowFullScreen(window.id)}
         onsplitbegin={event => beginSplitView(window.id, event)}
         onsplitside={event => changeSplitSide(window.id, event)}
@@ -1975,11 +2003,11 @@
         {:else if window.appId === 'messages'}
           <MessagesWindow
             assets={profile.assets}
-            {active}
+            active={active && interactive}
             zoomed={window.zoomed}
             fullScreen={window.fullScreen}
             revealedTop={fullScreenStage.topRevealed}
-            modernGreenMenu={profile.renderer === 'sonoma'}
+            modernGreenMenu={modernMac}
             onfullscreen={() => toggleWindowFullScreen(window.id)}
             onsplitbegin={event => beginSplitView(window.id, event)}
             onsplitside={event => changeSplitSide(window.id, event)}
@@ -1994,11 +2022,11 @@
             viewState={notesViewState}
             execute={commands.execute}
             registerView={registerNotesView}
-            {active}
+            active={active && interactive}
             zoomed={window.zoomed}
             fullScreen={window.fullScreen}
             revealedTop={fullScreenStage.topRevealed}
-            modernGreenMenu={profile.renderer === 'sonoma'}
+            modernGreenMenu={modernMac}
             onfullscreen={() => toggleWindowFullScreen(window.id)}
             onsplitbegin={event => beginSplitView(window.id, event)}
             onsplitside={event => changeSplitSide(window.id, event)}
@@ -2019,7 +2047,7 @@
             <MacDockPreferences {profile} preferences={desktopState.dock.preferences} execute={commands.execute} />
             <div class="settings-pane-links">
               {#if hasAppearance}
-                <button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'appearance.preferences.open' })}>{profile.renderer === 'sonoma' ? 'Appearance…' : 'General…'}</button>
+                <button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'appearance.preferences.open' })}>{modernMac ? 'Appearance…' : 'General…'}</button>
               {/if}
               {#if hasDashboard}
                 <button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'dashboard.preferences.open' })}>Mission Control…</button>
@@ -2046,8 +2074,13 @@
   {/if}
 {/snippet}
 
+<div class="scene-root" data-session-scene data-profile-id={profile.id} bind:this={sceneRoot}>
 <Desktop
   {profile}
+  {session}
+  {executeSession}
+  {registerSessionView}
+  foreground={foreground || !initialized}
   {windows}
   switchingState={switching}
   {fullScreenStage}
@@ -2131,8 +2164,10 @@
       items={appMenuItems} anchor={applicationMenuAnchor} execute={commands.execute} bind:this={applicationMenuControls} />
   {/if}
 </Desktop>
+</div>
 
 <style>
+  .scene-root { position: absolute; inset: 0; }
   .stage-backdrop { position: absolute; z-index: 1; background: black; pointer-events: none; }
   .split-divider { position: absolute; width: 4px; background: #171717; cursor: col-resize; touch-action: none; outline: none; }
   .split-divider:focus-visible { background: var(--appearance-focus, #5797dc); }

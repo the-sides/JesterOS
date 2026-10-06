@@ -1,4 +1,4 @@
-import { DEFAULT_PROFILE_ID } from './os-profiles.js';
+import { MOJAVE_PROFILE_ID } from './os-profiles.js';
 import { defineCommand, NONE, text, identity, flag, number, offset, choice, object, match, empty } from './command-schema.js';
 import { windows11ShellCatalog } from './windows11-shell-catalog.js';
 import { windows11AppCatalog } from './windows11-app-commands.js';
@@ -13,8 +13,9 @@ import { spacesCatalog } from './spaces-catalog.js';
 import { launchpadCatalog } from './launchpad-catalog.js';
 import { dashboardCatalog } from './dashboard-catalog.js';
 import { appearanceCatalog } from './appearance-catalog.js';
+import { fictionalSessionCatalog } from './fictional-session-catalog.js';
 
-const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
+const MAC_PROFILES = [MOJAVE_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
 const ALL_PROFILES = [...MAC_PROFILES, ...WINDOWS_PROFILES];
 const windowTarget = object({ windowId: identity });
@@ -195,4 +196,5 @@ export const commandCatalog = {
   ...macDockFoldersCatalog,
   ...windows11ShellCatalog,
   ...windows11AppCatalog,
+  ...fictionalSessionCatalog,
 };

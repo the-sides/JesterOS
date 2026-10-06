@@ -2,11 +2,12 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
 
   let { profile, preferences, execute } = $props();
-  const modern = $derived(profile.renderer === 'sonoma');
+  const modern = $derived(profile.capabilities.includes('shell.window-green-menu'));
   const hasRecents = $derived(profile.renderer === 'mojave' || modern);
-  const Icon = $derived(modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
 
   function set(payload) {
     return execute({ command: 'dock.preferences.set', target: {}, payload });

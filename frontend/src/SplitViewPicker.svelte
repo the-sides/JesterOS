@@ -3,13 +3,14 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
   let { profile, state: pairing, items, execute, rect, onlayout } = $props();
   let pane = $state();
   let geometry = $state(null);
   let observing = 0;
   let signature = '';
   let report = () => {};
-  const Icon = $derived(profile.renderer === 'sonoma' ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : profile.renderer === 'sonoma' ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   const request = (name, target = {}, payload = {}) => execute({ command: `window.splitView.${name}`, target, payload });
   export function available() { return Boolean(pane?.isConnected && geometry && !pane.closest('[inert]') && pane.getBoundingClientRect().width > 0 && pane.getBoundingClientRect().height > 0); }
   function controls() { return available() ? [...pane.querySelectorAll('[data-split-view-window-id]')] : []; }

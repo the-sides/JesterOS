@@ -1,6 +1,6 @@
 import { defineCommand, NONE, identity, flag, offset, choice, object, empty, match } from './command-schema.js';
 
-const define = defineCommand.bind(null, ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0']);
+const define = defineCommand.bind(null, ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1']);
 const app = object({ appId: identity }), window = object({ windowId: identity }), item = object({ itemId: identity });
 const available = 'The native macOS Dock is mounted and the scene is not disposed or blocked by a global modal.';
 const menu = 'A current native Dock context menu is open; use its enabled live item IDs.';

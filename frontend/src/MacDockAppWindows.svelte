@@ -2,10 +2,11 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
 
   let { profile, app, state, cards, area, execute } = $props();
-  const modern = $derived(profile.renderer === 'sonoma');
-  const Icon = $derived(modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const modern = $derived(profile.capabilities.includes('shell.window-green-menu'));
+  const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   const selectedWindowId = $derived(state.selectedWindowId);
 
   function request(command, windowId) {

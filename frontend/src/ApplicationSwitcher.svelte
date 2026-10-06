@@ -3,6 +3,7 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
   import Windows11Icon from './Windows11Icon.svelte';
 
   let { profile, state: switcherState, items, execute, onlayout } = $props();
@@ -14,8 +15,8 @@
   let reportLayout = () => {};
   let lastLayoutSignature = '';
   const windows = $derived(switcherState.kind === 'windows');
-  const modern = $derived(profile.renderer === 'sonoma');
-  const Icon = $derived(windows ? Windows11Icon : modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const modern = $derived(profile.capabilities.includes('shell.window-green-menu'));
+  const Icon = $derived(windows ? Windows11Icon : profile.renderer === 'golden-gate' ? GoldenGateIcon : modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
 
   onDestroy(() => { if (lastLayoutSignature) onlayout?.({}); });
   function request(command, target = {}, payload = {}) {

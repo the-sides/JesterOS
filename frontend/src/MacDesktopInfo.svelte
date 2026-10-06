@@ -2,15 +2,16 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
   let { profile, info, windowId, sections, execute } = $props();
-  const Icon = $derived(profile.renderer === 'sonoma' ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : profile.renderer === 'sonoma' ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   function toggle(sectionId, event) {
     const open = event.currentTarget.open;
     if (open !== sections[sectionId]) execute({ command: 'desktop.info.section',
       target: { windowId, sectionId }, payload: { open } });
   }
 </script>
-<div class="info-inspector" class:modern={profile.renderer === 'sonoma'}>
+<div class="info-inspector" class:modern={profile.capabilities.includes('shell.window-green-menu')}>
   <header><Icon name={info.icon} assets={profile.assets}/><div><strong>{info.name}</strong><p>{info.kind}</p></div></header>
   {#if info.deleted}<p class="trash-state" role="status">This item is in the Trash.</p>{/if}
   <details open={sections.general} ontoggle={(event) => toggle('general', event)}><summary>General:</summary><dl>

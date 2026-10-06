@@ -1,7 +1,7 @@
 import { defineCommand, NONE, identity, choice, object, empty } from './command-schema.js';
 import { appearancePresets } from './appearance.js';
 
-const profiles = ['macos-mojave-10.14', 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
+const profiles = ['macos-mojave-10.14', 'macos-high-sierra-10.13', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const colors = choice(...appearancePresets.map(value => value.id));
 const rgb = { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' };
 const scene = 'A connected native macOS scene with no blocking global modal; appearance setters need no Preferences window.';

@@ -7,7 +7,7 @@ export const DESKTOP_SORTS = ['none', 'name', 'kind', 'size'];
 export function desktopViewDefaults(family, renderer) {
   return family === 'windows'
     ? { iconSize: 44, alignToGrid: false, autoArrange: false, showIcons: true }
-    : { iconSize: 64, gridSpacing: renderer === 'sonoma' ? 24 : 23, textSize: 12,
+    : { iconSize: 64, gridSpacing: renderer === 'sonoma' || renderer === 'golden-gate' ? 24 : 23, textSize: 12,
       labelPosition: 'bottom', showItemInfo: false, showIconPreview: true };
 }
 

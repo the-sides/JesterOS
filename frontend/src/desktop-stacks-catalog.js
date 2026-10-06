@@ -1,7 +1,7 @@
 import { defineCommand, NONE, identity, flag, choice, object, empty } from './command-schema.js';
 import { STACK_GROUPS, STACK_SORTS } from './desktop-stacks-model.js';
 
-const define = defineCommand.bind(null, ['macos-mojave-10.14', 'macos-sonoma-14.0']);
+const define = defineCommand.bind(null, ['macos-mojave-10.14', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1']);
 const stackTarget = object({ stackId: identity });
 const surface = 'The native desktop item pane is mounted, visible, and not blocked by a global modal.';
 const enabled = 'Use Stacks is enabled; stackId is a current groups[].stackId in targets.desktop.stacks.';

@@ -3,14 +3,15 @@
   import AppIcon from './AppIcon.svelte';
   import HighSierraAppIcon from './HighSierraAppIcon.svelte';
   import SonomaIcon from './SonomaIcon.svelte';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
 
   let { profile, state: stackState, folder, items, view, anchor, execute } = $props();
   let panel = $state();
   let pane = $state();
   let geometry = $state(null);
   let observing = 0;
-  const modern = $derived(profile.renderer === 'sonoma');
-  const Icon = $derived(modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
+  const modern = $derived(profile.capabilities.includes('shell.window-green-menu'));
+  const Icon = $derived(profile.renderer === 'golden-gate' ? GoldenGateIcon : modern ? SonomaIcon : profile.renderer === 'high-sierra' ? HighSierraAppIcon : AppIcon);
   const nested = $derived(stackState.pathFileIds.length > 1);
   const fanCapacity = $derived(geometry?.fanCapacity ?? 1);
   const visibleItems = $derived(view === 'fan' ? items.slice(0, fanCapacity) : items);

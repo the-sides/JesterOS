@@ -5,7 +5,7 @@
   let submenu = $state();
   let submenuPosition = $state({ x: 0, y: 0 });
   let mainPosition = $state(null);
-  const modern = $derived(profile.renderer === 'sonoma');
+  const modern = $derived(profile.capabilities.includes('shell.window-green-menu'));
   const branch = $derived(items.find(item => item.id === context.submenuId && item.children));
   const selected = $derived(items.flatMap((item) => [item, ...(item.children ?? [])]).find((item) => item.id === context.itemId));
   function request(command, itemId, openSubmenu) { return execute({ command: `desktop.context.${command}`,
