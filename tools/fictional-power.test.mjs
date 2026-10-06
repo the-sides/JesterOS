@@ -1,39 +1,53 @@
 import { expect, test } from 'bun:test';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { fictionalSessionDefaults, createFictionalSessionCommands, signOutFictionalSessions } from '../frontend/src/fictional-session.js';
-import { fictionalPowerDefaults, createFictionalPowerCommands } from '../frontend/src/fictional-power.js';
+import { fictionalPowerDefaults, createFictionalPowerCommands, powerTargets } from '../frontend/src/fictional-power.js';
 
 // Real session/power transitions. DOM retention and actual focus are browser smoke,
 // not pretend editor/window objects which no domain handler ever reads.
 function scene(profile = getOSProfile('macos-golden-gate-27.0.1')) {
   const session = fictionalSessionDefaults(profile), power = fictionalPowerDefaults(profile);
   let available = true, mounted = true, visible = true, connected = true, focusable = true, lockAllowed = true, afterFocus = null;
+  let cycleAllowed = true, commitAllowed = true, reopenPreference = true;
   const disabled = new Set();
-  const phaseControls = () => power.pending ? ['cancel', 'confirm'] : ['saver', 'sleeping'].includes(power.phase)
+  const phaseControls = () => power.pending ? ['cancel', 'confirm', 'reopen-windows'] : ['saver', 'sleeping'].includes(power.phase)
     ? ['wake'] : power.phase === 'off' ? ['start'] : power.phase === 'booting' ? ['surface'] : [];
   const facade = {
     controlIds: () => mounted && visible && connected ? phaseControls().filter(id => !disabled.has(id)) : [],
     focus: id => { if (!focusable || !facade.controlIds().includes(id)) return false; afterFocus?.(); return true; },
+    bounds: () => null,
+  };
+  const sessionFacade = {
+    controlIds: () => ['password', 'sign-in', 'back', 'guest-acknowledge', 'user:local-alex', 'user:local-casey', 'user:guest',
+      'logout-cancel', 'logout-confirm', ...(session.logoutPending?.kind === 'local' ? ['logout-reopen-windows'] : [])],
+    focus: () => true,
   };
   const sessionCommands = createFictionalSessionCommands({ profile, session, available: () => available,
     settle: async () => {}, captureDesktop: () => {}, restoreDesktop: async () => true,
-    ensureDesktop: async () => true, discardDesktop: async () => {}, getSurfaceView: () => ({
-      controlIds: () => ['logout-cancel', 'logout-confirm'], focus: () => true,
-    }),
+    ensureDesktop: async () => true, discardDesktop: async () => {}, getSurfaceView: () => sessionFacade,
+    getReopenWindows: () => reopenPreference, canExit: () => cycleAllowed,
+    exitDesktop: async () => ({ status: 'applied' }),
   });
   const commands = createFictionalPowerCommands({ profile, power, session, available: () => available,
     settle: async () => {}, getView: () => mounted ? facade : null, captureReturn: () => {}, restoreReturn: async () => {},
     lockSession: () => lockAllowed ? sessionCommands['session.lock']({}, {})
       : { status: 'rejected', error: { code: 'unavailable', message: 'No interactive session.' } },
-    signOutForBoot: async () => signOutFictionalSessions(session),
+    getReopenWindows: () => reopenPreference, canCycle: () => cycleAllowed,
+    signOutForBoot: async () => {
+      if (!commitAllowed) return { status: 'rejected', error: { code: 'unavailable', message: 'Pending desktop work.' } };
+      signOutFictionalSessions(session);
+      return { status: 'applied' };
+    },
   });
-  return { session, power,
+  return { session, power, targets: () => powerTargets(power, mounted ? facade : null),
     run: (name, target = {}, payload = {}) => commands[`power.${name}`](target, payload),
     sessionRun: (name, target = {}, payload = {}) => sessionCommands[`session.${name}`](target, payload),
     setAvailable: value => { available = value; }, setMounted: value => { mounted = value; },
     setVisible: value => { visible = value; }, setConnected: value => { connected = value; },
     setFocusable: value => { focusable = value; }, setLockAllowed: value => { lockAllowed = value; },
     disable: id => disabled.add(id), afterFocus: callback => { afterFocus = callback; },
+    enable: id => disabled.delete(id), setCycleAllowed: value => { cycleAllowed = value; },
+    setCommitAllowed: value => { commitAllowed = value; }, setReopenPreference: value => { reopenPreference = value; },
   };
 }
 
@@ -174,7 +188,7 @@ test('historical/uninstalled/missing-capability profiles reject every power path
     { ...current, capabilities: current.capabilities.filter(value => value !== 'session.power') }]) {
     const s = scene(profile);
     for (const [name, target, payload] of [['screenSaver.start', {}, {}], ['sleep', {}, {}], ['wake', {}, {}], ['restart', {}, {}],
-      ['shutdown', {}, {}], ['respond', {}, { accept: true }], ['start', {}, {}], ['advance', {}, { seconds: 1 }], ['focus', { controlId: 'surface' }, {}]]) {
+      ['shutdown', {}, {}], ['configure', {}, { reopenWindows: false }], ['respond', {}, { accept: true }], ['start', {}, {}], ['advance', {}, { seconds: 1 }], ['focus', { controlId: 'surface' }, {}]]) {
       await unchanged(s, name, target, payload, 'unsupported_profile');
     }
   }
@@ -188,7 +202,7 @@ for (const action of ['restart', 'shutdown']) {
     await s.sessionRun('login.open'); await s.sessionRun('user.select', { userId: 'guest' });
     await s.sessionRun('login.submit', {}, { acknowledgeGuest: true });
     const result = await s.run(action, {}, { confirm: false });
-    expect(result.target).toEqual({ confirmationRequired: false, action });
+    expect(result.target).toMatchObject({ confirmationRequired: false, action, reopenWindows: true });
     expect(s.power.phase).toBe(action === 'restart' ? 'booting' : 'off');
     expect(s.power.pending).toBeNull(); expect(s.session.phase).toBe('login');
     expect(s.session.users.every(user => !user.signedIn && !user.locked)).toBe(true);
@@ -204,3 +218,89 @@ test('malformed confirmation bypass cannot sign out a user or initiate a power t
     await unchanged(s, action, { action }, { confirm: false }, 'invalid_arguments');
   }
 });
+
+for (const action of ['restart', 'shutdown']) {
+  test(`${action} exposes its reopen checkbox choice, Cancel restores the default and acceptance returns the configured value`, async () => {
+    const s = scene();
+    expect((await s.run(action)).target.reopenWindows).toBe(true);
+    expect(s.power.focusedControl).toBe('cancel');
+    expect(s.targets().pending.reopenWindows).toBe(true);
+    expect(s.targets().controls).toContain('reopen-windows');
+    await s.run('focus', { controlId: 'reopen-windows' });
+    expect(s.power.focusedControl).toBe('reopen-windows');
+    expect((await s.run('configure', {}, { reopenWindows: false })).target.reopenWindows).toBe(false);
+    expect(s.targets().pending.reopenWindows).toBe(false);
+    expect((await s.run('respond', {}, { accept: false })).target.reopenWindows).toBe(false);
+    expect(s.session.phase).toBe('desktop'); expect(s.session.users[0].signedIn).toBe(true);
+    expect((await s.run(action)).target.reopenWindows).toBe(true);
+    await s.run('respond', {}, { accept: false });
+    s.setReopenPreference(false);
+    expect((await s.run(action, {}, { reopenWindows: true })).target.reopenWindows).toBe(true);
+    await s.run('configure', {}, { reopenWindows: false });
+    const accepted = await s.run('respond', {}, { accept: true });
+    expect(accepted.target).toMatchObject({ accepted: true, reopenWindows: false, phase: action === 'restart' ? 'booting' : 'off' });
+    expect(s.session.users.every(user => !user.signedIn && !user.locked)).toBe(true);
+  });
+
+  test(`${action} honors explicit false reopen intent through confirmation bypass`, async () => {
+    const s = scene();
+    const result = await s.run(action, {}, { confirm: false, reopenWindows: false });
+    expect(result.target).toMatchObject({ confirmationRequired: false, action, reopenWindows: false });
+    expect(s.power.pending).toBeNull(); expect(s.power.phase).toBe(action === 'restart' ? 'booting' : 'off');
+    expect(s.session.users.every(user => !user.signedIn)).toBe(true);
+  });
+}
+
+test('configure and request reopen inputs are closed booleans and cannot mutate hidden, disabled or stale confirmations', async () => {
+  const s = scene();
+  for (const reopenWindows of [undefined, null, 'false', 0, []]) {
+    for (const action of ['restart', 'shutdown', 'configure']) {
+      await unchanged(s, action, {}, { reopenWindows }, 'invalid_arguments');
+    }
+  }
+  await unchanged(s, 'configure', {}, {}, 'invalid_arguments');
+  await unchanged(s, 'configure', { action: 'restart' }, { reopenWindows: false }, 'invalid_arguments');
+  await unchanged(s, 'configure', {}, { reopenWindows: false, extra: true }, 'invalid_arguments');
+  await unchanged(s, 'configure', {}, { reopenWindows: false });
+  await s.run('restart'); s.disable('reopen-windows');
+  await unchanged(s, 'configure', {}, { reopenWindows: false });
+  expect(s.targets().controls).not.toContain('reopen-windows'); s.enable('reopen-windows');
+  for (const setter of [s.setVisible, s.setConnected, s.setMounted]) {
+    setter(false);
+    await unchanged(s, 'configure', {}, { reopenWindows: false });
+    await unchanged(s, 'respond', {}, { accept: true });
+    setter(true);
+  }
+  s.setAvailable(false); await unchanged(s, 'configure', {}, { reopenWindows: false }); s.setAvailable(true);
+  s.disable('confirm'); await unchanged(s, 'respond', {}, { accept: true }); s.enable('confirm');
+  await s.run('respond', {}, { accept: false }); await unchanged(s, 'configure', {}, { reopenWindows: false });
+  await s.run('shutdown'); s.session.logoutPending = { userId: 'local-alex', kind: 'local', reopenWindows: true };
+  await unchanged(s, 'configure', {}, { reopenWindows: false });
+  await unchanged(s, 'respond', {}, { accept: true });
+});
+
+test('exit barriers block requests and acceptance without signing out or losing the pending choice, focus or power phase', async () => {
+  const s = scene(); s.setCycleAllowed(false);
+  for (const action of ['restart', 'shutdown']) {
+    await unchanged(s, action); await unchanged(s, action, {}, { confirm: false, reopenWindows: false });
+  }
+  s.setCycleAllowed(true); await s.run('restart');
+  await s.run('configure', {}, { reopenWindows: false }); await s.run('focus', { controlId: 'reopen-windows' });
+  s.setCycleAllowed(false); await unchanged(s, 'respond', {}, { accept: true });
+  s.setCycleAllowed(true); s.setCommitAllowed(false);
+  await unchanged(s, 'respond', {}, { accept: true });
+  expect(s.session.phase).toBe('desktop'); expect(s.session.users[0].signedIn).toBe(true);
+  s.setCommitAllowed(true);
+  expect((await s.run('respond', {}, { accept: true })).target.reopenWindows).toBe(false);
+  expect(s.power.phase).toBe('booting');
+  const bypass = scene(); bypass.setCommitAllowed(false);
+  await unchanged(bypass, 'shutdown', {}, { confirm: false, reopenWindows: false });
+});
+
+test('a missing real confirmation surface rejects requests without publishing a pending decision', async () => {
+  for (const setter of ['setMounted', 'setVisible', 'setConnected', 'setFocusable']) {
+    const s = scene(); s[setter](false); await unchanged(s, 'restart');
+  }
+  const s = scene(); s.disable('cancel'); await unchanged(s, 'shutdown');
+});
+

@@ -6,13 +6,13 @@ export function fictionalPowerDefaults(profile) {
   return { phase: 'awake', pending: null, elapsedSeconds: 0, startupProgress: 0, focusedControl: null };
 }
 
-const fields = (value, names) => isRecord(value) && Object.keys(value).length === names.length
-  && names.every(name => Object.hasOwn(value, name));
+const fields = (value, names, required = names) => isRecord(value)
+  && Object.keys(value).every(name => names.includes(name)) && required.every(name => Object.hasOwn(value, name));
 const empty = (target, payload) => fields(target, []) && fields(payload, []);
 const applied = target => ({ status: 'applied', target });
 const invalid = () => rejected('invalid_arguments', 'Expected the declared fictional power target and payload.');
 const unavailable = () => rejected('unavailable', 'This fictional power action is not currently available.');
-const controlsFor = power => power.pending ? ['cancel', 'confirm', 'surface']
+const controlsFor = power => power.pending ? ['cancel', 'confirm', 'reopen-windows', 'surface']
   : power.phase === 'saver' || power.phase === 'sleeping' ? ['wake', 'surface']
     : power.phase === 'off' ? ['start', 'surface'] : power.phase === 'booting' ? ['surface'] : [];
 
@@ -29,11 +29,13 @@ export function createFictionalPowerCommands(ctx) {
   };
   async function focusSurface(controlId) {
     await ctx.settle();
-    if (!ctx.available() || !controlsFor(power).includes(controlId)) return;
-    const view = ctx.getView();
-    if (view?.controlIds().includes(controlId) && await view.focus(controlId)
-      && ctx.available() && ctx.getView() === view && view.controlIds().includes(controlId)
-      && controlsFor(power).includes(controlId)) power.focusedControl = controlId;
+    if (!ctx.available() || !controlsFor(power).includes(controlId)) return false;
+    const view = ctx.getView(), pending = power.pending, currentPhase = power.phase;
+    if (!view?.controlIds().includes(controlId) || !await view.focus(controlId)
+      || !ctx.available() || ctx.getView() !== view || !view.controlIds().includes(controlId)
+      || !controlsFor(power).includes(controlId) || power.pending !== pending || power.phase !== currentPhase) return false;
+    power.focusedControl = controlId;
+    return true;
   }
   async function obscure(nextPhase, target, payload) {
     if (!empty(target, payload)) return invalid();
@@ -46,27 +48,39 @@ export function createFictionalPowerCommands(ctx) {
     await focusSurface('wake');
     return applied({ phase: nextPhase });
   }
-  async function acceptPower(pending) {
-    if (!ctx.available() || power.pending !== pending) return unavailable();
-    // The host really discards Guest and signs users out; no fallback boot.
-    await ctx.signOutForBoot();
+  const ownsPendingControl = (pending, controlId) => power.phase === 'awake' && pending
+    && power.pending === pending && ['restart', 'shutdown'].includes(pending.action)
+    && !session.logoutPending && controlsFor(power).includes(controlId) && ctx.getView()?.controlIds().includes(controlId);
+  async function acceptPower(pending, bypass = false) {
+    if (!ctx.available() || !ctx.canCycle() || (bypass ? !canConfirm() : !ownsPendingControl(pending, 'confirm'))) return unavailable();
+    // Simulation policy: retained local roots share this choice; Guest is always discarded.
+    const result = await ctx.signOutForBoot(pending.reopenWindows);
+    if (result.status !== 'applied') return result;
     power.pending = null;
     phase(pending.action === 'restart' ? 'booting' : 'off');
     await focusSurface(pending.action === 'restart' ? 'surface' : 'start');
-    return applied({ accepted: true, phase: power.phase });
+    return applied({ accepted: true, phase: power.phase, reopenWindows: pending.reopenWindows });
   }
   async function confirm(action, target, payload) {
-    if (!fields(target, []) || !(fields(payload, []) || fields(payload, ['confirm'])
-      && typeof payload.confirm === 'boolean')) return invalid();
-    if (!canConfirm()) return unavailable();
+    if (!fields(target, []) || !fields(payload, ['confirm', 'reopenWindows'], [])
+      || ['confirm', 'reopenWindows'].some(key => Object.hasOwn(payload, key) && typeof payload[key] !== 'boolean')) return invalid();
+    if (!canConfirm() || !ctx.canCycle()) return unavailable();
+    const reopenWindows = payload.reopenWindows ?? ctx.getReopenWindows();
     ctx.captureReturn();
-    power.pending = { action }; power.focusedControl = null;
+    const pending = { action, reopenWindows };
     if (payload.confirm === false) {
-      const result = await acceptPower(power.pending);
-      return result.status === 'applied' ? applied({ confirmationRequired: false, action }) : result;
+      const result = await acceptPower(pending, true);
+      return result.status === 'applied' ? applied({ confirmationRequired: false, action, reopenWindows }) : result;
     }
-    await focusSurface('cancel');
-    return applied({ confirmationRequired: true, action });
+    const previousFocus = power.focusedControl;
+    power.pending = pending; power.focusedControl = null;
+    if (!await focusSurface('cancel')) {
+      power.pending = null; power.focusedControl = previousFocus;
+      await ctx.settle();
+      if (ctx.available()) await ctx.restoreReturn();
+      return unavailable();
+    }
+    return applied({ confirmationRequired: true, action, reopenWindows });
   }
   const handlers = {
     'power.screenSaver.start': (target, payload) => obscure('saver', target, payload),
@@ -80,15 +94,22 @@ export function createFictionalPowerCommands(ctx) {
     },
     'power.restart': (target, payload) => confirm('restart', target, payload),
     'power.shutdown': (target, payload) => confirm('shutdown', target, payload),
+    'power.configure': async (target, payload) => {
+      if (!fields(target, []) || !fields(payload, ['reopenWindows']) || typeof payload.reopenWindows !== 'boolean') return invalid();
+      const pending = power.pending;
+      if (!ownsPendingControl(pending, 'reopen-windows')) return unavailable();
+      pending.reopenWindows = payload.reopenWindows;
+      return applied({ reopenWindows: pending.reopenWindows });
+    },
     'power.respond': async (target, payload) => {
       if (!fields(target, []) || !fields(payload, ['accept']) || typeof payload.accept !== 'boolean') return invalid();
       const pending = power.pending;
-      if (power.phase !== 'awake' || !pending || !['restart', 'shutdown'].includes(pending.action) || session.logoutPending) return unavailable();
+      if (!ownsPendingControl(pending, payload.accept ? 'confirm' : 'cancel')) return unavailable();
       if (!payload.accept) {
         power.pending = null; power.focusedControl = null;
         await ctx.settle(); await ctx.restoreReturn();
       } else return acceptPower(pending);
-      return applied({ accepted: payload.accept, phase: power.phase });
+      return applied({ accepted: payload.accept, phase: power.phase, reopenWindows: pending.reopenWindows });
     },
     'power.start': async (target, payload) => {
       if (!empty(target, payload)) return invalid();
@@ -139,10 +160,12 @@ export function powerTargets(power, view) {
     elapsedSeconds: power.elapsedSeconds, startupProgress: power.startupProgress, focusedControl: power.focusedControl,
     controls: visible ? [...(view?.controlIds() ?? [])].filter(controlId => controlsFor(power).includes(controlId)) : [],
     bounds: bounds ? { ...bounds } : null,
-    policy: { wakeRequiresSignIn: true, localDesktops: 'Retain original page-local documents and windows through power cycles.',
+    policy: { wakeRequiresSignIn: true, localDesktops: 'Retain page-local document records; the accepted reopen choice retains or closes local windows.',
+      reopenWindows: 'Simulation policy applies one accepted choice to all retained local roots, not native multi-user behavior.',
+      documentData: 'Current Notes and Services edits are autosaved to local models; finish or cancel pending export/settings work before exiting.',
       guestData: 'Discard only after accepted restart or shutdown.', startupDurationSeconds: POWER_STARTUP_SECONDS,
       startupTiming: 'Deterministic fictional timing, not factory timing.', sceneClock: 'unchanged' },
     aliases: { screenSaver: 'Control+Shift+F5', sleep: 'Control+Shift+F6', wakeOrStart: 'Control+Shift+F4' },
     boundaries: { hostPower: false, hostAuthentication: false, hostSettings: false, hostFilesystem: false, hostNetwork: false,
-      saveChangesDialog: false, reopenToggle: false, recovery: false, screenSaverPreferences: false } };
+      saveChangesDialog: false, reopenToggle: true, recovery: false, screenSaverPreferences: false } };
 }

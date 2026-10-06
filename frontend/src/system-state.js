@@ -10,10 +10,10 @@ export const computerNameSchema = { type: 'string', minLength: 1, maxLength: 256
 export const validComputerName = name => typeof name === 'string' && name.length > 0 && name.length <= 256
   && /\S/u.test(name) && !/[\r\n]/u.test(name);
 const serverSchema = object({ id: identity, name: computerNameSchema, folderId: identity, available: flag });
-export const systemStateSchema = object({ computerName: computerNameSchema,
+export const systemStateSchema = object({ computerName: computerNameSchema, reopenWindows: flag,
   recentItems: object({ applications: recentList, documents: recentList, servers: recentList }),
   servers: { type: 'array', maxItems: 128, items: serverSchema }, storage: storagePreferencesSchema });
-export const systemDefaults = profile => ({ computerName: profile.defaults.machine.computerName,
+export const systemDefaults = profile => ({ computerName: profile.defaults.machine.computerName, reopenWindows: true,
   recentItems: { applications: [], documents: [], servers: [] }, servers: [], storage: storagePreferencesDefaults() });
 
 // Apple-menu history is independent of Dock usage and filesystem metadata.
@@ -72,13 +72,14 @@ function validServers(value) {
   return true;
 }
 export function validateSystemState(state, profile) {
-  if (!closedData(state, ['computerName', 'recentItems', 'servers', 'storage']) || !validComputerName(state.computerName)
+  if (!closedData(state, ['computerName', 'reopenWindows', 'recentItems', 'servers', 'storage']) || !validComputerName(state.computerName)
+    || typeof state.reopenWindows !== 'boolean'
     || !validateStoragePreferences(state.storage).ok || !validServers(state.servers)
     || !closedData(state.recentItems, ['applications', 'documents', 'servers'])
     || !validList(state.recentItems.applications) || !validList(state.recentItems.documents) || !validList(state.recentItems.servers)
     || state.recentItems.applications.some(id => !Object.hasOwn(profile.applications, id))
     || state.recentItems.servers.some(id => !state.servers.some(server => server.id === id))) {
-    return { ok: false, message: 'System state requires a bounded single-line computer name, closed fictional-server definitions, and distinct bounded application/document/registered-server history belonging to this profile.' };
+    return { ok: false, message: 'System state requires a bounded single-line computer name, a boolean reopen-windows preference, closed fictional-server definitions, and distinct bounded application/document/registered-server history belonging to this profile.' };
   }
   return { ok: true };
 }

@@ -39,8 +39,15 @@
     return document.activeElement === token.node;
   }
   $effect(() => {
-    identity; draft = ''; acknowledged = false;
-    tick().then(() => { if (!root?.contains(document.activeElement)) focus(session.logoutPending ? 'logout-cancel' : userList ? `user:${session.users[0].id}` : selected?.kind === 'guest' ? 'guest-acknowledge' : 'password'); });
+    const stamp = identity;
+    draft = ''; acknowledged = false;
+    let cancelled = false;
+    tick().then(() => {
+      if (!cancelled && stamp === identity && (session.logoutPending || !root?.contains(document.activeElement))) {
+        focus(session.logoutPending ? 'logout-cancel' : userList ? `user:${session.users[0].id}` : selected?.kind === 'guest' ? 'guest-acknowledge' : 'password');
+      }
+    });
+    return () => { cancelled = true; };
   });
   $effect(() => {
     if (!root) return;
@@ -50,13 +57,23 @@
     } });
   });
   function observed(event) { const controlId = event.target.dataset.sessionControl; if (controlId && available(event.target)) request('session.focus', { controlId }); }
+  async function configureLogout(event) {
+    const input = event.currentTarget;
+    try { await request('session.logout.configure', {}, { reopenWindows: input.checked }); }
+    finally { await tick(); input.checked = session.logoutPending?.reopenWindows ?? false; }
+  }
   function keyboard(event) {
     if (!available(root) || event.isComposing) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (session.logoutPending) request('session.logout.respond', {}, { accept: false }); else if (!userList) request('session.login.back'); return; }
+    if (session.logoutPending && event.key === 'Enter') {
+      event.stopPropagation();
+      if (!(event.target instanceof HTMLButtonElement) || event.repeat) event.preventDefault();
+      return;
+    }
     const list = controls(), index = list.indexOf(document.activeElement);
     if (!list.length) return;
     let next;
-    if (event.key === 'Tab') next = (index + (event.shiftKey ? -1 : 1) + list.length) % list.length;
+    if (event.key === 'Tab') next = index < 0 ? event.shiftKey ? list.length - 1 : 0 : (index + (event.shiftKey ? -1 : 1) + list.length) % list.length;
     else if (userList && ['ArrowRight', 'ArrowDown'].includes(event.key)) next = (index + 1) % list.length;
     else if (userList && ['ArrowLeft', 'ArrowUp'].includes(event.key)) next = (index - 1 + list.length) % list.length;
     else if (userList && event.key === 'Home') next = 0;
@@ -76,13 +93,19 @@
   <div class="content">
     {#if session.logoutPending}
       <div class="logout-dialog">
+        <div class="logout-body">
         {#if logoutUser.kind === 'guest'}
           <svg class="logout-symbol" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 5 45 42H3Z" fill="#f7c957" stroke="#b58b28" stroke-linejoin="round"/><path d="M24 17v12" stroke="#765414" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="35" r="2" fill="#765414"/></svg>
         {:else}
           <svg class="logout-symbol" viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="4" width="42" height="40" rx="12" fill="#9ba6b5"/><circle cx="24" cy="18" r="7" fill="white"/><path d="M11 38c0-16 26-16 26 0Z" fill="white"/></svg>
         {/if}
         <h1>Are you sure you want to log out?</h1>
-        <p>{#if logoutUser.kind === 'guest'}All files and changes in this fictional Guest desktop will be deleted. Local users’ desktops will be kept.{:else}Log out {logoutUser.name} from this simulated Mac. Local documents, drafts, and windows remain in this scene for your next fictional sign-in. Other users are not logged out.{/if}</p>
+        <p>{#if logoutUser.kind === 'guest'}All files and changes in this fictional Guest desktop will be deleted. Local users’ documents and desktops will be kept.{:else}Log out {logoutUser.name} from this simulated Mac. Local documents and autosaved Notes and Services changes are kept. Reopening windows does not change these records. Other users are not logged out.{/if}</p>
+        {#if logoutUser.kind !== 'guest'}
+          <label class="reopen-choice"><input type="checkbox" id="logout-reopen-windows" data-session-control="logout-reopen-windows" checked={session.logoutPending.reopenWindows} onchange={configureLogout}/>Reopen windows when logging back in</label>
+          <p class="exit-policy">Complete or cancel unfinished export and settings workflows before logging out. Cancel leaves your saved reopen preference unchanged.</p>
+        {/if}
+        </div>
         <div class="actions"><button type="button" data-session-control="logout-cancel" onclick={() => request('session.logout.respond', {}, { accept: false })}>Cancel</button><button type="button" class="default" data-session-control="logout-confirm" onclick={() => request('session.logout.respond', {}, { accept: true })}>{logoutUser.kind === 'guest' ? 'Delete Files and Log Out' : 'Log Out'}</button></div>
       </div>
     {:else}
@@ -154,15 +177,20 @@
   .guest-submit { margin-top: 16px; border: 1px solid #ffffff65; border-radius: 20px; color: white; background: #ffffff30; padding: 7px 24px; }
   button:disabled { opacity: .4; }
   .error { text-align: center; color: #ffe6cd; max-width: 100%; }
-  .confirmation { background: #0004; }
+  .confirmation { background: #0004; overflow: hidden; }
   .confirmation::before { background: transparent; }
-  .confirmation .content { justify-content: center; gap: 0; }
-  .logout-dialog { width: min(390px, 100%); box-sizing: border-box; border-radius: 22px; padding: 25px; border: 1px solid var(--appearance-menu-border, #ffffffa0); color: var(--appearance-ink, #222); background: var(--appearance-menu-bg, #f4f0e9ed); backdrop-filter: blur(28px) saturate(1.35); box-shadow: inset 0 1px 1px #fffa, 0 16px 45px #0005; text-shadow: none; text-align: center; }
+  .confirmation .content { height: 100%; min-height: 0; justify-content: center; gap: 0; padding: 16px; }
+  .logout-dialog { display: flex; flex-direction: column; width: min(390px, 100%); max-height: 100%; min-height: 0; box-sizing: border-box; border-radius: 22px; border: 1px solid var(--appearance-menu-border, #ffffffa0); color: var(--appearance-ink, #222); background: var(--appearance-menu-bg, #f4f0e9ed); backdrop-filter: blur(28px) saturate(1.35); box-shadow: inset 0 1px 1px #fffa, 0 16px 45px #0005; text-shadow: none; text-align: center; }
+  .logout-body { padding: 25px 25px 0; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
   .logout-dialog h1 { margin-top: 14px; font-weight: 650; }
   .logout-dialog p { font-size: 12px; line-height: 1.5; }
+  .reopen-choice { display: flex; align-items: start; gap: 7px; margin-top: 16px; text-align: left; font-size: 12px; line-height: 1.5; }
+  .reopen-choice input { flex-shrink: 0; margin: 3px 0 0; accent-color: var(--appearance-accent, #0878ef); }
+  .logout-dialog .exit-policy { color: var(--appearance-ink, #222); text-align: left; }
   .logout-symbol { display: block; margin: auto; width: 48px; height: 48px; }
-  .actions { display: flex; justify-content: end; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
-  .actions button { background: var(--appearance-card, #ffffffa0); color: inherit; border: 1px solid var(--appearance-border, #bbb8); border-radius: 18px; padding: 7px 14px; }
+  .actions { display: flex; flex-shrink: 0; justify-content: end; flex-wrap: wrap; gap: 8px; padding: 10px 25px 25px; }
+  .actions button { max-width: 100%; overflow-wrap: anywhere; background: var(--appearance-card, #ffffffa0); color: inherit; border: 1px solid var(--appearance-border, #bbb8); border-radius: 18px; padding: 7px 14px; }
   .actions .default { background: var(--appearance-accent, #0878ef); color: var(--appearance-accent-ink, white); border-color: transparent; }
   @media (max-height: 400px), (max-width: 390px) { .content { justify-content: start; padding: 20px 12px; gap: 28px; } .time { font-size: 62px; } .date { font-size: 17px; } .avatar { width: 62px; height: 62px; } .user-list { gap: 8px; } .user { width: 120px; } }
+  @media (max-height: 400px), (max-width: 390px) { .confirmation .content { padding: 8px; } .logout-body { padding: 16px 16px 0; } .actions { padding: 8px 12px 12px; } }
 </style>

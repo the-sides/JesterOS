@@ -460,7 +460,8 @@ test('releasing Option during Apple return-focus cannot turn an accepted immedia
   let option = true;
   const powerCommands = createFictionalPowerCommands({ profile: goldenGateProfile, session, power,
     available: () => true, settle: async () => {}, captureReturn: () => {}, restoreReturn: async () => {},
-    signOutForBoot: async () => signOutFictionalSessions(session),
+    canCycle: () => true, getReopenWindows: () => true,
+    signOutForBoot: async () => { signOutFictionalSessions(session); return { status: 'applied' }; },
     getView: () => ({
       controlIds: () => power.pending ? ['cancel', 'confirm'] : power.phase === 'booting' ? ['surface'] : [],
       focus: () => true,

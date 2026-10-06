@@ -31,12 +31,20 @@ export function createFictionalSessionCommands(ctx) {
   const surfaceFocus = async controlId => {
     await ctx.settle();
     if (!ctx.available()) return false;
-    const view = ctx.getSurfaceView();
-    if (!view?.controlIds().includes(controlId) || !await view.focus(controlId) || !ctx.available()) return false;
+    const view = ctx.getSurfaceView(), pending = session.logoutPending, phase = session.phase;
+    if (!view?.controlIds().includes(controlId) || !await view.focus(controlId) || !ctx.available()
+      || ctx.getSurfaceView() !== view || !view.controlIds().includes(controlId)
+      || session.logoutPending !== pending || session.phase !== phase) return false;
     session.focusedControl = controlId;
     return true;
   };
   const capture = () => { if (desktop()) ctx.captureDesktop(session.activeUserId); };
+  const ownsLogoutControl = (pending, controlId) => {
+    const departing = user(pending?.userId), view = ctx.getSurfaceView();
+    return pending && session.logoutPending === pending && session.phase === 'desktop'
+      && departing?.id === session.activeUserId && departing.signedIn && !departing.locked
+      && departing.kind === pending.kind && view?.controlIds().includes(controlId);
+  };
   async function showLogin(target, payload) {
     if (!empty(target, payload)) return invalid();
     if (session.logoutPending) return unavailable();
@@ -113,38 +121,57 @@ export function createFictionalSessionCommands(ctx) {
       return applied({ enabled: payload.enabled });
     },
     'session.logout': async (target, payload) => {
-      if (!fields(target, []) || !fields(payload, ['confirm'], [])
-        || (Object.hasOwn(payload, 'confirm') && typeof payload.confirm !== 'boolean')) return invalid();
+      if (!fields(target, []) || !fields(payload, ['confirm', 'reopenWindows'], [])
+        || ['confirm', 'reopenWindows'].some(key => Object.hasOwn(payload, key) && typeof payload[key] !== 'boolean')) return invalid();
       if (!desktop()) return unavailable();
       const departing = user(session.activeUserId);
       if (!departing?.signedIn || departing.locked) return unavailable();
+      if (departing.kind === 'guest' && payload.reopenWindows === true) return invalid();
+      if (!ctx.canExit(departing.id)) return unavailable();
+      const reopenWindows = departing.kind === 'guest' ? false : payload.reopenWindows ?? ctx.getReopenWindows(departing.id);
       capture();
       if (payload.confirm === false) {
-        await finishLogout(departing);
-        return applied({ confirmationRequired: false, userId: departing.id, phase: session.phase });
+        const result = await finishLogout(departing, reopenWindows);
+        return result.status === 'applied'
+          ? applied({ confirmationRequired: false, userId: departing.id, phase: session.phase, reopenWindows }) : result;
       }
-      const pending = { userId: departing.id, kind: departing.kind };
+      const pending = { userId: departing.id, kind: departing.kind, reopenWindows }, previousFocus = session.focusedControl;
       session.logoutPending = pending; session.focusedControl = null;
       if (!await surfaceFocus('logout-cancel')) {
-        session.logoutPending = null; session.focusedControl = null;
+        session.logoutPending = null; session.focusedControl = previousFocus;
         await ctx.settle();
         if (ctx.available()) await ctx.restoreDesktop(departing.id);
         return unavailable();
       }
-      return applied({ confirmationRequired: true, userId: departing.id, phase: session.phase });
+      return applied({ confirmationRequired: true, userId: departing.id, phase: session.phase, reopenWindows });
+    },
+    'session.logout.configure': async (target, payload) => {
+      if (!fields(target, []) || !fields(payload, ['reopenWindows']) || typeof payload.reopenWindows !== 'boolean') return invalid();
+      const pending = session.logoutPending;
+      if (pending?.kind !== 'local' || !ownsLogoutControl(pending, 'logout-reopen-windows')) return unavailable();
+      pending.reopenWindows = payload.reopenWindows;
+      return applied({ reopenWindows: pending.reopenWindows });
     },
     'session.logout.respond': async (target, payload) => {
       if (!fields(target, []) || !fields(payload, ['accept']) || typeof payload.accept !== 'boolean') return invalid();
       const pending = session.logoutPending, departing = user(pending?.userId);
-      if (!pending || !departing || departing.id !== session.activeUserId || !departing.signedIn
-        || session.phase !== 'desktop') return unavailable();
-      session.logoutPending = null; session.focusedControl = null;
-      if (payload.accept) await finishLogout(departing);
-      else { await ctx.settle(); await ctx.restoreDesktop(departing.id); }
-      return applied({ accepted: payload.accept, userId: departing.id, phase: session.phase });
+      if (!ownsLogoutControl(pending, payload.accept ? 'logout-confirm' : 'logout-cancel')) return unavailable();
+      if (payload.accept) {
+        const result = await finishLogout(departing, pending.reopenWindows);
+        if (result.status !== 'applied') return result;
+      } else {
+        session.logoutPending = null; session.focusedControl = null;
+        await ctx.settle(); await ctx.restoreDesktop(departing.id);
+      }
+      return applied({ accepted: payload.accept, userId: departing.id, phase: session.phase, reopenWindows: pending.reopenWindows });
     },
   };
-  async function finishLogout(departing) {
+  async function finishLogout(departing, reopenWindows) {
+    if (!ctx.available() || !ctx.canExit(departing.id)) return unavailable();
+    if (departing.kind === 'local') {
+      const result = await ctx.exitDesktop(departing.id, reopenWindows);
+      if (result.status !== 'applied') return result;
+    }
     departing.signedIn = false; departing.locked = false;
     session.logoutPending = null; session.focusedControl = null;
     session.phase = 'login'; session.selectedUserId = null; session.loginView = 'users'; session.loginError = null;
@@ -154,9 +181,10 @@ export function createFictionalSessionCommands(ctx) {
       await ctx.discardDesktop(departing.id);
     }
     await surfaceFocus(`user:${session.users[0].id}`);
+    return applied({ userId: departing.id });
   }
   return Object.fromEntries(Object.entries(handlers).map(([name, handler]) => [name,
-    (target, payload) => !profile.capabilities.includes('session.fictional')
+    (target, payload) => profile.id !== 'macos-golden-gate-27.0.1' || !profile.capabilities.includes('session.fictional')
       ? rejected('unsupported_profile', 'Fictional sessions are represented only by the current macOS profile.')
       : ctx.available() ? handler(target, payload) : unavailable()]));
 }

@@ -6,7 +6,8 @@ export const SYSTEM_UTILITY_SIZES = {
   'system-coverage': { width: 500, height: 460, minimumSize: { width: 280, height: 240 } },
 };
 
-export function appleMenuItems({ profile, session, option = false, recentItems = [], desktopAvailable = false }) {
+export function appleMenuItems({ profile, session, option = false, recentItems = [], desktopAvailable = false,
+  leaveAvailable = true, cycleAvailable = true }) {
   if (!profile.capabilities.includes('shell.apple-menu')) return [];
   const user = session.users.find(entry => entry.id === session.activeUserId);
   const app = appId => ({ command: 'app.open', target: { appId } });
@@ -21,12 +22,12 @@ export function appleMenuItems({ profile, session, option = false, recentItems =
       request: { command: 'system.forceQuit.open' } },
     ...(profile.capabilities.includes('session.power') ? [
       { id: 'sleep', label: 'Sleep', enabled: true, separatorBefore: true, request: { command: 'power.sleep' } },
-      { id: 'restart', label: `Restart${option ? '' : '…'}`, enabled: true, request: decision('power.restart') },
-      { id: 'shutdown', label: `Shut Down${option ? '' : '…'}`, enabled: true, request: decision('power.shutdown') },
+      { id: 'restart', label: `Restart${option ? '' : '…'}`, enabled: cycleAvailable, request: decision('power.restart') },
+      { id: 'shutdown', label: `Shut Down${option ? '' : '…'}`, enabled: cycleAvailable, request: decision('power.shutdown') },
     ] : []),
     { id: 'lock', label: 'Lock Screen', enabled: true, separatorBefore: true, shortcut: '⌃⌘Q',
       request: { command: 'session.lock' } },
-    { id: 'logout', label: `Log Out ${user.name}${option ? '' : '…'}`, enabled: true, shortcut: '⇧⌘Q',
+    { id: 'logout', label: `Log Out ${user.name}${option ? '' : '…'}`, enabled: leaveAvailable, shortcut: '⇧⌘Q',
       request: decision('session.logout') },
   ];
 }

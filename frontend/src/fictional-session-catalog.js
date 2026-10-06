@@ -5,11 +5,11 @@ const menuId = choice('apple', 'users');
 const userId = choice('local-alex', 'local-casey', 'guest');
 const define = (name, target, payload, requires, presentation, result) => {
   const entry = defineCommand(profiles, `session.${name}`, 'session.fictional', target, payload, requires,
-    presentation, ['Only fictional page-local session/user state; original isolated local desktops remain mounted. Departing Guest logout discards only its ephemeral root.'], NONE, result);
+    presentation, ['Only fictional page-local session/user state; preserve local document records. Accepted reopen choice controls local windows; departing Guest logout discards only its ephemeral root.'], NONE, result);
   entry[1].resultSchema.additionalProperties = false;
   return entry;
 };
-const retained = 'Retained original desktops, document/editor DOM/data/caret/scroll/window bounds; no host identity, provider, credentials or saved-session storage.';
+const retained = 'Retained original desktops and autosaved Notes/Services records; no host identity, provider, credentials or saved-session storage.';
 export const fictionalSessionCatalog = Object.fromEntries([
   define('lock', empty, empty, ['An interactive signed-in desktop.'], [retained, 'Lock retained active user and show native macOS credential form.'], object({ phase: { const: 'locked' }, userId })),
   define('login.open', empty, empty, ['No logout confirmation.'], [retained, 'Present native login user choices; retain and lock current session.'], object({ phase: { const: 'login' } })),
@@ -31,10 +31,13 @@ export const fictionalSessionCatalog = Object.fromEntries([
   define('focus', object({ controlId: identity }), empty, ['Actually rendered visible login/lock/logout-confirmation control.'], ['Focus actual owned control, never inert retained desktop.'], object({ controlId: identity })),
   define('fastUserSwitching.set', empty, object({ enabled: flag }), ['Mac optional menu; bounded page-local toggle, not native Menu Bar settings or administrator privileges.'],
     ['Show/hide native upper-right full-name menu. No Users & Groups/auth privilege implementation.'], object({ enabled: flag })),
-  define('logout', empty, object({ confirm: flag }, NONE), ['Interactive signed-in local or Guest desktop.'],
-    ['Confirm by default in a real Cancel/Log Out surface. confirm:false is explicit Option/chord intent and signs out without that action confirmation. Retain local document models/original desktop; discard only departing Guest data. Never locks another signed-in account or invokes host logout.'],
-    object({ confirmationRequired: flag, userId, phase: choice('desktop', 'login') })),
-  define('logout.respond', empty, object({ accept: flag }), ['Open logout confirmation owned by the current signed-in user.'],
-    ['Cancel restores that original account’s desktop focus/scroll; accept signs out only that account. Guest accept destroys only its ephemeral root. Return login choices; local roots remain retained.'],
-    object({ accepted: flag, userId, phase: choice('desktop', 'login') })),
+  define('logout', empty, object({ confirm: flag, reopenWindows: flag }, NONE), ['Interactive signed-in local or Guest desktop; finish or cancel pending export/settings work and commit native input first. Guest cannot request reopenWindows:true.'],
+    ['Confirm by default in a real Cancel/Log Out surface, with a local-user Reopen windows checkbox. Default to the local preference; Guest always discards its ephemeral root. confirm:false is explicit Option/chord intent and bypasses only the action confirmation.',
+      'Reopen changes windows, never autosaved local document records. Persist the local choice only after accepted exit; Cancel preserves preferences, data and original desktop focus. No fabricated Save/Don’t Save editors or host logout.'],
+    object({ confirmationRequired: flag, userId, phase: choice('desktop', 'login'), reopenWindows: flag })),
+  define('logout.configure', empty, object({ reopenWindows: flag }), ['Owned visible local-user logout confirmation and real logout-reopen-windows checkbox; unavailable for Guest.'],
+    ['Change only the transient pending checkbox choice. Cancel never persists it or closes windows.'], object({ reopenWindows: flag })),
+  define('logout.respond', empty, object({ accept: flag }), ['Open logout confirmation owned by the current signed-in user and visible matching action control; accepted exit must still be safe.'],
+    ['Cancel restores that original account’s desktop focus/scroll and preferences. Acceptance signs out only that account, preserves local records, and retains or closes its windows according to the choice. Guest accept destroys only its ephemeral root. A blocked commit leaves the confirmation intact.'],
+    object({ accepted: flag, userId, phase: choice('desktop', 'login'), reopenWindows: flag })),
 ]);

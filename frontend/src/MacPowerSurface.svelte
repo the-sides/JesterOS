@@ -24,10 +24,8 @@
       || !element.getClientRects().length) return false;
     const style = getComputedStyle(element);
     if (style.visibility === 'hidden' || style.visibility === 'collapse' || style.display === 'none') return false;
-    const rect = element.getBoundingClientRect(), frame = root.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 && rect.right > Math.max(frame.left, 0)
-      && rect.left < Math.min(frame.right, window.innerWidth) && rect.bottom > Math.max(frame.top, 0)
-      && rect.top < Math.min(frame.bottom, window.innerHeight);
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
   }
   function controls() {
     if (!root) return [];
@@ -39,6 +37,7 @@
     const element = controls().find(control => control.dataset.powerControl === controlId);
     if (!available(element)) return false;
     element.focus({ preventScroll: true });
+    element.scrollIntoView({ block: 'nearest' });
     return document.activeElement === element;
   }
   function preferredControl() { return confirmation ? 'cancel' : power.phase === 'off' ? 'start' : power.phase === 'booting' ? 'surface' : 'wake'; }
@@ -50,7 +49,11 @@
   function keyboard(event) {
     if (!available(root) || event.isComposing) return;
     if (confirmation && event.key === 'Escape') { consume(event); respond(false); return; }
-    if (confirmation && event.key === 'Enter') { consume(event); if (!event.repeat) respond(true); return; }
+    if (confirmation && event.key === 'Enter') {
+      event.stopImmediatePropagation();
+      if (!(event.target instanceof HTMLButtonElement) || event.repeat) event.preventDefault();
+      return;
+    }
     if (event.key !== 'Tab') return;
     consume(event);
     const list = controls(), index = list.indexOf(document.activeElement);
@@ -82,6 +85,11 @@
     if (!confirmation || activationPending || !available(controls().find(control => control.dataset.powerControl === (accept ? 'confirm' : 'cancel')))) return;
     activationPending = true;
     try { await request('power.respond', {}, { accept }); } finally { activationPending = false; }
+  }
+  async function configurePower(event) {
+    const input = event.currentTarget;
+    try { await request('power.configure', {}, { reopenWindows: input.checked }); }
+    finally { await tick(); input.checked = power.pending?.reopenWindows ?? false; }
   }
   $effect(() => {
     const stamp = identity;
@@ -123,7 +131,9 @@
             <svg viewBox="0 0 72 88"><path d="M38 22c-1-9 5-17 15-19 1 9-5 17-15 19Zm-2 9c-7 0-10-5-18-3C5 31 3 43 7 56c3 11 11 25 18 26 5 1 7-3 12-3s8 4 13 3c7-2 14-13 17-22-10-4-14-17-3-25-5-8-13-10-20-6-3 1-5 2-8 2Z" fill="currentColor"/></svg>
           </div>
           <h1 id="power-confirm-title">Are you sure you want to {power.pending.action === 'restart' ? 'restart' : 'shut down'} your computer now?</h1>
-          <p id="power-confirm-policy">Local users’ documents and windows are retained in this page and reopen after sign-in. This is a fixed simulation policy, not a device power operation.</p>
+          <p id="power-confirm-policy">Local documents and autosaved Notes and Services changes are kept. This simulation applies the window choice to every retained local user’s desktop, not just the current user. It does not operate the device or model native multi-user power behavior.</p>
+          <label class="reopen-choice"><input type="checkbox" id="reopen-windows" data-power-control="reopen-windows" checked={power.pending.reopenWindows} onchange={configurePower}/>Reopen windows when logging back in</label>
+          <p class="exit-policy">The choice changes windows, not document records. Complete or cancel unfinished export and settings workflows first. Cancel leaves saved reopen preferences unchanged.</p>
           {#if guestData}<p class="guest-warning">All files and changes in this fictional Guest desktop will be deleted.</p>{/if}
         </div>
         <div class="actions">
@@ -145,7 +155,7 @@
   {:else if power.phase === 'booting'}
     <svg class="startup-symbol" viewBox="0 0 72 88" aria-hidden="true"><path d="M38 22c-1-9 5-17 15-19 1 9-5 17-15 19Zm-2 9c-7 0-10-5-18-3C5 31 3 43 7 56c3 11 11 25 18 26 5 1 7-3 12-3s8 4 13 3c7-2 14-13 17-22-10-4-14-17-3-25-5-8-13-10-20-6-3 1-5 2-8 2Z" fill="currentColor"/></svg>
     <div class="startup-progress" role="progressbar" aria-label="Fictional startup progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress} aria-valuetext={`${progress}% — five-second simulated startup`}><div class="startup-fill" style:width={`${power.startupProgress * 100}%`}></div></div>
-    <p class="visually-hidden">Simulated startup. No installation, firmware or recovery is performed. Local users’ documents and windows remain in this page; sign in to reopen them.</p>
+    <p class="visually-hidden">Simulated startup. No installation, firmware or recovery is performed. Local users’ documents remain in this page; windows reopen after sign-in only if chosen.</p>
   {/if}
 </div>
 
@@ -162,16 +172,20 @@
   .startup-progress { position: absolute; left: 50%; bottom: 9.5%; transform: translateX(-50%); width: min(235px, 62%); height: 6px; box-sizing: border-box; overflow: hidden; border: 1px solid #484848; border-radius: 5px; background: #242424; }
   .startup-fill { height: 100%; border-radius: inherit; background: #d5d5d5; }
   .confirmation { background: #0004; }
-  .confirmation-frame { display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 16px; }
-  .power-dialog { display: flex; flex-direction: column; box-sizing: border-box; width: min(390px, 100%); max-height: 100%; min-height: 0; overflow: hidden; border: 1px solid var(--appearance-menu-border, #ffffffa0); border-radius: 22px; background: var(--appearance-menu-bg, #f4f0e9ed); color: var(--appearance-ink, #222); backdrop-filter: blur(28px) saturate(1.35); box-shadow: inset 0 1px 1px #fffa, 0 16px 45px #0005; text-align: center; }
+  .confirmation-frame { display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 100%; height: 100%; min-width: 0; padding: 16px; }
+  .power-dialog { display: flex; flex-direction: column; flex-shrink: 0; box-sizing: border-box; width: min(390px, 100%); max-height: 100%; min-height: 0; border: 1px solid var(--appearance-menu-border, #ffffffa0); border-radius: 22px; background: var(--appearance-menu-bg, #f4f0e9ed); color: var(--appearance-ink, #222); backdrop-filter: blur(28px) saturate(1.35); box-shadow: inset 0 1px 1px #fffa, 0 16px 45px #0005; text-align: center; }
   .dialog-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 24px 24px 0; overflow-wrap: anywhere; }
   .dialog-symbol { display: grid; place-items: center; width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 13px; color: #fff; background: linear-gradient(145deg, #565a65, #292c34); box-shadow: inset 0 1px 1px #fff5, 0 2px 5px #0002; }
   .dialog-symbol svg { width: 28px; height: 34px; }
   h1 { margin: 0 0 12px; font-size: 15px; line-height: 1.4; font-weight: 650; }
   .dialog-body p { margin: 0 0 14px; font-size: 12px; line-height: 1.5; }
   .guest-warning { font-weight: 600; }
-  .actions { display: flex; justify-content: end; flex-shrink: 0; gap: 8px; padding: 10px 20px 20px; }
-  .actions button { min-width: 84px; min-height: 32px; padding: 6px 14px; border: 1px solid var(--appearance-border, #bbb8); border-radius: 18px; background: var(--appearance-card, #ffffffa0); color: inherit; font: inherit; cursor: default; }
+  .reopen-choice { display: flex; align-items: start; gap: 7px; margin-bottom: 14px; text-align: left; font-size: 12px; line-height: 1.5; }
+  .reopen-choice input { flex-shrink: 0; margin: 3px 0 0; accent-color: var(--appearance-accent, #0878ef); }
+  .reopen-choice input:focus-visible { outline: 3px solid var(--appearance-focus, #a4d1ff); outline-offset: 2px; }
+  .dialog-body .exit-policy { text-align: left; }
+  .actions { display: flex; justify-content: end; flex-wrap: wrap; flex-shrink: 0; gap: 8px; padding: 10px 20px 20px; }
+  .actions button { max-width: 100%; overflow-wrap: anywhere; min-width: min(84px, 100%); min-height: 32px; padding: 6px 14px; border: 1px solid var(--appearance-border, #bbb8); border-radius: 18px; background: var(--appearance-card, #ffffffa0); color: inherit; font: inherit; cursor: default; }
   .actions .default { border-color: transparent; background: var(--appearance-accent, #0878ef); color: var(--appearance-accent-ink, white); }
   .actions button:focus-visible { outline: 3px solid var(--appearance-focus, #a4d1ff); outline-offset: 2px; }
   .actions button:active { filter: brightness(.9); }

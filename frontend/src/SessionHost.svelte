@@ -82,11 +82,27 @@
     return token.desktop ? await scenes.get(token.userId)?.restore(token.desktop) === true
       : surfaceView?.restore(token.surface) === true;
   }
-  async function signOutForBoot() {
+  const reopenWindows = userId => scenes.get(userId)?.reopenWindows() ?? seed.system.reopenWindows;
+  const canExit = userId => !disposed && scenes.get(userId)?.canLeave() === true;
+  const canCycle = () => !disposed && retainedIds.every(canExit);
+  async function exitDesktop(userId, reopen) {
+    if (!canExit(userId)) return rejected('unavailable', 'Finish or cancel pending exports, application quit/window pairing, or uncommitted native input before leaving this scene.');
+    const result = await scenes.get(userId).leave(reopen);
+    if (result.status === 'applied' && !reopen) desktopReturns.delete(userId);
+    return result;
+  }
+  async function signOutForBoot(reopen) {
+    if (!canCycle()) return rejected('unavailable', 'Finish or cancel pending work in every retained desktop before restarting or shutting down.');
+    for (const userId of retainedIds) {
+      if (userId === 'guest') continue;
+      const result = await exitDesktop(userId, reopen);
+      if (result.status !== 'applied') return result;
+    }
     signOutFictionalSessions(session);
     if (retainedIds.includes('guest')) await discardDesktop('guest');
     powerReturn = null;
     await settle();
+    return { status: 'applied' };
   }
   const operations = createFictionalSessionCommands({ profile, session, available: powerAvailable, settle,
     captureDesktop: userId => {
@@ -94,12 +110,13 @@
       if (token) desktopReturns.set(userId, token);
     },
     restoreDesktop: async userId => { await settle(); return await scenes.get(userId)?.restore(desktopReturns.get(userId)) === true; },
-    ensureDesktop, discardDesktop,
+    ensureDesktop, discardDesktop, canExit, exitDesktop, getReopenWindows: reopenWindows,
     getSurfaceView: () => surfaceView,
   });
   const powerOperations = createFictionalPowerCommands({ profile, power, session, available: () => !disposed,
     settle, getView: () => powerView, captureReturn: capturePowerReturn, restoreReturn: restorePowerReturn,
-    lockSession: () => operations['session.lock']({}, {}), signOutForBoot });
+    lockSession: () => operations['session.lock']({}, {}), signOutForBoot, canCycle,
+    getReopenWindows: () => reopenWindows(session.activeUserId) });
   function sharedMenuDefinitions() {
     sceneRevision;
     const local = scenes.get(session.activeUserId)?.menuProviders() ?? [];
@@ -110,7 +127,8 @@
         : { command: 'session.user.select', target: { userId: item.id.slice(5) } },
     }));
     const apple = appleMenuItems({ profile, session, option: appleOption,
-      ...(scenes.get(session.activeUserId)?.appleMenuContext() ?? {}) });
+      ...(scenes.get(session.activeUserId)?.appleMenuContext() ?? {}),
+      leaveAvailable: canExit(session.activeUserId), cycleAvailable: canCycle() });
     return helpMenuProviders([
       { menuId: 'apple', kind: 'apple', label: 'Apple menu', enabled: true, items: apple },
       ...local,

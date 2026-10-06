@@ -2479,6 +2479,7 @@
   function systemTargets() {
     return { machine: { ...profile.defaults.machine, computerName: systemState.computerName,
       profileId: profile.id, version: profile.version }, storage: systemStorage, runningAppIds: [...runningAppIds],
+      reopenWindows: systemState.reopenWindows,
       storageManagement: $state.snapshot({ preferences: systemState.storage, inventory: storageManagement,
         confirmation: storageConfirmation, maintenanceError: storageMaintenanceError }),
       recentItems: $state.snapshot(systemState.recentItems),
@@ -2934,6 +2935,50 @@
       if (node.isConnected && sceneRoot.contains(node)) node.scrollTo({ top, left, behavior: 'instant' });
     await tick();
     return focused;
+  }
+  // Notes and Services commit edits into their canonical scene records. A
+  // rejected/pending native edit or export must be resolved before sign-out.
+  function canLeaveScene() {
+    if (disposed || !initialized || utilityPreparation || servicePreparation || servicePending
+      || presentation.pairing || fileDialogState.current || pendingQuitAppIds.length) return false;
+    for (const node of sceneRoot.querySelectorAll('[data-system-computer-name], [data-notes-control="title"], [data-notes-control="body"], [data-service-field]')) {
+      if (node.disabled || node.readOnly) continue;
+      if (node.hasAttribute('data-system-computer-name')) {
+        if (node.value !== systemState.computerName) return false;
+      } else if (node.dataset.notesControl) {
+        const note = notesState.notes.find(note => note.id === node.dataset.noteId);
+        if (!note || node.value !== noteTextControlValue(note, node.dataset.notesControl)) return false;
+      } else {
+        const entry = communicationsState.drafts.find(entry => entry.id === node.dataset.serviceEntryId);
+        if (!entry) return false;
+        const value = entry.fields[node.dataset.serviceField];
+        if (node.value === value) continue;
+        const rendered = node.tagName === 'TEXTAREA' ? value.replace(/\r\n?/g, '\n') : value.replace(/[\r\n]/g, '');
+        if (node.value !== rendered) return false;
+      }
+    }
+    return true;
+  }
+  async function leaveScene(reopenWindows) {
+    if (!canLeaveScene()) return rejected('unavailable', 'Finish or cancel pending exports, application quit/window pairing, or uncommitted native input before leaving this scene.');
+    clearSwitchingPresentations();
+    if (forceQuitConfirmation) cancelForceQuitConfirmation(forceQuitConfirmation.windowId);
+    storageConfirmation = null;
+    if (!reopenWindows) {
+      // Close real native views using their existing lifecycle; never replace
+      // the document/files/communications models with startup seed data.
+      while (windows.length) await closeWindow(windows[windows.length - 1].id);
+      for (const appId of runningAppIds) applicationLifetimes.set(appId, null);
+      runningAppIds = [profile.defaults.desktopAppId];
+      switching.activationAppIds = [profile.defaults.desktopAppId];
+      switching.activationWindowIds = [];
+      switching.creationWindowIds = [];
+      switching.hiddenAppIds = [];
+      activeWindowId = null; activeAppId = profile.defaults.desktopAppId;
+    }
+    systemState.reopenWindows = reopenWindows;
+    await settleCommands();
+    return { status: 'applied' };
   }
   function fileDialogSource(windowId) {
     if (!fileWorkflowsAvailable() || activeAppId !== 'notes' || activeWindowId !== windowId) return null;
@@ -3562,6 +3607,7 @@
     const unregisterSession = registerSessionScene?.({
       persist: captureSavedScene,
       canSave: () => !disposed && !presentation.pairing && !fileDialogState.current && pendingQuitAppIds.length === 0,
+      canLeave: canLeaveScene, leave: leaveScene, reopenWindows: () => systemState.reopenWindows,
       capture: captureSessionDesktop, restore: restoreSessionDesktop,
       menuProviders: sharedMenuProviders, menusAvailable: sharedMenusAvailable, appleMenuContext,
       prepareMenus: () => clearSwitchingPresentations(false, true), restoreMenus: restoreSwitchingPresentations,

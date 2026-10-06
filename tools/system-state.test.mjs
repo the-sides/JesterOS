@@ -59,7 +59,7 @@ test('unrecognized applications, duplicate/overflow history and non-data propert
     expect(validateSystemState(state, profile).ok).toBe(false);
   }
   let reads = 0;
-  const actor = { computerName: valid.computerName, storage: valid.storage, servers: valid.servers,
+  const actor = { computerName: valid.computerName, reopenWindows: valid.reopenWindows, storage: valid.storage, servers: valid.servers,
     recentItems: { applications: ['notes'], servers: [] } };
   Object.defineProperty(actor.recentItems, 'documents', { enumerable: true, get() { reads++; return []; } });
   expect(validateSystemState(actor, profile).ok).toBe(false);
@@ -76,12 +76,28 @@ test('a saved computer name retains literal Unicode without accepting empty, mul
     expect(validateSystemState(candidate, profile).ok).toBe(false);
   }
   let reads = 0;
-  const candidate = { recentItems: state.recentItems, servers: state.servers, storage: state.storage };
+  const candidate = { reopenWindows: state.reopenWindows, recentItems: state.recentItems, servers: state.servers, storage: state.storage };
   Object.defineProperty(candidate, 'computerName', { enumerable: true, get() { reads++; return 'Borrowed name'; } });
   expect(validateSystemState(candidate, profile).ok).toBe(false);
   expect(reads).toBe(0);
   expect(state.computerName).toBe('Studio 🎬 — Mac');
   expect(state.recentItems.applications).toEqual(['notes']);
+});
+
+test('reopen-window preferences preserve explicit false and reject missing, coerced or accessor saved data', () => {
+  const state = systemDefaults(profile);
+  state.reopenWindows = false;
+  expect(validateSystemState(JSON.parse(JSON.stringify(state)), profile).ok).toBe(true);
+  for (const value of ['false', 0, null, undefined]) {
+    expect(validateSystemState({ ...state, reopenWindows: value }, profile).ok).toBe(false);
+  }
+  const missing = { ...state }; delete missing.reopenWindows;
+  expect(validateSystemState(missing, profile).ok).toBe(false);
+  let reads = 0;
+  const actor = { ...state };
+  Object.defineProperty(actor, 'reopenWindows', { enumerable: true, get() { reads++; return false; } });
+  expect(validateSystemState(actor, profile).ok).toBe(false);
+  expect(reads).toBe(0);
 });
 
 test('storage counts real UTF-8 and decoded PDF payloads once and retains nested Trash until deletion', () => {
