@@ -619,7 +619,7 @@
     if (!Object.hasOwn(commandCatalog, name)) throw new Error(`Missing native command descriptor: ${name}`);
   }
   const sceneCatalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) =>
-    descriptor.profiles.includes(profile.id) && descriptor.capability !== 'session.fictional'));
+    descriptor.profiles.includes(profile.id) && !descriptor.capability.startsWith('session.')));
   // Composite callbacks capture this binding, so they use the same sealed,
   // capability-guarded registry after native profile selection.
   handlers = Object.fromEntries(Object.entries(handlers).filter(([name]) => Object.hasOwn(sceneCatalog, name)));

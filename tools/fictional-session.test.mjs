@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
-import { fictionalSessionDefaults, sessionMenuItems, createFictionalSessionCommands } from '../frontend/src/fictional-session.js';
+import { fictionalSessionDefaults, sessionMenuItems, createFictionalSessionCommands, signOutFictionalSessions } from '../frontend/src/fictional-session.js';
 
 function scene(profileId = 'macos-golden-gate-27.0.1') {
   const profile = getOSProfile(profileId), session = fictionalSessionDefaults(profile);
@@ -48,6 +48,15 @@ test('Guest requires explicit ephemeral-data acknowledgement and only confirmed 
   await s.run('guest.respond', {}, { accept: false }); expect(s.session.phase).toBe('desktop'); expect(s.session.users[2].signedIn).toBe(true);
   await s.run('guest.end'); await s.run('guest.respond', {}, { accept: true });
   expect(s.session.phase).toBe('login'); expect(s.session.selectedUserId).toBeNull(); expect(s.session.users[2].signedIn).toBe(false); expect(s.session.users[0].signedIn).toBe(true);
+});
+
+test('Guest logout after startup works when no local user remains signed in', async () => {
+  const s = scene();
+  signOutFictionalSessions(s.session);
+  await s.run('user.select', { userId: 'guest' }); await s.run('login.submit', {}, { acknowledgeGuest: true });
+  await s.run('guest.end'); const result = await s.run('guest.respond', {}, { accept: true });
+  expect(result.status).toBe('applied'); expect(s.session.phase).toBe('login');
+  expect(s.session.activeUserId).toBe('local-alex'); expect(s.session.users.every(user => !user.signedIn)).toBe(true);
 });
 
 test('native menus enforce profile and optional fast-switch boundaries without state writes', async () => {

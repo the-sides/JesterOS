@@ -22,13 +22,28 @@
     if (!available(element)) return false;
     element.focus({ preventScroll: true }); element.scrollIntoView({ block: 'nearest' }); return document.activeElement === element;
   }
+  function capture() {
+    const node = root?.contains(document.activeElement) && available(document.activeElement) ? document.activeElement : null;
+    return { node, start: typeof node?.selectionStart === 'number' ? node.selectionStart : null,
+      end: typeof node?.selectionEnd === 'number' ? node.selectionEnd : null,
+      direction: node?.selectionDirection, top: root?.scrollTop ?? 0, left: root?.scrollLeft ?? 0 };
+  }
+  function restore(token) {
+    if (!token?.node || !root?.contains(token.node) || !available(token.node)) return false;
+    token.node.focus({ preventScroll: true });
+    if (token.start !== null && typeof token.node.setSelectionRange === 'function') {
+      token.node.setSelectionRange(token.start, token.end, token.direction);
+    }
+    root.scrollTop = token.top; root.scrollLeft = token.left;
+    return document.activeElement === token.node;
+  }
   $effect(() => {
     identity; draft = ''; acknowledged = false;
     tick().then(() => { if (!root?.contains(document.activeElement)) focus(session.guestConfirmation ? 'guest-end-cancel' : userList ? `user:${session.users[0].id}` : selected?.kind === 'guest' ? 'guest-acknowledge' : 'password'); });
   });
   $effect(() => {
     if (!root) return;
-    return registerView?.({ kind: 'surface', focus, controlIds: () => controls().map(element => element.dataset.sessionControl), bounds: () => {
+    return registerView?.({ kind: 'surface', focus, capture, restore, controlIds: () => controls().map(element => element.dataset.sessionControl), bounds: () => {
       if (!available(root)) return null;
       const rect = root.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
     } });

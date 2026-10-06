@@ -145,6 +145,16 @@ A page-local local/Guest identity and lock/login presentation, not host authenti
 Restoring connected original focus/selection and all retained scroll offsets after the same desktop becomes interactive. It never reopens or copies the editor; menu invocations may correctly return to their original invoker. Capture/restore is owned by its scene root, not a document-global selector.
 
 **Ephemeral Guest**:
-A new isolated fictional desktop entered after explicit deletion acknowledgement. Cancelled logout retains the original; confirmed deletion destroys only Guest's scene. Re-entry starts fresh and does not discard signed-in locals. Actual FileVault, credentials, user administration and saved sessions remain outside this simulation.
+A new isolated fictional desktop entered after explicit deletion acknowledgement. Cancelled logout/power confirmation retains the original; confirmed logout or accepted restart/shutdown destroys only Guest's scene. Re-entry starts fresh and does not discard retained locals. Actual FileVault, credentials, user administration and saved sessions remain outside this simulation.
+
+**Fictional power phase**:
+Page-local awake/saver/sleeping/off/booting state. Saver/sleep immediately lock an interactive desktop; waking consumes its initiating input without authentication. A signed-out login presentation remains signed out. Neither the host nor the fixed scene clock changes.
+
+**Retained local power cycle**:
+An accepted restart/shutdown signs out every fictional user but retains original local model/DOM/window/appearance instances; only Guest is discarded. Five deterministic startup seconds return login choices, never an authenticated desktop. Reopening locals is a disclosed fixed page policy, not full native unsaved-document/reopen-checkbox handling.
+
+**Power return token**:
+An opaque scene-owned original desktop or credential-surface focus/selection/scroll capture. Cancel restores the connected original, including private credential drafts kept mounted inert behind confirmation. No credentials are published in inspection or serialized state.
+
 
 

@@ -15,7 +15,12 @@ export function sessionMenuItems(profile, session, menuId) {
   const guest = session.activeUserId === 'guest';
   const users = session.users.map(user => ({ id: `user:${user.id}`, label: user.name, enabled: true, checked: user.signedIn }));
   if (menuId === 'apple') return [
-    { id: 'lock', label: 'Lock Screen', enabled: true },
+    ...(profile.capabilities.includes('session.power') ? [
+      { id: 'sleep', label: 'Sleep', enabled: true, powerCommand: 'power.sleep' },
+      { id: 'restart', label: 'Restart…', enabled: true, powerCommand: 'power.restart' },
+      { id: 'shutdown', label: 'Shut Down…', enabled: true, powerCommand: 'power.shutdown' },
+    ] : []),
+    { id: 'lock', label: 'Lock Screen', enabled: true, separatorBefore: profile.capabilities.includes('session.power') },
     { id: 'login', label: 'Login Window…', enabled: true },
     ...(guest ? [{ id: 'guest-end', label: 'Log Out Guest User…', enabled: true, separatorBefore: true }] : []),
   ];
@@ -142,10 +147,12 @@ export function createFictionalSessionCommands(ctx) {
       const item = sessionMenuItems(profile, session, target.menuId).find(item => item.id === target.itemId);
       if (!item) return invalid();
       if (!item.enabled) return rejected('disabled', 'This native session leaf is unavailable in the bounded simulation.');
+      if (item.powerCommand && typeof ctx.invokePower !== 'function') return unavailable();
       const closed = await handlers['session.menu.close']({}, {});
       if (closed.status !== 'applied') return closed;
       let result;
-      if (item.id === 'lock') result = await handlers['session.lock']({}, {});
+      if (item.powerCommand) result = await ctx.invokePower(item.powerCommand);
+      else if (item.id === 'lock') result = await handlers['session.lock']({}, {});
       else if (item.id === 'login') result = await showLogin({}, {});
       else if (item.id === 'guest-end') result = await handlers['session.guest.end']({}, {});
       else {
@@ -181,7 +188,8 @@ export function createFictionalSessionCommands(ctx) {
       if (!payload.accept) { await ctx.settle(); await ctx.restoreDesktop('guest'); }
       else {
         const guest = user('guest'); guest.signedIn = false; guest.locked = false;
-        session.activeUserId = session.users.find(user => user.kind === 'local' && user.signedIn).id;
+        session.activeUserId = (session.users.find(user => user.kind === 'local' && user.signedIn)
+          ?? session.users.find(user => user.kind === 'local')).id;
         session.phase = 'login'; session.selectedUserId = null; session.loginView = 'users'; session.loginError = null;
         await ctx.discardDesktop('guest'); await surfaceFocus(`user:${session.users[0].id}`);
       }
@@ -204,4 +212,12 @@ export function sessionTargets(session, surface, menu) {
     shortcuts: { lock: 'Control+Command+Q', alias: 'Control+Shift+F7', nativeDelivery: 'Only key events delivered to this page; no host keyboard or lock API.' },
     boundaries: { hostAuthentication: false, hostAccounts: false, savedSessions: false, userCreation: false,
       localLogout: false, passwordRecovery: false, biometrics: false } };
+}
+
+// A page-local power cycle signs users out without replacing retained local models.
+export function signOutFictionalSessions(session) {
+  for (const user of session.users) { user.signedIn = false; user.locked = false; }
+  session.activeUserId = session.users.find(user => user.kind === 'local').id;
+  session.selectedUserId = null; session.phase = 'login'; session.loginView = 'users';
+  session.loginError = null; session.focusedControl = null; session.menu = null; session.guestConfirmation = false;
 }

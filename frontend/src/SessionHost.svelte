@@ -2,18 +2,22 @@
   import { onMount, tick, untrack } from 'svelte';
   import App from './App.svelte';
   import MacSessionSurface from './MacSessionSurface.svelte';
+  import MacPowerSurface from './MacPowerSurface.svelte';
   import { createFeatureCommands, rejected } from './feature-commands.js';
   import { commandCatalog } from './command-catalog.js';
-  import { fictionalSessionDefaults, createFictionalSessionCommands, sessionTargets } from './fictional-session.js';
+  import { fictionalSessionDefaults, createFictionalSessionCommands, sessionTargets, signOutFictionalSessions } from './fictional-session.js';
+  import { fictionalPowerDefaults, createFictionalPowerCommands, powerTargets } from './fictional-power.js';
 
   let { profile: profileInput, adapter: adapterInput, registerCommands, selectProfile } = $props();
   const profile = untrack(() => profileInput), adapter = untrack(() => adapterInput);
   let session = $state(fictionalSessionDefaults(profile));
+  let power = $state(fictionalPowerDefaults(profile));
   let retainedIds = $state(['local-alex']);
   let disposed = false;
   const controllers = new Map(), scenes = new Map(), menuViews = new Map(), desktopReturns = new Map(), menuReturns = new Map();
-  let surfaceView = null;
-  const interactive = () => session.phase === 'desktop' && !session.guestConfirmation;
+  let surfaceView = null, powerView = null, powerReturn = null;
+  const powerAvailable = () => !disposed && power.phase === 'awake' && !power.pending;
+  const interactive = () => powerAvailable() && session.phase === 'desktop' && !session.guestConfirmation;
   const activeController = () => controllers.get(session.activeUserId);
   const menuKey = (userId, menuId) => `${userId}/${menuId}`;
   function registerDesktop(userId, controller) {
@@ -33,6 +37,10 @@
     menuViews.set(key, view);
     return () => { if (menuViews.get(key) === view) menuViews.delete(key); };
   }
+  function registerPowerView(view) {
+    powerView = view;
+    return () => { if (powerView === view) powerView = null; };
+  }
   const settle = async () => { await tick(); await tick(); };
   async function ensureDesktop(userId) {
     if (!retainedIds.includes(userId)) retainedIds.push(userId);
@@ -45,7 +53,28 @@
     for (const key of menuReturns.keys()) if (key.startsWith(`${userId}/`)) menuReturns.delete(key);
     await settle();
   }
-  const operations = createFictionalSessionCommands({ profile, session, available: () => !disposed, settle,
+  function capturePowerReturn() {
+    const userId = session.activeUserId;
+    if (session.phase === 'desktop') {
+      const token = scenes.get(userId)?.capture();
+      if (token) desktopReturns.set(userId, token);
+      powerReturn = { userId, desktop: token };
+    } else powerReturn = { surface: surfaceView?.capture() };
+  }
+  async function restorePowerReturn() {
+    await settle();
+    const token = powerReturn; powerReturn = null;
+    if (!token) return false;
+    return token.desktop ? await scenes.get(token.userId)?.restore(token.desktop) === true
+      : surfaceView?.restore(token.surface) === true;
+  }
+  async function signOutForBoot() {
+    signOutFictionalSessions(session);
+    if (retainedIds.includes('guest')) await discardDesktop('guest');
+    powerReturn = null;
+    await settle();
+  }
+  const operations = createFictionalSessionCommands({ profile, session, available: powerAvailable, settle,
     captureDesktop: userId => { const scene = scenes.get(userId); if (scene) desktopReturns.set(userId, scene.capture()); },
     restoreDesktop: async userId => { await settle(); return await scenes.get(userId)?.restore(desktopReturns.get(userId)) === true; },
     ensureDesktop, discardDesktop,
@@ -58,22 +87,27 @@
       return await menuViews.get(key)?.focus('invoker') === true;
     },
     getMenuView: menuId => menuViews.get(menuKey(session.activeUserId, menuId)), getSurfaceView: () => surfaceView,
+    invokePower: name => powerOperations[name]({}, {}),
   });
+  const powerOperations = createFictionalPowerCommands({ profile, power, session, available: () => !disposed,
+    settle, getView: () => powerView, captureReturn: capturePowerReturn, restoreReturn: restorePowerReturn,
+    lockSession: () => operations['session.lock']({}, {}), signOutForBoot });
   const catalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) => descriptor.profiles.includes(profile.id)));
-  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, operations[name] ?? ((target, payload) => {
-    if (disposed || (!interactive() && name !== 'scene.selectProfile')) return rejected('unavailable', 'Unlock the fictional desktop before interacting with its apps or shell.');
+  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, operations[name] ?? powerOperations[name] ?? ((target, payload) => {
+    if (disposed || (!interactive() && name !== 'scene.selectProfile')) return rejected('unavailable', 'Wake/start and sign in before interacting with the fictional desktop.');
     const controller = activeController();
     return controller ? controller.execute({ command: name, target, payload }) : rejected('unavailable', 'The retained desktop is being prepared.');
   })]));
   const commands = createFeatureCommands(handlers,
-    () => ({ ...(activeController()?.inspect().state ?? { profile }), session: $state.snapshot(session) }), settle,
+    () => ({ ...(activeController()?.inspect().state ?? { profile }), session: $state.snapshot(session), power: $state.snapshot(power) }), settle,
     catalog, () => {
       const targets = activeController()?.describe().targets ?? {};
       if (!interactive() && targets.windows) targets.windows = targets.windows.map(window => ({ ...window,
-        presentationInteractive: false, ...(session.phase !== 'desktop' ? { presentationVisible: false } : {}),
+        presentationInteractive: false, ...(session.phase !== 'desktop' || power.phase !== 'awake' ? { presentationVisible: false } : {}),
         ...(window.resize ? { resize: { ...window.resize, available: false } } : {}) }));
-      return { ...targets, session: sessionTargets(session, surfaceView,
-        session.menu ? menuViews.get(menuKey(session.activeUserId, session.menu.menuId)) : null) };
+      return { ...targets, session: { ...sessionTargets(session, surfaceView,
+        session.menu ? menuViews.get(menuKey(session.activeUserId, session.menu.menuId)) : null), desktopAvailable: interactive() },
+        power: powerTargets(power, powerView) };
     }, () => disposed ? null : profile, commandCatalog);
   let queue = Promise.resolve();
   function execute(request) {
@@ -86,15 +120,34 @@
     document.documentElement.dataset.sessionPhase = session.phase;
     return () => { delete document.documentElement.dataset.sessionPhase; };
   });
+  $effect(() => {
+    document.documentElement.dataset.powerPhase = power.phase;
+    return () => { delete document.documentElement.dataset.powerPhase; };
+  });
+  $effect(() => {
+    if (power.phase !== 'saver' && power.phase !== 'booting') return;
+    const timer = window.setInterval(() => {
+      if (!disposed && !document.hidden && (power.phase === 'saver' || power.phase === 'booting')) {
+        void execute({ command: 'power.advance', payload: { seconds: 1 } });
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  });
   onMount(() => {
     const unregister = registerCommands(publicCommands);
     function keyboard(event) {
-      if (event.defaultPrevented || event.isComposing || !interactive()) return;
+      if (disposed || event.defaultPrevented || event.isComposing || power.pending) return;
       const key = event.key.toLowerCase();
-      const alias = event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.key === 'F7';
-      const native = event.ctrlKey && event.metaKey && !event.shiftKey && !event.altKey && key === 'q';
-      if (!alias && !native) return;
-      event.preventDefault(); event.stopImmediatePropagation(); void execute({ command: 'session.lock' });
+      const alias = event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
+      let command;
+      if ((power.phase === 'saver' || power.phase === 'sleeping') && !['control', 'shift', 'alt', 'meta'].includes(key)) command = 'power.wake';
+      else if (power.phase === 'off' && (alias && event.key === 'F4' || key === 'enter' || key === ' ')) command = 'power.start';
+      else if (powerAvailable() && !session.guestConfirmation && alias && event.key === 'F5') command = 'power.screenSaver.start';
+      else if (powerAvailable() && !session.guestConfirmation && alias && event.key === 'F6') command = 'power.sleep';
+      else if (interactive() && (alias && event.key === 'F7'
+        || event.ctrlKey && event.metaKey && !event.shiftKey && !event.altKey && key === 'q')) command = 'session.lock';
+      if (!command) return;
+      event.preventDefault(); event.stopImmediatePropagation(); void execute({ command });
     }
     window.addEventListener('keydown', keyboard, true);
     return () => { disposed = true; unregister(); window.removeEventListener('keydown', keyboard, true); };
@@ -113,13 +166,18 @@
         windowNamespace={userId === 'local-alex' ? '' : `${userId}--`} />
     </div>
   {/each}
-  {#if session.phase !== 'desktop' || session.guestConfirmation}
-    <MacSessionSurface {profile} {session} {execute} registerView={view => registerNativeView(null, view)} />
+  {#if power.phase === 'awake' && (session.phase !== 'desktop' || session.guestConfirmation)}
+    <div class="session-presentation" inert={Boolean(power.pending)} aria-hidden={Boolean(power.pending)}>
+      <MacSessionSurface {profile} {session} {execute} registerView={view => registerNativeView(null, view)} />
+    </div>
+  {/if}
+  {#if power.phase !== 'awake' || power.pending}
+    <MacPowerSurface {profile} {power} {session} {execute} registerView={registerPowerView} />
   {/if}
 </div>
 
 <style>
-  .session-host, .session-desktop { position: absolute; inset: 0; }
+  .session-host, .session-desktop, .session-presentation { position: absolute; inset: 0; }
   .session-host { overflow: clip; }
   .session-desktop.inactive { visibility: hidden; opacity: 0; pointer-events: none; }
 </style>
