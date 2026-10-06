@@ -12,6 +12,8 @@ const scrollSelectors = {
   'settings-displays': '.settings-displays',
   'settings-storage': '.settings-storage',
   'settings-storage-list': '[data-storage-file-list]',
+  'settings-sound': '[data-application-settings="sound"]',
+  'sound-player': '[data-sound-player] [data-sound-media-scroll]',
   'desktop-info': '.info-inspector',
   'desktop-view-options': '.view-inspector',
   'application-about': '.golden-gate-about-app',

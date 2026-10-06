@@ -182,17 +182,17 @@
     }
   }
   function pointerdown(event) {
-    if (!event.target.closest('[data-help-search]')) event.preventDefault();
+    if (!event.target.closest('[data-help-search], [data-sound-range]')) event.preventDefault();
     event.stopPropagation();
   }
   function activate(event, item) {
     event.stopPropagation();
     event.preventDefault();
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || (event.altKey && menu.menuId !== 'apple') || !item.enabled || !mounted()) return;
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || (event.altKey && !['apple', 'sound'].includes(menu.menuId)) || !item.enabled || !mounted()) return;
     request(item.children ? 'submenu' : 'execute', { itemId: item.id });
   }
   function keydown(event) {
-    if (event.isComposing || event.ctrlKey || event.metaKey || (event.altKey && menu.menuId !== 'apple')) {
+    if (event.isComposing || event.ctrlKey || event.metaKey || (event.altKey && !['apple', 'sound'].includes(menu.menuId))) {
       if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
       event.stopPropagation();
       return;
@@ -202,6 +202,11 @@
     event.preventDefault();
     event.stopPropagation();
     if (mounted()) request('navigate', { key });
+  }
+  function soundVolumeChanged(event, item) {
+    event.stopPropagation();
+    if (!mounted() || !item.enabled || item.type !== 'sound-volume') return;
+    execute({ command: 'sound.volume.set', target: {}, payload: { volume: Number(event.currentTarget.value) } });
   }
   function suppressContext(event) { event.preventDefault(); event.stopPropagation(); }
 </script>
@@ -216,7 +221,7 @@
 {#snippet lock()}
   <svg class="lock-icon" viewBox="0 0 12 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 6V4a3 3 0 0 1 6 0v2"/><rect x="1.5" y="6" width="9" height="6.5" rx="1.5"/><path d="M6 8.5v2"/></svg>
 {/snippet}
-<div class="menu-popup" class:wifi-popup={menu.kind === 'wifi'} class:battery-popup={menu.kind === 'battery'} bind:this={panel} id={`golden-menu-${menu.menuId}-${level}`}
+<div class="menu-popup" class:wifi-popup={menu.kind === 'wifi'} class:battery-popup={menu.kind === 'battery'} class:sound-popup={menu.kind === 'sound'} bind:this={panel} id={`golden-menu-${menu.menuId}-${level}`}
   data-menu-popup={level} data-menu-provider={menu.menuId}
   role="menu" aria-label={level === 0 ? `${menu.label} menu` : `${menu.label} submenu`}
   aria-hidden={geometry?.covered ? 'true' : undefined} inert={geometry?.covered ?? false} tabindex="-1"
@@ -246,6 +251,15 @@
         <span class="energy-icon"><GoldenGateIcon name={item.icon} /></span>
         <span class="energy-name">{item.name ?? item.label}</span>
       </div>
+    {:else if item.type === 'sound-volume'}
+      <label class="sound-volume" class:selected={selection?.itemId === item.id}>
+        <span class="sound-volume-label"><span>{item.label}</span><output>{item.value}%</output></span>
+        <input type="range" min={item.min} max={item.max} step="1" value={item.value} aria-label={item.label}
+          data-menu-item-id={item.id} data-sound-range disabled={!item.enabled}
+          tabindex={item.enabled && selection?.itemId === item.id ? 0 : -1}
+          onpointerenter={() => select(item)} onfocus={() => select(item, true)}
+          oninput={event => soundVolumeChanged(event, item)} />
+      </label>
     {:else if item.heading}
       <div class="help-heading">{item.label}</div>
     {:else if item.separator}
@@ -337,4 +351,11 @@
   .energy-icon { width:22px; height:22px; flex-shrink:0; }
   .energy-icon :global(svg) { width:100%; height:100%; display:block; }
   .energy-name { min-width:0; overflow-wrap:anywhere; white-space:normal; font-size:12px; line-height:17px; }
+  .sound-popup { width:300px; padding:8px; }
+  .sound-popup .help-heading { padding-top:8px; font-weight:650; }
+  .sound-volume { display:block; padding:5px 9px 8px; border-radius:10px; }
+  .sound-volume-label { display:flex; justify-content:space-between; gap:8px; font-size:12px; }
+  .sound-volume-label output { font-variant-numeric:tabular-nums; opacity:.7; }
+  .sound-volume input { display:block; width:100%; margin:8px 0 2px; accent-color:var(--appearance-accent,#0878ef); }
+  .sound-volume.selected { outline:1px solid var(--appearance-accent,#0878ef); outline-offset:-1px; }
 </style>

@@ -16,7 +16,7 @@
   let clockDateAllowed = $state(false);
   const location = $derived(helpMenuLocation(menus, menuState));
   const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
-  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : zone === 'wifi' ? menu.kind === 'wifi' : zone === 'battery' ? menu.kind === 'battery' && menu.showInMenuBar : zone === 'clock' ? menu.kind === 'clock' : !['users', 'wifi', 'battery', 'clock'].includes(menu.kind)));
+  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : zone === 'wifi' ? menu.kind === 'wifi' : zone === 'battery' ? menu.kind === 'battery' && menu.showInMenuBar : zone === 'sound' ? menu.kind === 'sound' && menu.showInMenuBar : zone === 'clock' ? menu.kind === 'clock' : !['users', 'wifi', 'battery', 'clock', 'sound'].includes(menu.kind)));
   const openMenu = $derived(foreground ? rendered.find(menu => menu.menuId === menuState.menuId) : undefined);
   const clockMenu = $derived(rendered.find(menu => menu.kind === 'clock'));
   const clockDateShown = $derived(clockMenu?.showDate === 'always' || clockMenu?.showDate === 'when-space-allows' && clockDateAllowed);
@@ -88,7 +88,7 @@
     const menu = rendered.find(menu => menu.menuId === menuId);
     const node = invokers[menuId];
     if (!menu?.enabled || !visible(node)) return false;
-    if (['battery', 'clock'].includes(menu.kind) && !ownsClip(node)) return false;
+    if (['battery', 'clock', 'sound'].includes(menu.kind) && !ownsClip(node)) return false;
     const rect = node.getBoundingClientRect(), clip = clipOf(node);
     return rect.right > clip.left && rect.left < clip.right && rect.bottom > clip.top && rect.top < clip.bottom;
   }
@@ -270,16 +270,24 @@
     event.preventDefault();
     event.stopPropagation();
   }
+  async function openInvoker(menu, args = {}, altKey = false) {
+    if (menu.menuId === 'sound') {
+      const result = await execute({ command: 'sound.menu.inputs.set', target: {}, payload: { expanded: altKey } });
+      if (result.status !== 'applied' || !available(menu.menuId)) return result;
+    }
+    return request('open', menu.menuId, args);
+  }
   function toggle(event, menu) {
     event.preventDefault(); event.stopPropagation();
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || (event.altKey && menu.menuId !== 'apple') || !available(menu.menuId)) return;
-    request(menuState.menuId === menu.menuId ? 'close' : 'open', menu.menuId);
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || (event.altKey && !['apple', 'sound'].includes(menu.menuId)) || !available(menu.menuId)) return;
+    if (menuState.menuId === menu.menuId) request('close', menu.menuId);
+    else void openInvoker(menu, {}, event.altKey);
   }
-  function hover(menu) {
-    if (menuState.menuId && menuState.menuId !== menu.menuId && available(menu.menuId)) request('open', menu.menuId);
+  function hover(event, menu) {
+    if (menuState.menuId && menuState.menuId !== menu.menuId && available(menu.menuId)) void openInvoker(menu, {}, event.altKey);
   }
   function invokerKey(event, menu) {
-    if (event.isComposing || event.ctrlKey || event.metaKey || (event.altKey && menu.menuId !== 'apple')) {
+    if (event.isComposing || event.ctrlKey || event.metaKey || (event.altKey && !['apple', 'sound'].includes(menu.menuId))) {
       if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
       event.stopPropagation();
       return;
@@ -291,7 +299,7 @@
     event.preventDefault(); event.stopPropagation();
     if (key === 'ArrowLeft' || key === 'ArrowRight') request('navigate', menu.menuId, { key });
     else if (key === 'Escape' || key === 'Tab') request('navigate', menuState.menuId, { key });
-    else request('open', menu.menuId, { position: key === 'ArrowUp' ? 'last' : 'first' });
+    else void openInvoker(menu, { position: key === 'ArrowUp' ? 'last' : 'first' }, event.altKey);
   }
   function suppressContext(event) { event.preventDefault(); event.stopPropagation(); }
   function measureClockSpace() {
@@ -362,15 +370,15 @@
 {/snippet}
 
 <div class="golden-shared-menu-bar" class:users={zone === 'users'} class:clock={zone === 'clock'} bind:this={root} data-menu-bar={zone}
-  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : zone === 'battery' ? 'Battery status menu' : zone === 'clock' ? 'Fictional Clock settings menu' : 'Application menu bar'}>
+  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : zone === 'battery' ? 'Battery status menu' : zone === 'sound' ? 'Sound status menu' : zone === 'clock' ? 'Fictional Clock settings menu' : 'Application menu bar'}>
   {#each rendered as menu (menu.menuId)}
-    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'} class:battery={menu.kind === 'battery'} class:clock={menu.kind === 'clock'}
+    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'} class:battery={menu.kind === 'battery'} class:sound={menu.kind === 'sound'} class:clock={menu.kind === 'clock'}
       bind:this={invokers[menu.menuId]} type="button" role="menuitem" data-menu-invoker={menu.menuId} data-date-shown={menu.kind === 'clock' ? clockDateShown : undefined}
       disabled={!menu.enabled || !foreground} aria-disabled={!menu.enabled || !foreground}
       class:located={location?.menuId === menu.menuId}
-      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.kind === 'battery' ? `Battery: ${menu.percent} percent, ${menu.statusLabel}${menu.criticalBattery ? ', Critically Low Battery' : menu.lowBattery ? ', Low Battery' : ''}` : menu.kind === 'clock' ? `Clock: ${menu.fullDate}, ${menu.fullTime}, ${menu.timeZone} — fictional settings shortcut` : menu.label}
+      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.kind === 'battery' ? `Battery: ${menu.percent} percent, ${menu.statusLabel}${menu.criticalBattery ? ', Critically Low Battery' : menu.lowBattery ? ', Low Battery' : ''}` : menu.kind === 'sound' ? `Sound: ${menu.effectiveMuted ? 'muted' : `${menu.volume} percent`}, ${menu.outputName}` : menu.kind === 'clock' ? `Clock: ${menu.fullDate}, ${menu.fullTime}, ${menu.timeZone} — fictional settings shortcut` : menu.label}
       aria-haspopup="menu" aria-expanded={Boolean(openMenu?.menuId === menu.menuId)} aria-controls={`golden-menu-${menu.menuId}-0`}
-      onpointerdown={invokerPointer} onpointerenter={() => hover(menu)} onclick={event => toggle(event, menu)}
+      onpointerdown={invokerPointer} onpointerenter={event => hover(event, menu)} onclick={event => toggle(event, menu)}
       onkeydown={event => invokerKey(event, menu)} oncontextmenu={event => { suppressContext(event); if (menu.kind === 'clock' && available(menu.menuId)) request('open', menu.menuId); }}>
       {#if menu.kind === 'apple'}
         <svg viewBox="0 0 20 24" aria-hidden="true"><path fill="currentColor" d="M13.1 4.1c1-1.1 1.6-2.6 1.4-4.1-1.4.1-3 .9-4 2-1 1.1-1.7 2.6-1.5 4 1.6.1 3.1-.8 4.1-1.9ZM17 12.7c0-2.7 2.2-4 2.3-4.1-1.3-1.9-3.4-2.1-4.1-2.1-1.8-.2-3.5 1.1-4.4 1.1s-2.3-1.1-3.8-1.1C5 6.6 3 7.9 2 9.8c-2.1 3.8-.5 9.3 1.5 12.1 1 1.4 2.1 2.8 3.6 2.7 1.5-.1 2-1 3.8-1s2.3 1 3.9 1c1.6 0 2.6-1.4 3.5-2.8 1.1-1.6 1.6-3.1 1.6-3.2-.1 0-3-1.1-2.9-5.9Z"/></svg>
@@ -380,6 +388,16 @@
           <path opacity={menu.status === 'connected' && menu.strength >= 2 ? 1 : .3} fill="currentColor" d="M4.2 9.6a13 13 0 0 1 15.6 0l-2.3 2.7a9.4 9.4 0 0 0-11 0Z"/>
           <path opacity={menu.status === 'connected' ? 1 : .3} fill="currentColor" d="M8.7 14.8a5.7 5.7 0 0 1 6.6 0L12 18Z"/>
           {#if menu.status === 'off'}<path d="m3 1 18 18" stroke="currentColor" stroke-width="2" />{/if}
+        </svg>
+      {:else if menu.kind === 'sound'}
+        <svg viewBox="0 0 24 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7h4l5-4v14l-5-4H3Z" fill="currentColor" stroke-width=".8" />
+          {#if menu.effectiveMuted}
+            <path d="m16 7 5 6m0-6-5 6" />
+          {:else}
+            {#if menu.volume > 0}<path d="M15 6a6 6 0 0 1 0 8" />{/if}
+            {#if menu.volume > 50}<path d="M18 3a10 10 0 0 1 0 14" />{/if}
+          {/if}
         </svg>
       {:else if menu.kind === 'clock'}
         {@render clockContents(menu, clockDateShown)}

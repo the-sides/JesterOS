@@ -70,6 +70,10 @@
   import GoldenGateClockOptions from './GoldenGateClockOptions.svelte';
   import GoldenGateClockTimeEdit from './GoldenGateClockTimeEdit.svelte';
   import GoldenGateDateTimeSettings from './GoldenGateDateTimeSettings.svelte';
+  import { createSoundCommands } from './sound-commands.js';
+  import { createSoundMediaCommands } from './sound-media-commands.js';
+  import GoldenGateSoundSettings from './GoldenGateSoundSettings.svelte';
+  import GoldenGateAudioPlayer from './GoldenGateAudioPlayer.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -120,6 +124,7 @@
   const hasWifi = profile.capabilities.includes('status.wifi');
   const hasBattery = profile.capabilities.includes('status.battery');
   const hasClock = profile.capabilities.includes('status.clock');
+  const hasSound = profile.capabilities.includes('status.sound');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
@@ -365,6 +370,8 @@
   let batteryOptionsView = $state(null);
   const clockPresentation = $state({ options: null, editor: null });
   let clockOptionsView = $state(null), clockTimeView = $state(null);
+  const soundPresentation = $state({ inputsExpanded: false });
+  let soundMediaRevision = $state(0);
   let storageConfirmation = $state(null);
   let storageConfirmationLease = null;
   let nextStorageConfirmation = 1;
@@ -497,6 +504,7 @@
   });
   let notesView = $state.raw(null);
   const applicationViews = new Map();
+  const soundMediaViews = new Map();
   let initialized = $state(false);
   let starting = false;
   let startup = Promise.resolve(null);
@@ -1105,12 +1113,41 @@
     dateShown: () => sceneRoot?.querySelector('[data-menu-invoker="clock"]')?.dataset.dateShown === 'true',
   }) : null;
   if (clockController) Object.assign(handlers, clockController.handlers);
+  const soundMediaController = hasSound ? createSoundMediaCommands({
+    profile, getState: () => systemState.sound, getViews: () => soundMediaViews.entries(),
+    getWindow: windowId => disposed ? null : windows.find(window => window.id === windowId) ?? null,
+    getView: windowId => soundMediaViews.get(windowId),
+    available: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
+      && !servicePending && !switching.switcher && !presentation.pairing,
+    notify: () => {
+      const original = menuBarState?.menuId === 'sound' ? getMenuReturnFocus?.() : undefined;
+      soundMediaRevision++;
+      if (menuBarState?.menuId === 'sound' && systemState.sound.showWhen === 'when-active'
+        && !soundMediaController.targets().players.some(player => player.paused === false)) void retireSoundMenu(original);
+    },
+  }) : null;
+  if (soundMediaController) Object.assign(handlers, soundMediaController.handlers);
+  const soundController = hasSound ? createSoundCommands({
+    profile, presentation: soundPresentation, getState: () => systemState.sound,
+    getMedia: () => { soundMediaRevision; return soundMediaController.targets().players; },
+    notifyMedia: () => soundMediaController.syncSound(),
+    available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options
+      && !clockPresentation.options && !clockPresentation.editor && !utilityPreparation && !servicePreparation
+      && !servicePending && !switching.switcher && !presentation.pairing && !spaceState.overview
+      && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
+    canBegin: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
+      && !servicePending && !switching.switcher && !presentation.pairing,
+    canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
+    getMenuReturnFocus: () => menuBarState?.menuId === 'sound' ? getMenuReturnFocus?.() : undefined,
+    retireSoundMenu, setSettingsTab: setSoundSettingsTab,
+  }) : null;
+  if (soundController) Object.assign(handlers, soundController.handlers);
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
     profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
     getRunningAppIds: () => runningAppIds,
     openAbout: () => openWindowPanel('finder', 'system-about', 'About This Mac'),
     openSettings: async pane => {
-      const title = { about: 'About', displays: 'Displays', storage: 'Storage', wifi: 'Wi-Fi', battery: 'Battery', 'menu-bar': 'Menu Bar' }[pane];
+      const title = { about: 'About', displays: 'Displays', storage: 'Storage', wifi: 'Wi-Fi', battery: 'Battery', 'menu-bar': 'Menu Bar', sound: 'Sound' }[pane];
       const result = await openWindowPanel('settings', undefined, title, pane);
       return result.status === 'applied' ? { status: 'applied', target: { ...result.target, pane } } : result;
     },
@@ -1200,6 +1237,7 @@
       ...(hasWifi ? { wifi: wifiController.targets() } : {}),
       ...(hasBattery ? { battery: batteryController.targets() } : {}),
       ...(hasClock ? { clock: clockController.targets() } : {}),
+      ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1214,6 +1252,7 @@
       ...(hasWifi ? { wifi: wifiController.targets() } : {}),
       ...(hasBattery ? { battery: batteryController.targets() } : {}),
       ...(hasClock ? { clock: clockController.targets() } : {}),
+      ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
       ...(hasAppearance ? { appearance: appearanceTargets(profile, appearanceState) } : {
         appearance: { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent,
           scope: 'full', highlight: null, customHighlight: false,
@@ -1336,6 +1375,7 @@
         ...(window.infoSections ? { infoSections: { ...window.infoSections } } : {}),
         ...(window.finderSelectedFileIds ? { selectedFileIds: [...window.finderSelectedFileIds] } : {}),
         ...(window.settingsPane ? { settingsPane: window.settingsPane } : {}),
+        ...(window.soundTab ? { soundTab: window.soundTab } : {}),
         ...(Object.hasOwn(window, 'aboutBuildVisible') ? { aboutBuildVisible: window.aboutBuildVisible } : {}),
         ...(Object.hasOwn(window, 'storageVolumesVisible') ? { storageVolumesVisible: window.storageVolumesVisible } : {}),
         ...(window.storageView ? { storageView: $state.snapshot(window.storageView) } : {}),
@@ -1432,6 +1472,36 @@
   function registerApplicationView(windowId, view) {
     applicationViews.set(windowId, view);
     return () => { if (applicationViews.get(windowId) === view) applicationViews.delete(windowId); };
+  }
+  function registerSoundMediaView(windowId, view) {
+    soundMediaViews.set(windowId, view); soundMediaRevision++;
+    soundMediaController.syncSound();
+    return () => {
+      if (soundMediaViews.get(windowId) !== view) return;
+      const original = menuBarState?.menuId === 'sound' ? getMenuReturnFocus?.() : undefined;
+      soundMediaViews.delete(windowId); soundMediaRevision++;
+      if (menuBarState?.menuId === 'sound' && systemState.sound.showWhen === 'when-active'
+        && !soundMediaController.targets().players.some(player => player.paused === false)) void retireSoundMenu(original);
+    };
+  }
+  async function retireSoundMenu(original) {
+    if (menuBarState?.menuId !== 'sound') return;
+    const ownerWindowId = activeWindowId, ownerAppId = activeAppId;
+    dismissMenuBar?.(); await tick(); await tick();
+    if (original && !disposed && foreground && !menuBarState?.menuId
+      && activeWindowId === ownerWindowId && activeAppId === ownerAppId) await restoreSessionDesktop(original);
+  }
+  async function setSoundSettingsTab(windowId, tab) {
+    const entry = getSystemPanel(windowId), control = `sound-${tab}-tab`;
+    if (entry?.window.appId !== 'settings' || entry.window.utilityKind || entry.window.settingsPane !== 'sound'
+      || activeWindowId !== windowId || activeAppId !== 'settings' || !systemPanelControls(entry).includes(control))
+      return rejected('unavailable', 'Use the current active native Sound Settings tab.');
+    const owner = entry.window;
+    if (!await focusWindowPanel(entry, control) || getSystemPanel(windowId)?.window !== owner
+      || owner.settingsPane !== 'sound' || activeWindowId !== windowId || activeAppId !== 'settings')
+      return rejected('unavailable', 'The original Sound Settings tab is no longer available.');
+    owner.soundTab = tab;
+    return { status: 'applied', target: { windowId, tab } };
   }
 
   function sceneCoreAvailable() {
@@ -1771,6 +1841,9 @@
     await tick(); await tick();
     node = find(getWindowPanel(entry.window.id));
     if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return false;
+    const native = applicationViews.get(entry.window.id);
+    if (control !== 'panel' && entry.window.appId === 'settings' && ['sound', 'menu-bar'].includes(entry.window.settingsPane)
+      && native?.focus) return native.focus(control);
     node.focus();
     await tick();
     return document.activeElement === node && getWindowPanel(entry.window.id)?.element.contains(node) === true;
@@ -2598,7 +2671,7 @@
       panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
         || window.appId === 'systeminformation' && !window.utilityKind
         || window.appId === 'settings' && !window.utilityKind
-          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time'].includes(window.settingsPane)).map(window => {
+          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound'].includes(window.settingsPane)).map(window => {
         const entry = getSystemPanel(window.id), element = managedWindowElement(window.id)?.querySelector('[data-system-panel]');
         const controlIds = systemPanelControls(entry);
         return { windowId: window.id, appId: window.appId,
@@ -2606,6 +2679,7 @@
           available: Boolean(entry) && !utilityPreparation, controlIds,
           ...(controlIds.includes('version') ? { aboutBuildVisible: Boolean(window.aboutBuildVisible) } : {}),
           ...(window.appId === 'settings' && window.settingsPane === 'storage' ? { storageVolumesVisible: Boolean(window.storageVolumesVisible) } : {}),
+          ...(window.appId === 'settings' && window.settingsPane === 'sound' ? { soundTab: window.soundTab } : {}),
           ...(window.utilityKind === 'system-force-quit' ? { selectedAppId: window.forceQuitSelectedAppId } : {}),
           focusedControl: element?.contains(document.activeElement)
             ? document.activeElement === element ? 'panel' : document.activeElement.dataset.applicationSettingsControl ?? null : null,
@@ -3087,6 +3161,22 @@
         || zone && zone.value !== systemState.clock.timeZone
         || local && local.value !== clockPresentation.editor?.localDateTime) return false;
     }
+    if (hasSound) {
+      const summary = soundController.summary();
+      for (const node of sceneRoot.querySelectorAll('[data-application-settings-control="sound-volume"], [data-menu-item-id="sound-volume"]'))
+        if (!node.disabled && Number(node.value) !== summary.volume) return false;
+      const mute = sceneRoot.querySelector('[data-application-settings-control="sound-mute"]');
+      const gain = sceneRoot.querySelector('[data-application-settings-control="sound-input-gain"]');
+      const visible = sceneRoot.querySelector('[data-application-settings-control="sound-visible"]');
+      const mode = sceneRoot.querySelector('[data-application-settings-control="sound-show-when"]');
+      if (mute && !mute.disabled && mute.checked !== summary.muted || gain && !gain.disabled && Number(gain.value) !== summary.inputGain
+        || visible && visible.checked !== summary.showInMenuBar || mode && mode.value !== summary.showWhen) return false;
+      for (const node of sceneRoot.querySelectorAll('[data-sound-media-control="volume"]')) {
+        const player = node.closest('[data-sound-player]');
+        const window = windows.find(window => window.id === player?.dataset.windowId);
+        if (window && !node.disabled && Number(node.value) !== systemState.sound.appVolumes[window.appId]) return false;
+      }
+    }
     for (const node of sceneRoot.querySelectorAll('[data-system-computer-name], [data-notes-control="title"], [data-notes-control="body"], [data-service-field]')) {
       if (node.disabled || node.readOnly) continue;
       if (node.hasAttribute('data-system-computer-name')) {
@@ -3113,6 +3203,8 @@
     wifiController?.clear();
     batteryController?.clear();
     clockController?.clear();
+    soundController?.clear();
+    soundMediaController?.clear();
     if (!reopenWindows) {
       // Close real native views using their existing lifecycle; never replace
       // the document/files/communications models with startup seed data.
@@ -3429,6 +3521,8 @@
       ...(hasBattery ? [batteryController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
       ...(hasClock ? [clockController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
+        && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
+      ...(hasSound ? [soundController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
     ];
   }
@@ -3825,6 +3919,8 @@
       wifiController?.clear();
       batteryController?.clear();
       clockController?.clear();
+      soundController?.clear();
+      soundMediaController?.clear();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -3902,6 +3998,7 @@
       ...(hasSpaces ? { spaceId: spaceState.lastDesktopId } : {}),
       ...(macDesktop && appId === 'finder' && !utilityKind ? { folderId: remembered?.window.folderId ?? 'desktop' } : {}),
       ...(hasDockContext && appId === 'settings' && !utilityKind ? { settingsPane: remembered?.window.settingsPane ?? 'dock' } : {}),
+      ...(hasSound && appId === 'settings' && !utilityKind ? { soundTab: remembered?.window.soundTab ?? 'output' } : {}),
       ...(hasViewWorkflows && !utilityKind && appId === 'finder'
         ? { finderPresentation: remembered?.window.finderPresentation ?? finderPresentationDefaults(),
           finderBrowseMode: remembered?.window.finderBrowseMode
@@ -4231,7 +4328,7 @@
   }
 </script>
 
-{#snippet managedWindow(window, active, zIndex, presentationBounds, interactive, visible)}
+{#snippet managedWindow(window, active, zIndex, presentationBounds, interactive, visible, preview = false)}
       <Window
         {window}
         {active}
@@ -4270,10 +4367,18 @@
         {:else if hasBattery && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'menu-bar'}
           <GoldenGateMenuBarSettings {profile} {window} battery={systemState.battery} summary={batteryController.summary()}
             clock={systemState.clock} clockSummary={clockController.summary()}
+            {...(hasSound ? { sound: soundController.summary() } : {})}
             execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasClock && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'date-time'}
           <GoldenGateDateTimeSettings {profile} {window} clock={systemState.clock} summary={clockController.summary()}
             execute={commands.execute} registerView={registerApplicationView} />
+        {:else if hasSound && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'sound'}
+          <GoldenGateSoundSettings {profile} {window} sound={soundController.summary()}
+            execute={commands.execute} registerView={registerApplicationView} />
+        {:else if hasSound && !window.utilityKind && ['music', 'quicktime'].includes(window.appId)}
+          <GoldenGateAudioPlayer {profile} {window} sound={soundController.summary()} {foreground} {preview}
+            playback={preview ? soundController.targets().media.find(player => player.windowId === window.id) ?? null : null}
+            execute={commands.execute} registerView={registerSoundMediaView} />
         {:else if hasWifi && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'wifi'}
           <GoldenGateWifiSettings {profile} {window} wifi={systemState.wifi}
             execute={commands.execute} registerView={registerApplicationView} />
@@ -4394,7 +4499,7 @@
     {@const scale = Math.min(width / window.bounds.width, height / window.bounds.height)}
     {@const tileWidth = window.bounds.width * scale}
     {@const tileHeight = window.bounds.height * scale}
-    {@render managedWindow(window, false, 1, { x: (width - tileWidth) / 2, y: (height - tileHeight) / 2, width: tileWidth, height: tileHeight, scale: window.bounds.scale * scale }, false, true)}
+    {@render managedWindow(window, false, 1, { x: (width - tileWidth) / 2, y: (height - tileHeight) / 2, width: tileWidth, height: tileHeight, scale: window.bounds.scale * scale }, false, true, true)}
   {/if}
 {/snippet}
 
@@ -4441,7 +4546,7 @@
   {#each windows as window, index (window.id)}
     {@const projection = missionControlBounds[window.id] ?? switcherWindowBounds[window.id] ?? dockWindowBounds[window.id]
       ?? pairingWindowBounds[window.id] ?? fullScreenWindowBounds[window.id]}
-    {#if !window.minimized || projection}
+    {#if !window.minimized || projection || hasSound && !window.utilityKind && ['music', 'quicktime'].includes(window.appId)}
       {@render managedWindow(window, activeWindowId === window.id && !spaceState.overview && !launchpadState.view && !switching.switcher && !isAppHidden(window.appId),
         missionControlBounds[window.id] ? 12001 : switcherWindowBounds[window.id] ? 11001 : dockWindowBounds[window.id] ? 7001
           : pairingWindowBounds[window.id] ? 9101 : fullScreenWindowBounds[window.id] ? index + 2 : index + 1,
