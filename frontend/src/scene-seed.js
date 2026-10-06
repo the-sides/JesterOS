@@ -1,4 +1,5 @@
 import { createNotesState, visibleNotes } from './notes-state.js';
+import { notesPreferencesDefaults, notesPreferencesSchema } from './notes-preferences.js';
 import { createMacDesktopFileStore, validMacDesktopName, liveMacFileRecords } from './desktop-file-state.js';
 import { appearanceDefaults, appearancePresets } from './appearance.js';
 import { macDockDefaults } from './mac-dock-model.js';
@@ -32,7 +33,7 @@ export const sceneSeedSchema = {
     version: { const: 1 },
     notes: object({ timeBase: timestamp, notes: array(object({ id: identity, text: string(MAX_TEXT), pinned: flag,
       deleted: flag, createdAt: timestamp, updatedAt: timestamp })), selectedId: nullable(identity),
-      folder: choice('notes', 'deleted'), search: string(4096), sidebarVisible: flag }),
+      folder: choice('notes', 'deleted'), search: string(4096), sidebarVisible: flag, preferences: notesPreferencesSchema }),
     files: object({ files: array(object({ id: identity, parentId: nullable(identity), name: string(255, 1),
       kind: choice('folder', 'document'), appId: identity, icon: string(128, 1), content: string(MAX_TEXT),
       deleted: flag, revision: counter(1), createdAt: timestamp, modifiedAt: timestamp, addedAt: timestamp,
@@ -63,7 +64,8 @@ export function createDefaultSceneSeed(profile) {
   const sceneTime = Date.parse(profile.defaults.sceneTime);
   const dock = macDockDefaults(profile);
   return {
-    version: 1, notes: createNotesState(sceneTime - 42 * 60000), files: createMacDesktopFileStore(profile, sceneTime),
+    version: 1, notes: { ...createNotesState(sceneTime - 42 * 60000), preferences: notesPreferencesDefaults() },
+    files: createMacDesktopFileStore(profile, sceneTime),
     messages: {
       pinned: [
         { name: 'Casey', initials: 'CR', tint: '#d39a72', selected: false },

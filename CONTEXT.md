@@ -178,6 +178,16 @@ The last ordinary closed window's title, normal/zoom restore geometry, bounded F
 **Explicit saved local session**:
 A closed, validated version-1 browser-origin-local snapshot of the initial seed baseline and all retained local users' current models, open/remembered windows, Dock order, generated-file timestamps, Spaces/Split View and static semantic view tokens. Guest, credentials, signed-in state, power and transient presentation are excluded. Save/load are never automatic; explicit restore disposes originals and returns an awake signed-out login after every saved root is ready. Clear changes storage only; scene reset clears the slot and restores defaults. This is not Rust/controller persistence or authentication.
 
+**Application utility**:
+An app-owned Golden Gate About or represented Settings managed window, distinct from an ordinary document. One owner/kind identity; ordinary allocation/remembered geometry and native view are never consumed by its creation or closure. Hide/Show/Quit includes it. Original source return focus is opaque and scoped to its retained local root; explicit snapshots store utility scroll, never editor-carets or raw tokens.
+
+**Notes preferences**:
+Required closed Golden Gate seed data `{sortBy,groupByDate,textSize}` driving actual pinned-first ordering, deterministic UTC date sections and editor typography. Title sorting hides the date-group control while retaining its value. Pixel bounds/date cutoffs are disclosed simulation policy, not factory defaults; each fictional local profile remains independent.
+
+**Task-relevant local service**:
+The application-menu Services child routes an exact current original Notes title/body UTF-16 range into one editable unpinned note. Capture source identity/revision/value, finish fallible native body-focus preparation, then revalidate before creation; readonly sources remain unchanged. Empty applicability renders No Services Apply. This is a registered local simulation action, not a stock Apple service or host registry.
+
+
 
 
 

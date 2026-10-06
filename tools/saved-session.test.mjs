@@ -508,3 +508,34 @@ test('historical discovery and dispatch reject known saved-session names as unsu
     expect((await registry.execute({ command })).error.code).toBe('unsupported_profile');
   }
 });
+
+test('app-owned About utilities coexist with closed ordinary windows, and Notes Settings preserves its own view and seeded preferences', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  remember(scene, 'notes', { title: 'Retained Notes document' }, {
+    scroll: [{ key: 'notes-body', top: 80, left: 0 }],
+    selections: [{ key: 'notes-body', noteId: 'note-1', start: 3, end: 17, direction: 'backward' }], focusKey: 'notes-body',
+  });
+  for (const appId of Object.keys(profile.applications)) {
+    const utility = addWindow(scene, appId, { utilityKind: 'application-about', title: `About ${profile.applications[appId].name}` });
+    delete utility.folderId; delete utility.settingsPane;
+    scene.views[utility.id].scroll = [{ key: 'application-about', top: 60, left: 0 }, { key: 'window-content', top: 0, left: 0 }];
+  }
+  const settings = addWindow(scene, 'notes', { utilityKind: 'application-settings', title: 'Notes Settings' });
+  scene.views[settings.id].scroll = [{ key: 'application-settings', top: 90, left: 0 }, { key: 'window-content', top: 0, left: 0 }];
+  scene.seed.notes.preferences = { sortBy: 'title', groupByDate: false, textSize: 24 };
+  expect(validate(snapshot)).toEqual({ ok: true });
+});
+
+test('restored app utilities reject duplicate owners, unsupported Settings owners and ordinary/document-only fields or view keys', () => {
+  for (const change of [
+    (_, scene) => { addWindow(scene, 'notes', { utilityKind: 'application-about' }); addWindow(scene, 'notes', { utilityKind: 'application-about' }); },
+    (_, scene) => { addWindow(scene, 'safari', { utilityKind: 'application-settings' }); },
+    (_, scene) => { addWindow(scene, 'finder', { utilityKind: 'application-about' }); },
+    (_, scene) => { addWindow(scene, 'notes', { utilityKind: 'application-about', fileId: 'itinerary' }); },
+    (_, scene) => { const window = addWindow(scene, 'notes', { utilityKind: 'application-about' });
+      scene.views[window.id].scroll = [{ key: 'notes-list', top: 20, left: 0 }]; },
+    (_, scene) => { const window = addWindow(scene, 'notes', { utilityKind: 'application-settings' });
+      scene.views[window.id].selections = [{ key: 'notes-body', noteId: 'note-1', start: 0, end: 10, direction: 'none' }]; },
+    (_, scene) => { const window = addWindow(scene, 'notes', { utilityKind: 'application-about' }); scene.views[window.id].focusKey = 'notes-body'; },
+  ]) rejects(change);
+});

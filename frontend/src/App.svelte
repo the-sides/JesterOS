@@ -46,6 +46,9 @@
   import { commandCatalog } from './command-catalog.js';
   import { visibleNotes } from './notes-state.js';
   import { appCommandMenuProviders } from './app-command-menus.js';
+  import { APPLICATION_MENU_UTILITY_SIZES, goldenApplicationMenuItems, createApplicationMenuCommands } from './application-menu.js';
+  import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
+  import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
@@ -66,6 +69,7 @@
   const macDesktop = profile.family === 'macos';
   const expandedProperty = adapter.expandedProperty;
   const hasMenuBar = profile.capabilities.includes('shell.menu-bar');
+  const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
@@ -91,6 +95,7 @@
   let switching = $state({ ...applicationSwitchingDefaults(profile), ...savedScene?.switching });
   let closedWindows = $state(savedScene?.closedWindows ?? {});
   const pendingWindowViews = new Map(Object.entries(savedScene?.views ?? {}));
+  const applicationUtilityReturnFocus = new Map();
   let switcherControls = $state();
   let applicationMenuControls = $state();
   let switcherPreviewSlots = $state({});
@@ -617,9 +622,24 @@
     }),
   );
   if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
-    getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes').id),
+    getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes' && !window.utilityKind).id),
     isVisible: () => !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
-      && windows.some(window => window.appId === 'notes' && !window.minimized && windowPresented(window)),
+      && windows.some(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window)),
+  }));
+  if (hasApplicationMenu) Object.assign(handlers, createApplicationMenuCommands({
+    profile, notes: notesState,
+    available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
+    getActiveAppId: () => activeAppId, getRunningAppIds: () => runningAppIds,
+    isHidden: isAppHidden, isQuitting: appId => pendingQuitAppIds.includes(appId),
+    openPanel: openApplicationUtility, getPanel: getApplicationPanel, focusPanel: focusApplicationPanel,
+    getSource: applicationServiceSource, captureFocus: captureNativeFocus,
+    focusServiceBody: focusApplicationServiceBody,
+    restoreFocus: (token, windowId) => sceneInteractionsAvailable() && activeWindowId === windowId
+      ? restoreNativeFocus(token) : false,
+    noteCreated: () => {
+      clearNotesPresentation();
+      notesViewState.focusedControl = { control: 'body' };
+    },
   }));
   if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
     native: nativeState,
@@ -793,6 +813,7 @@
         records: notesState.notes.map(({ id, deleted }) => ({ noteId: id, deleted })),
         eligibleIds: visibleNotes(notesState).map(({ id }) => id),
       } } : {}),
+      ...(hasApplicationMenu ? { applicationMenu: applicationMenuTargets() } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
 
@@ -1105,7 +1126,8 @@
     return trashVirtualFiles(desktopFileStore, fileIds, macDesktop ? ['disk', 'desktop', 'downloads', 'trash'] : undefined);
   }
   function windowApplication(window) {
-    return desktopUtilityApps[window.utilityKind] ?? applications[window.appId];
+    const app = applications[window.appId], utility = APPLICATION_MENU_UTILITY_SIZES[window.utilityKind];
+    return utility ? { ...app, ...utility } : desktopUtilityApps[window.utilityKind] ?? app;
   }
   async function openDesktopUtility(utilityKind, fileId) {
     const info = fileId ? getDesktopFileInfo(fileId) : null;
@@ -1113,16 +1135,94 @@
     let window = windows.find(entry => entry.utilityKind === utilityKind && entry.fileId === fileId);
     if (!window) {
       const title = utilityKind === 'desktop-info' ? `${info.name} Info` : 'Desktop';
-      const id = openWindow('finder', title, true);
+      const id = openWindow('finder', title, true, utilityKind);
       window = windows.find(entry => entry.id === id);
-      window.utilityKind = utilityKind;
-      delete window.folderId;
       if (fileId) window.fileId = fileId;
       if (utilityKind === 'desktop-info') window.infoSections = { general: true, name: true };
       window.bounds = adapter.initialBounds(windowApplication(window), area, windows.length - 1, globalThis.innerHeight);
     } else focusWindow(window.id);
     await focusKeyboardWindow(window.id);
     return { status: 'applied', target: { windowId: window.id, ...(fileId ? { fileId } : {}) } };
+  }
+  function getApplicationPanel(windowId) {
+    const window = windows.find(entry => entry.id === windowId && Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, entry.utilityKind));
+    if (!window || window.minimized || !windowPresented(window) || !windowInteractionsAvailable()
+      || switching.switcher || presentation.pairing || pendingQuitAppIds.includes(window.appId)) return null;
+    const element = managedWindowElement(windowId)?.querySelector('[data-application-panel-scroll]');
+    return element?.isConnected && !element.closest('[inert]') && element.getClientRects().length
+      ? { window, element } : null;
+  }
+  async function focusApplicationPanel(entry, control) {
+    const find = panel => control === 'panel' ? panel?.element
+      : panel?.element.querySelector(`[data-application-settings-control="${control}"]`);
+    let node = find(entry);
+    if (!node?.isConnected || node.disabled || !node.getClientRects().length) return false;
+    focusWindow(entry.window.id);
+    await tick(); await tick();
+    node = find(getApplicationPanel(entry.window.id));
+    if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return false;
+    node.focus({ preventScroll: true });
+    return document.activeElement === node;
+  }
+  async function openApplicationUtility(appId, utilityKind) {
+    let window = windows.find(entry => entry.appId === appId && entry.utilityKind === utilityKind);
+    if (!window) {
+      const returnFocus = captureSessionDesktop();
+      const title = utilityKind === 'application-about' ? `About ${applications[appId].name}` : `${applications[appId].name} Settings`;
+      const id = openWindow(appId, title, true, utilityKind);
+      applicationUtilityReturnFocus.set(id, returnFocus);
+      window = windows.find(entry => entry.id === id);
+    } else focusWindow(window.id);
+    await tick(); await tick();
+    const entry = getApplicationPanel(window.id);
+    if (!entry || !await focusApplicationPanel(entry, utilityKind === 'application-settings' ? 'sort-by' : 'panel'))
+      return rejected('unavailable', 'The application utility did not mount its native panel.');
+    return { status: 'applied', target: { appId, windowId: window.id } };
+  }
+  function applicationServiceSource(target) {
+    if (!hasApplicationMenu || !windowInteractionsAvailable() || switching.switcher || presentation.pairing
+      || activeAppId !== 'notes' || activeWindowId !== target.windowId || isAppHidden('notes')
+      || pendingQuitAppIds.includes('notes')) return null;
+    const window = windows.find(entry => entry.id === target.windowId && entry.appId === 'notes' && !entry.utilityKind);
+    const note = visibleNotes(notesState).find(entry => entry.id === target.noteId && entry.id === notesState.selectedId);
+    if (!window || window.minimized || !windowPresented(window) || !note || !['title', 'body'].includes(target.control)) return null;
+    const node = managedWindowElement(window.id)?.querySelector(`[data-notes-control="${target.control}"]`);
+    if (!node?.isConnected || node.dataset.noteId !== note.id || node.disabled || node.closest('[inert]')
+      || !node.getClientRects().length || typeof node.value !== 'string') return null;
+    return { note, value: node.value };
+  }
+  function applicationServiceSelection() {
+    const token = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null;
+    const node = token?.node ?? document.activeElement, control = node?.dataset?.notesControl;
+    if (!['title', 'body'].includes(control)) return null;
+    const windowId = node.closest('[data-window-id]')?.dataset.windowId;
+    const noteId = token?.noteId ?? node.dataset.noteId;
+    if (noteId !== node.dataset.noteId) return null;
+    const source = applicationServiceSource({ windowId, noteId, control });
+    const range = token?.selection ?? { start: node.selectionStart, end: node.selectionEnd };
+    if (!source || !Number.isSafeInteger(range?.start) || !Number.isSafeInteger(range?.end)
+      || range.start < 0 || range.end <= range.start || range.end > source.value.length
+      || range.end - range.start > 1024 * 1024) return null;
+    return { windowId, noteId, control, revision: source.note.updatedAt, start: range.start, end: range.end };
+  }
+  async function focusApplicationServiceBody(windowId) {
+    await tick(); await tick();
+    if (!applicationServiceSource({ windowId, noteId: notesState.selectedId, control: 'body' })) return false;
+    const body = managedWindowElement(windowId).querySelector('[data-notes-control="body"]');
+    body.focus({ preventScroll: true });
+    return document.activeElement === body;
+  }
+  function applicationMenuTargets() {
+    return { preferences: { notes: { ...notesState.preferences } }, selection: applicationServiceSelection(),
+      panels: windows.filter(window => Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, window.utilityKind)).map(window => {
+        const element = managedWindowElement(window.id)?.querySelector('[data-application-panel-scroll]');
+        return { appId: window.appId, windowId: window.id, kind: window.utilityKind, available: Boolean(getApplicationPanel(window.id)),
+          controlIds: ['panel', ...[...(element?.querySelectorAll('[data-application-settings-control]') ?? [])]
+            .map(control => control.dataset.applicationSettingsControl)],
+          focusedControl: element?.contains(document.activeElement)
+            ? document.activeElement === element ? 'panel' : document.activeElement.dataset.applicationSettingsControl ?? null : null,
+          scroll: element ? { top: element.scrollTop, left: element.scrollLeft } : null };
+      }) };
   }
   function dismissDockPresentation() {
     if (!hasDockContext) return;
@@ -1369,6 +1469,7 @@
       ? node.localName + attributes.map(attribute => `[${attribute.name}="${CSS.escape(attribute.value)}"]`).join('')
       : node.id ? `#${CSS.escape(node.id)}` : null;
     return { node, selector, windowId: node.closest('[data-window-id]')?.dataset.windowId,
+      ...(['title', 'body'].includes(node.dataset?.notesControl) ? { noteId: node.dataset.noteId } : {}),
       selection: typeof node.selectionStart === 'number'
         ? { start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection } : null };
   }
@@ -1383,7 +1484,8 @@
         && original.getClientRects().length && getComputedStyle(original).visibility === 'visible') {
         original.focus({ preventScroll: true });
         if (document.activeElement === original) {
-          if (token.selection) original.setSelectionRange(token.selection.start, token.selection.end, token.selection.direction);
+          if (token.selection && (!token.noteId || token.noteId === original.dataset.noteId))
+            original.setSelectionRange(token.selection.start, token.selection.end, token.selection.direction);
           return true;
         }
       }
@@ -1417,28 +1519,22 @@
     const ordinary = Boolean(active && !active.fullScreen && !active.minimized && !isAppHidden(active.appId));
     const request = (command, window = active, payload = {}) => window
       ? { command, target: { windowId: window.id }, payload } : undefined;
-    const applicationActions = {
-      hide: { command: 'app.setHidden', target: { appId }, payload: { hidden: true } },
-      'hide-others': { command: 'app.hideOthers', target: { appId } },
-      'show-all': { command: 'app.showAll' },
-      quit: { command: 'app.quit', target: { appId } },
-    };
     const enabled = Boolean(app && runningAppIds.includes(appId) && !pendingQuitAppIds.includes(appId));
     const appWindows = windows.filter(window => window.appId === appId);
     const original = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus?.node : document.activeElement;
     const control = original?.dataset?.notesControl;
     const textControl = ['title', 'body', 'search'].includes(control)
-      && original.closest('[data-window-id]')?.dataset.windowId === appWindows.find(window => window.appId === 'notes')?.id
+      && original.closest('[data-window-id]')?.dataset.windowId === appWindows.find(window => window.appId === 'notes' && !window.utilityKind)?.id
       ? control : null;
     const commandMenus = appCommandMenuProviders({ profile, appId, enabled, activeWindow: active,
-      notes: appId === 'notes' ? { available: Boolean(notesView && appWindows.some(window => !window.minimized && windowPresented(window))),
+      notes: appId === 'notes' ? { available: Boolean(notesView && appWindows.some(window => !window.utilityKind && !window.minimized && windowPresented(window))),
         selected: visibleNotes(notesState).find(note => note.id === notesState.selectedId),
         sidebarVisible: notesState.sidebarVisible, textControl, hasText: Boolean(textControl && original.value.length) } : null });
     return [
       { menuId: 'application', kind: 'application', label: app?.name ?? '', appId,
         enabled,
-        items: applicationMenuItems(switching, profile, appId, runningAppIds, pendingQuitAppIds)
-          .map(item => ({ ...item, request: applicationActions[item.id] })) },
+        items: goldenApplicationMenuItems({ state: switching, profile, appId, runningAppIds, pendingQuitAppIds,
+          selection: applicationServiceSelection() }) },
       ...commandMenus.filter(menu => menu.menuId !== 'help'),
       { menuId: 'window', kind: 'window', label: 'Window', appId, enabled, items: [
         { id: 'close', label: 'Close', shortcut: '⌘W', enabled: Boolean(active), request: request('window.close') },
@@ -1877,15 +1973,16 @@
       desktopState.windowMenuItem = null;
       desktopState.focusedControl = null;
     }
-    if (window.appId !== 'notes' && notesViewState) clearNotesPresentation();
+    if ((window.appId !== 'notes' || window.utilityKind) && notesViewState) clearNotesPresentation();
   }
 
-  function openWindow(appId, title, fresh = false) {
-    const app = applications[appId];
+  function openWindow(appId, title, fresh = false, utilityKind) {
+    const app = utilityKind && Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, utilityKind)
+      ? { ...applications[appId], ...APPLICATION_MENU_UTILITY_SIZES[utilityKind] } : applications[appId];
     unhideApplication(appId);
     if (fresh || !windows.some(window => window.appId === appId && !window.utilityKind)) cancelPairingForActivation(null);
     switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
-    const existing = !fresh && windows.findLast(window => window.appId === appId && !window.utilityKind);
+    const existing = !fresh && !utilityKind && windows.findLast(window => window.appId === appId && !window.utilityKind);
     if (existing) {
       if (title !== undefined) existing.title = title;
       focusWindow(existing.id);
@@ -1896,20 +1993,21 @@
       ? appId : `${appId}-window-${nextWindowId}`);
     nextWindowId++;
     adapter.createWindow?.(nativeState, id, appId, { fresh });
-    const remembered = hasRetention && !fresh ? closedWindows[appId] : null;
-    if (hasRetention) delete closedWindows[appId];
+    const remembered = hasRetention && !fresh && !utilityKind ? closedWindows[appId] : null;
+    if (hasRetention && !utilityKind) delete closedWindows[appId];
     const retainedBounds = remembered && (remembered.window.restoreBounds ?? remembered.window.bounds);
     const normal = retainedBounds ? fitRetainedBounds(retainedBounds, app, area, Math.min(.9, retainedBounds.scale)) : null;
     windows.push({
       ...(remembered?.window ?? {}),
       id, appId, title: title ?? remembered?.window.title ?? app.name,
+      ...(utilityKind ? { utilityKind } : {}),
       minimized: false, fullScreen: false, [expandedProperty]: remembered?.window[expandedProperty] ?? false,
       bounds: normal ? remembered.window[expandedProperty] ? expandedBounds(normal, area) : normal
         : adapter.initialBounds(app, area, windows.length, globalThis.innerHeight),
       restoreBounds: remembered?.window[expandedProperty] ? normal : null,
       ...(hasSpaces ? { spaceId: spaceState.lastDesktopId } : {}),
-      ...(macDesktop && appId === 'finder' ? { folderId: remembered?.window.folderId ?? 'desktop' } : {}),
-      ...(hasDockContext && appId === 'settings' ? { settingsPane: remembered?.window.settingsPane ?? 'dock' } : {}),
+      ...(macDesktop && appId === 'finder' && !utilityKind ? { folderId: remembered?.window.folderId ?? 'desktop' } : {}),
+      ...(hasDockContext && appId === 'settings' && !utilityKind ? { settingsPane: remembered?.window.settingsPane ?? 'dock' } : {}),
     });
     if (remembered) pendingWindowViews.set(id, remembered.view);
     if (!runningAppIds.includes(appId)) runningAppIds.push(appId);
@@ -1956,6 +2054,9 @@
     const index = windows.findIndex(window => window.id === id);
     if (index < 0) return;
     const appId = windows[index].appId;
+    const wasActive = activeWindowId === id, returnFocus = applicationUtilityReturnFocus.get(id);
+    const appUtility = Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, windows[index].utilityKind);
+    applicationUtilityReturnFocus.delete(id);
     if (hasRetention) {
       const closed = windows[index];
       if (!closed.utilityKind && !windows.some(window => window.id !== id && window.appId === appId && !window.utilityKind)) {
@@ -1986,6 +2087,13 @@
     if (appId === 'notes') clearNotesPresentation();
     if (!disposed && pendingQuitAppIds.includes(appId) && !quitInFlight.has(appId)) {
       await handlers['app.quit']({ appId }, {});
+    }
+    if (wasActive && appUtility && sceneInteractionsAvailable() && !pendingQuitAppIds.includes(appId)) {
+      const sourceWindow = returnFocus?.focus?.windowId;
+      const sameNote = !returnFocus?.focus?.noteId || returnFocus.focus.noteId === notesState.selectedId;
+      if (returnFocus && sameNote && (!sourceWindow || sourceWindow === activeWindowId)) await restoreSessionDesktop(returnFocus);
+      else if (activeWindowId) await focusKeyboardWindow(activeWindowId);
+      else await focusSceneWorkspace();
     }
   }
 
@@ -2158,7 +2266,11 @@
         resizable={interactive && hasWindowResize && !window[expandedProperty] && windowInteractionsAvailable()}
         onresize={(edge, coordinates) => windowCommand('window.resize', window.id, { edge, ...coordinates })}
       >
-        {#if Applications}
+        {#if window.utilityKind === 'application-about'}
+          <GoldenGateAboutApp application={applications[window.appId]} {profile} windowId={window.id} execute={commands.execute} />
+        {:else if window.utilityKind === 'application-settings'}
+          <GoldenGateNotesSettings preferences={notesState.preferences} windowId={window.id} execute={commands.execute} />
+        {:else if Applications}
           <Applications appId={window.appId} windowId={window.id} {profile} native={adapter.nativeForWindow(nativeState, window.id)} execute={commands.execute} registerView={registerApplicationView} />
         {:else if window.appId === 'messages'}
           <MessagesWindow

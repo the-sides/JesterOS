@@ -31,7 +31,7 @@ const bounds = object({ x: number(-MAX_COUNTER), y: number(-MAX_COUNTER), width:
 const desktopId = { ...identity, pattern: '^desktop-[1-9][0-9]*$' };
 const scrollPosition = object({ top: number(), left: number() });
 const scrollKey = choice('notes-list', 'notes-body', 'messages-conversations', 'messages-thread', 'finder-contents',
-  'window-content', 'settings-dock', 'settings-appearance', 'desktop-info', 'desktop-view-options');
+  'window-content', 'settings-dock', 'settings-appearance', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings');
 const selectionKey = choice('notes-title', 'notes-body', 'notes-search');
 const viewToken = object({
   scroll: array(object({ key: scrollKey, top: number(), left: number() }), 10),
@@ -43,7 +43,7 @@ const windowRecord = object({
   id: { ...identity, maxLength: 256 }, appId: identity, title: string(4096), minimized: flag, fullScreen: flag, zoomed: flag,
   bounds, restoreBounds: nullable(bounds), spaceId: desktopId,
   folderId: safeKey(), finderSelectedFileIds: ids(safeKey()), settingsPane: choice('dock', 'appearance'),
-  utilityKind: choice('desktop-info', 'desktop-view-options'), fileId: safeKey(), infoSections: object({ general: flag, name: flag }),
+  utilityKind: choice('desktop-info', 'desktop-view-options', 'application-about', 'application-settings'), fileId: safeKey(), infoSections: object({ general: flag, name: flag }),
 }, ['id', 'appId', 'title', 'minimized', 'fullScreen', 'zoomed', 'bounds', 'restoreBounds', 'spaceId']);
 const rootSnapshot = object({
   seed: sceneSeedSchema, windows: array(windowRecord),
@@ -143,9 +143,9 @@ function validateView(view, window, seed) {
   const allowed = window.utilityKind ? [window.utilityKind] : window.appId === 'notes' ? ['notes-list', 'notes-body']
     : window.appId === 'messages' ? ['messages-conversations', 'messages-thread'] : window.appId === 'finder' ? ['finder-contents']
       : window.appId === 'settings' ? [`settings-${window.settingsPane}`] : ['window-content'];
-  if (window.appId !== 'notes' && window.appId !== 'messages') allowed.push('window-content');
+  if (window.utilityKind || (window.appId !== 'notes' && window.appId !== 'messages')) allowed.push('window-content');
   if (view.scroll.some(entry => !allowed.includes(entry.key))) return false;
-  if (window.appId !== 'notes') return view.selections.length === 0 && view.focusKey === null;
+  if (window.utilityKind || window.appId !== 'notes') return view.selections.length === 0 && view.focusKey === null;
   const notes = new Set(seed.notes.notes.map(note => note.id));
   return view.selections.every(selection => selection.start <= selection.end
     && (selection.key === 'notes-search' ? selection.noteId === null : notes.has(selection.noteId)));
@@ -193,7 +193,7 @@ function validateRoot(scene, userId, profile) {
   const files = new Map(allFiles.map(file => [file.id, file]));
   if (files.size !== allFiles.length) return invalid('User records cannot override generated installed application records.');
   const liveFiles = new Map(liveMacFileRecords({ files: allFiles }).map(file => [file.id, file]));
-  const ordinaryApps = new Set(), usedIds = new Set(), usedNumbers = new Set();
+  const ordinaryApps = new Set(), utilityOwners = new Set(), usedIds = new Set(), usedNumbers = new Set();
   const closed = Object.entries(scene.closedWindows);
   for (const [appId, entry] of closed) {
     if (!registered(appId) || entry.window.appId !== appId || entry.window.utilityKind
@@ -213,10 +213,19 @@ function validateRoot(scene, userId, profile) {
     }
     if (window.zoomed !== (window.restoreBounds !== null)) return invalid('Zoomed windows require retained normal restore bounds; unzoomed windows must not have restore bounds.');
     if (window.utilityKind) {
-      if (window.appId !== 'finder' || Object.hasOwn(window, 'folderId') || Object.hasOwn(window, 'finderSelectedFileIds')
-        || Object.hasOwn(window, 'settingsPane')) return invalid('Desktop utilities belong only to Finder and cannot contain ordinary window fields.');
-      if (window.utilityKind === 'desktop-info' ? !files.has(window.fileId) || !Object.hasOwn(window, 'infoSections')
-        : Object.hasOwn(window, 'fileId') || Object.hasOwn(window, 'infoSections')) return invalid('Get Info must reference real metadata with its closed sections; Desktop view options has no file metadata.');
+      if (Object.hasOwn(window, 'folderId') || Object.hasOwn(window, 'finderSelectedFileIds')
+        || Object.hasOwn(window, 'settingsPane')) return invalid('Utilities cannot contain ordinary Finder or System Settings window fields.');
+      if (window.utilityKind === 'application-about' || window.utilityKind === 'application-settings') {
+        if (window.utilityKind === 'application-settings' && window.appId !== 'notes') return invalid('Only Notes has a represented app Settings utility.');
+        if (Object.hasOwn(window, 'fileId') || Object.hasOwn(window, 'infoSections')) return invalid('App utilities cannot contain desktop-file metadata.');
+        const owner = `${window.appId}:${window.utilityKind}`;
+        if (utilityOwners.has(owner)) return invalid('An application can have at most one live utility of each app-menu kind.');
+        utilityOwners.add(owner);
+      } else {
+        if (window.appId !== 'finder') return invalid('Desktop utilities belong only to Finder.');
+        if (window.utilityKind === 'desktop-info' ? !files.has(window.fileId) || !Object.hasOwn(window, 'infoSections')
+          : Object.hasOwn(window, 'fileId') || Object.hasOwn(window, 'infoSections')) return invalid('Get Info must reference real metadata with its closed sections; Desktop view options has no file metadata.');
+      }
     } else {
       if (Object.hasOwn(window, 'infoSections') || (window.appId === 'finder' ? !Object.hasOwn(window, 'folderId')
         : Object.hasOwn(window, 'folderId') || Object.hasOwn(window, 'finderSelectedFileIds'))) return invalid('Only ordinary Finder windows have folder and Finder selection state.');

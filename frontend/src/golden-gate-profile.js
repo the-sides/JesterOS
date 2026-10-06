@@ -13,7 +13,7 @@ export const goldenGateProfile = {
     'shell.window-create', 'app.lifecycle', 'shell.switcher', 'app.visibility',
     'shell.full-screen', 'shell.split-view', 'shell.window-green-menu', 'shell.mission-control',
     'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management',
-    'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.menu-bar', 'shell.appearance',
+    'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.menu-bar', 'shell.application-menu', 'shell.appearance',
     'scene.profile-selection', 'scene.seed', 'scene.saved-session', 'session.fictional', 'session.power', 'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {

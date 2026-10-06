@@ -18,6 +18,7 @@ import { fictionalPowerCatalog } from './fictional-power-catalog.js';
 import { sceneSeedCatalog } from './scene-seed-catalog.js';
 import { savedSessionCatalog } from './saved-session-catalog.js';
 import { menuBarCatalog } from './menu-bar-catalog.js';
+import { applicationMenuCatalog } from './application-menu-catalog.js';
 
 const MAC_PROFILES = [MOJAVE_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -54,6 +55,7 @@ export const commandCatalog = {
   ...sceneSeedCatalog,
   ...savedSessionCatalog,
   ...menuBarCatalog,
+  ...applicationMenuCatalog,
   ...Object.fromEntries([
   defineShared('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
     ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],

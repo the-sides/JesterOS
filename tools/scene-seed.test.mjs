@@ -40,6 +40,25 @@ test('complete custom seeds accept empty models and independent null note select
   expect(validate(seed)).toEqual({ ok: true });
 });
 
+test('Golden seed preference validation rejects incomplete, extended and out-of-range settings', () => {
+  for (const change of [
+    seed => { delete seed.notes.preferences; },
+    seed => { delete seed.notes.preferences.groupByDate; },
+    seed => { seed.notes.preferences.cloud = true; },
+    seed => { seed.notes.preferences.sortBy = 'name'; },
+    seed => { seed.notes.preferences.groupByDate = 1; },
+    seed => { seed.notes.preferences.textSize = 11; },
+    seed => { seed.notes.preferences.textSize = 25; },
+    seed => { seed.notes.preferences.textSize = 14.5; },
+  ]) rejects(change);
+  for (const textSize of [12, 24]) {
+    const seed = fixture();
+    seed.notes.preferences = { sortBy: 'title', groupByDate: false, textSize };
+    expect(validate(seed)).toEqual({ ok: true });
+  }
+});
+
+
 test('selected note must satisfy actual folder and whitespace-normalized search semantics', () => {
   const seed = fixture(), note = seed.notes.notes.find(note => note.id === seed.notes.selectedId);
   note.text = '東京\n  café\tmeeting';

@@ -10,6 +10,8 @@ const scrollSelectors = {
   'settings-appearance': '.appearance-preferences',
   'desktop-info': '.info-inspector',
   'desktop-view-options': '.view-inspector',
+  'application-about': '.golden-gate-about-app',
+  'application-settings': '.golden-gate-notes-settings',
 };
 const controlSelectors = {
   'notes-title': '[data-golden-gate-notes-control="title"]',

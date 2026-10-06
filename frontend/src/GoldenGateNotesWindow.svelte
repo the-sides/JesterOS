@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import WindowControls from './WindowControls.svelte';
-  import { noteTitle, notePreview, visibleNotes } from './notes-state.js';
+  import { noteTitle, notePreview, groupNotes } from './notes-state.js';
   import { createGoldenGateNotesView } from './golden-gate-notes-view.js';
   import './golden-gate-documents.css';
 
@@ -11,7 +11,9 @@
   let root, searchInput, listElement;
   let titleInput = $state(null), bodyInput = $state(null), contextElement = $state(null);
   const context = $derived(viewState.context);
-  const notes = $derived(visibleNotes(noteState));
+  const groups = $derived(groupNotes(noteState));
+  const notes = $derived(groups.flatMap(group => group.notes));
+  const groupHeadings = $derived(new Map(groups.map(group => [group.notes[0].id, group])));
   const selected = $derived(noteState.notes.find((note) => note.id === noteState.selectedId));
   const dateFormat = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
   const summaryDateFormat = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', timeZone: 'UTC' });
@@ -47,6 +49,7 @@
 <svelte:document onpointerdown={view.dismissContext} onfocusin={view.dismissContext} />
 
 <section class="golden-gate-notes" class:inactive={!active} class:folders-hidden={!noteState.sidebarVisible}
+  style:--golden-gate-notes-text-size="{noteState.preferences.textSize}px"
   bind:this={root} aria-label="Notes application" onfocusin={view.observeFocus} onfocusout={view.observeBlur}>
   <header class="golden-gate-notes-toolbar" data-window-drag>
     <div class="golden-gate-notes-window-tools">
@@ -91,8 +94,8 @@
       </aside>
     {/if}
     <nav class="golden-gate-notes-list" aria-label="Notes list" bind:this={listElement} onscroll={(event) => view.observeScroll('list', event)}>
-      {#each notes as note, index (note.id)}
-        {#if !noteState.search && noteState.folder === 'notes' && (index === 0 || (notes[index - 1].pinned && !note.pinned))}<h3 class="golden-gate-notes-list-heading">{note.pinned ? 'Pinned' : 'Notes'}</h3>{/if}
+      {#each notes as note (note.id)}
+        {#if !noteState.search && noteState.folder === 'notes' && groupHeadings.has(note.id)}<h3 class="golden-gate-notes-list-heading" data-notes-group-id={groupHeadings.get(note.id).id}>{groupHeadings.get(note.id).label}</h3>{/if}
         <button type="button" class="golden-gate-notes-row" class:selected={note.id === noteState.selectedId} data-notes-control="row" data-golden-gate-notes-control="row" data-note-id={note.id} aria-label={`${noteTitle(note)}${note.pinned && !note.deleted ? ', pinned' : ''}`} aria-pressed={note.id === noteState.selectedId} onclick={() => view.command('select', { noteId: note.id })} oncontextmenu={(event) => view.openContext(event, note)} onkeydown={(event) => view.rowKeydown(event, note, notes)}>
           <span class="golden-gate-notes-row-title">{noteTitle(note)}</span>
           <span class="golden-gate-notes-row-summary"><time datetime={new Date(note.updatedAt).toISOString()}>{summaryDateFormat.format(note.updatedAt)}</time><span>{notePreview(note) || 'No additional text'}</span></span>
@@ -105,8 +108,8 @@
       {#if selected}
         <time class="golden-gate-notes-modified" datetime={new Date(selected.updatedAt).toISOString()}>{dateFormat.format(selected.updatedAt)}</time>
         {#if selected.deleted}<div class="golden-gate-notes-deleted">Restore this note to make changes.</div>{/if}
-        <input class="golden-gate-notes-title" data-notes-control="title" data-golden-gate-notes-control="title" aria-label="Note title" placeholder="New Note" spellcheck="false" readonly={selected.deleted} bind:this={titleInput} value={view.firstLine(selected)} oninput={(event) => view.edit(event.currentTarget.value, view.bodyText(selected))} onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); view.command('focus', { control: 'body' }); } }} />
-        <textarea class="golden-gate-notes-body" data-notes-control="body" data-golden-gate-notes-control="body" aria-label="Note body" spellcheck="false" readonly={selected.deleted} bind:this={bodyInput} value={view.bodyText(selected)} oninput={(event) => view.edit(view.firstLine(selected), event.currentTarget.value)} onscroll={(event) => view.observeScroll('editor', event)}></textarea>
+        <input class="golden-gate-notes-title" data-notes-control="title" data-golden-gate-notes-control="title" data-note-id={selected.id} aria-label="Note title" placeholder="New Note" spellcheck="false" readonly={selected.deleted} bind:this={titleInput} value={view.firstLine(selected)} oninput={(event) => view.edit(event.currentTarget.value, view.bodyText(selected))} onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); view.command('focus', { control: 'body' }); } }} />
+        <textarea class="golden-gate-notes-body" data-notes-control="body" data-golden-gate-notes-control="body" data-note-id={selected.id} aria-label="Note body" spellcheck="false" readonly={selected.deleted} bind:this={bodyInput} value={view.bodyText(selected)} oninput={(event) => view.edit(view.firstLine(selected), event.currentTarget.value)} onscroll={(event) => view.observeScroll('editor', event)}></textarea>
       {:else}<div class="golden-gate-notes-editor-empty">{noteState.search ? 'No matching notes' : noteState.folder === 'deleted' ? 'No recently deleted notes' : 'No note selected'}</div>{/if}
     </section>
   </div>

@@ -57,6 +57,11 @@ function normalizeWhitespace(text) {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+const titleOrder = new Intl.Collator('en-US', { sensitivity: 'base', numeric: true });
+const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' });
+const DAY = 24 * 60 * 60 * 1000;
+const compareIds = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+
 export function visibleNotes(state) {
   const query = normalizeWhitespace(state.search).toLowerCase();
   const deleted = state.folder === 'deleted';
@@ -64,8 +69,60 @@ export function visibleNotes(state) {
     .filter((note) => note.deleted === deleted && (!query || normalizeWhitespace(`${noteTitle(note)}\n${note.text}`).toLowerCase().includes(query)))
     .sort((a, b) => {
       if (!deleted && a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      if (state.preferences) {
+        const sortBy = state.preferences.sortBy;
+        if (sortBy === 'title') return titleOrder.compare(noteTitle(a), noteTitle(b)) || compareIds(a, b);
+        const primary = sortBy === 'date-created' ? 'createdAt' : 'updatedAt';
+        const secondary = sortBy === 'date-created' ? 'updatedAt' : 'createdAt';
+        return b[primary] - a[primary] || b[secondary] - a[secondary] || compareIds(a, b);
+      }
       return b.updatedAt - a.updatedAt || b.createdAt - a.createdAt || a.id.localeCompare(b.id);
     });
+}
+
+// The fixture's latest record (including hidden/deleted records) is the clock.
+// UTC day boundaries keep date groups stable across hosts and saved sessions.
+export function groupNotes(state) {
+  const notes = visibleNotes(state);
+  if (!notes.length) return [];
+  const groups = [];
+  const pinned = state.folder !== 'deleted' ? notes.filter(note => note.pinned) : [];
+  const unpinned = state.folder !== 'deleted' ? notes.filter(note => !note.pinned) : notes;
+  if (pinned.length) groups.push({ id: 'pinned', label: 'Pinned', notes: pinned });
+  if (!unpinned.length) return groups;
+  if (!state.preferences?.groupByDate || state.preferences.sortBy === 'title') {
+    groups.push({ id: 'notes', label: 'Notes', notes: unpinned });
+    return groups;
+  }
+  const clock = state.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), state.timeBase);
+  const today = Math.floor(clock / DAY);
+  const year = new Date(clock).getUTCFullYear();
+  const field = state.preferences.sortBy === 'date-created' ? 'createdAt' : 'updatedAt';
+  const byId = new Map();
+  for (const note of unpinned) {
+    const age = today - Math.floor(note[field] / DAY);
+    const date = new Date(note[field]);
+    let id, label;
+    if (age === 0) { id = 'today'; label = 'Today'; }
+    else if (age === 1) { id = 'yesterday'; label = 'Yesterday'; }
+    else if (age < 7) { id = 'previous-7-days'; label = 'Previous 7 Days'; }
+    else if (age < 30) { id = 'previous-30-days'; label = 'Previous 30 Days'; }
+    else if (date.getUTCFullYear() === year) {
+      id = `month-${year}-${date.getUTCMonth() + 1}`;
+      label = monthLabel.format(date);
+    } else {
+      id = `year-${date.getUTCFullYear()}`;
+      label = String(date.getUTCFullYear());
+    }
+    let group = byId.get(id);
+    if (!group) {
+      group = { id, label, notes: [] };
+      byId.set(id, group);
+      groups.push(group);
+    }
+    group.notes.push(note);
+  }
+  return groups;
 }
 
 function nextTimestamp(state) {
@@ -84,13 +141,13 @@ function editableNote(state, id) {
   return visibleNotes(state).find((note) => note.id === id);
 }
 
-export function createNote(state) {
+export function createNote(state, text = '') {
   const timestamp = nextTimestamp(state);
   let number = state.notes.length + 1;
   while (state.notes.some((note) => note.id === `note-${number}`)) number += 1;
   const note = {
     id: `note-${number}`,
-    text: '',
+    text,
     pinned: false,
     deleted: false,
     createdAt: timestamp,

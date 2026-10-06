@@ -445,7 +445,7 @@
     if (event.defaultPrevented || event.isComposing || !(event.metaKey || event.ctrlKey)
       || event.altKey || event.shiftKey) return;
     const key = event.key.toLowerCase();
-    if (key !== 'n' && key !== 'q') return;
+    if (!['n', 'q', ','].includes(key)) return;
     const target = event.target;
     if (!(target instanceof Element) || target.closest('[inert], [aria-modal="true"]')) return;
     const focusedWindow = target.closest('[data-window-id]');
@@ -454,7 +454,11 @@
         || activeWindow.appId !== activeApp.id) return;
     } else if (!workspace?.parentElement.contains(target)
       && target !== document.body && target !== document.documentElement) return;
-    if (key === 'n') {
+    if (key === ',') {
+      if (activeApp.id !== 'notes') return;
+      event.preventDefault();
+      if (!event.repeat) request('app.settings.open', { appId: activeApp.id });
+    } else if (key === 'n') {
       if (!activeApp.multipleWindows || target.isContentEditable
         || target.closest('input, textarea, select, [contenteditable], [role="textbox"]')) return;
       event.preventDefault();
