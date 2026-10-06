@@ -6,13 +6,16 @@ const define = (name, payload, source, presentation) => {
   const entry = defineCommand(profiles, name, 'scene.seed', empty, payload,
     ['A live Golden Gate scene host in any session or power phase, including login, sleep, startup, off and confirmation.'],
     [presentation, 'Dispose the entire previous host and all user roots, windows, menus, power/session state and mutable models; await the fresh default startup presentation.',
-      'Browser-local setup only: no actor control, host services, persistence or second command queue.'],
+      'Browser-local setup only: no actor control, host services, automatic persistence or second command queue.'],
     ['Replace the complete original scene fixture; never merge fields or prune invalid references.',
-      'Structural and cross-reference validation rejects invalid input before any scene disposal.', sceneSeedSchema.description],
+      'Structural and cross-reference validation rejects invalid input before any scene disposal.', sceneSeedSchema.description,
+      ...(source === 'default' ? ['Clear the Golden Gate browser-local saved-session slot before disposal; storage failure rejects unavailable without resetting.'] : [])],
     NONE, object({ profileId: choice(...profiles), version: { const: 1 }, source: { const: source } }));
   entry[1].resultSchema.additionalProperties = false;
   entry[1].completion = { mode: 'promise', success: 'applied',
-    settles: 'Fresh Golden Gate host and startup application ready after disposing all old user roots; no host/network/storage work.' };
+    settles: source === 'default'
+      ? 'Browser-local saved-session slot cleared before disposal; fresh Golden Gate host and startup application ready. No host/network work.'
+      : 'Fresh Golden Gate host and startup application ready after disposing all old user roots; no host/network/storage work.' };
   return entry;
 };
 

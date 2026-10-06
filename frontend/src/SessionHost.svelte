@@ -8,14 +8,18 @@
   import { fictionalSessionDefaults, createFictionalSessionCommands, sessionTargets, signOutFictionalSessions } from './fictional-session.js';
   import { fictionalPowerDefaults, createFictionalPowerCommands, powerTargets } from './fictional-power.js';
   import { createSceneSeedCommands } from './scene-seed.js';
+  import { createSavedSessionCommands, clearSavedSession, savedSessionStorageKey } from './saved-session.js';
 
-  let { profile: profileInput, adapter: adapterInput, seed: seedInput, seedSource = 'default',
-    resetScene, registerCommands, selectProfile } = $props();
+  let { profile: profileInput, adapter: adapterInput, seed: seedInput, seedSource = 'default', savedSession: savedSessionInput,
+    resetScene, restoreScene, registerCommands, selectProfile } = $props();
   const profile = untrack(() => profileInput), adapter = untrack(() => adapterInput);
   const seed = untrack(() => seedInput);
-  let session = $state(fictionalSessionDefaults(profile));
+  const savedSession = untrack(() => savedSessionInput);
+  const initialSession = fictionalSessionDefaults(profile);
+  if (savedSession) signOutFictionalSessions(initialSession);
+  let session = $state(initialSession);
   let power = $state(fictionalPowerDefaults(profile));
-  let retainedIds = $state(['local-alex']);
+  let retainedIds = $state(savedSession?.locals.map(local => local.userId) ?? ['local-alex']);
   let disposed = false;
   const controllers = new Map(), scenes = new Map(), menuViews = new Map(), desktopReturns = new Map(), menuReturns = new Map();
   let surfaceView = null, powerView = null, powerReturn = null;
@@ -95,9 +99,31 @@
   const powerOperations = createFictionalPowerCommands({ profile, power, session, available: () => !disposed,
     settle, getView: () => powerView, captureReturn: capturePowerReturn, restoreReturn: restorePowerReturn,
     lockSession: () => operations['session.lock']({}, {}), signOutForBoot });
-  const seedOperations = createSceneSeedCommands({ profile, available: () => !disposed, replaceScene: (value, source) => resetScene(value, source) });
+  function clearStoredSession() {
+    try {
+      const result = clearSavedSession(globalThis.localStorage, profile);
+      return result.ok ? { status: 'applied' } : rejected('unavailable', result.message);
+    } catch {
+      return rejected('unavailable', 'Browser-local saved-session storage is unavailable.');
+    }
+  }
+  async function captureSavedSession() {
+    const locals = [];
+    for (const userId of retainedIds.filter(id => id !== 'guest')) {
+      const scene = scenes.get(userId);
+      if (!scene || await scene.ready() !== true) throw new Error('A retained local desktop did not finish startup.');
+      locals.push({ userId, scene: await scene.persist(desktopReturns.get(userId)?.focus?.node) });
+    }
+    return { version: 1, profileId: profile.id, baseline: { source: seedSource, seed }, locals };
+  }
+  const savedOperations = createSavedSessionCommands({ profile, available: () => !disposed, storage: () => globalThis.localStorage,
+    beforeCapture: () => retainedIds.filter(id => id !== 'guest').every(id => scenes.get(id)?.canSave())
+      ? { status: 'applied' } : rejected('unavailable', 'Finish retained local window pairing or application quit before saving.'),
+    capture: captureSavedSession, replace: value => restoreScene(value) });
+  const seedOperations = createSceneSeedCommands({ profile, available: () => !disposed,
+    beforeReset: clearStoredSession, replaceScene: (value, source) => resetScene(value, source) });
   const catalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) => descriptor.profiles.includes(profile.id)));
-  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, operations[name] ?? powerOperations[name] ?? seedOperations[name] ?? ((target, payload) => {
+  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, operations[name] ?? powerOperations[name] ?? seedOperations[name] ?? savedOperations[name] ?? ((target, payload) => {
     if (disposed || (!interactive() && name !== 'scene.selectProfile')) return rejected('unavailable', 'Wake/start and sign in before interacting with the fictional desktop.');
     const controller = activeController();
     return controller ? controller.execute({ command: name, target, payload }) : rejected('unavailable', 'The retained desktop is being prepared.');
@@ -111,8 +137,12 @@
         presentationInteractive: false, ...(session.phase !== 'desktop' || power.phase !== 'awake' ? { presentationVisible: false } : {}),
         ...(window.resize ? { resize: { ...window.resize, available: false } } : {}) }));
       return { ...targets, session: { ...sessionTargets(session, surfaceView,
-        session.menu ? menuViews.get(menuKey(session.activeUserId, session.menu.menuId)) : null), desktopAvailable: interactive() },
+        session.menu ? menuViews.get(menuKey(session.activeUserId, session.menu.menuId)) : null), desktopAvailable: interactive(),
+        boundaries: { ...sessionTargets(session).boundaries, savedSessions: true, guestSaved: false, credentialsSaved: false } },
         power: powerTargets(power, powerView),
+        savedSession: { version: 1, storageKey: savedSessionStorageKey(profile), automaticSave: false, automaticRestore: false,
+          localUsersOnly: true, guestSaved: false, credentialsSaved: false, restorePhase: 'login', reset: 'scene.reset',
+          commands: ['scene.session.save', 'scene.session.restore', 'scene.session.clear'] },
         sceneSeed: { source: seedSource, seed, completeReplacement: true,
           boundaries: { operatorDesktopControls: false, persistence: false, hostServices: false, profileIdentityChange: false } } };
     }, () => disposed ? null : profile, commandCatalog);
@@ -126,7 +156,7 @@
     return result;
   }
   const publicCommands = Object.freeze({ execute, inspect: commands.inspect, describe: commands.describe,
-    ready: () => scenes.get(session.activeUserId)?.ready() ?? Promise.resolve(false) });
+    ready: async () => (await Promise.all(retainedIds.map(userId => scenes.get(userId)?.ready() ?? false))).every(Boolean) });
   $effect(() => {
     document.documentElement.dataset.sessionPhase = session.phase;
     return () => { delete document.documentElement.dataset.sessionPhase; };
@@ -169,7 +199,8 @@
   {#each retainedIds as userId (userId)}
     <div class="session-desktop" class:inactive={userId !== session.activeUserId}
       data-session-user={userId} inert={userId !== session.activeUserId || !interactive()} aria-hidden={userId !== session.activeUserId || !interactive()}>
-      <App {profile} {adapter} {seed} {selectProfile} registerCommands={controller => registerDesktop(userId, controller)}
+      <App {profile} {adapter} {seed} savedScene={savedSession?.locals.find(local => local.userId === userId)?.scene}
+        {selectProfile} registerCommands={controller => registerDesktop(userId, controller)}
         registerSessionScene={facade => registerScene(userId, facade)}
         registerSessionView={view => registerNativeView(userId, view)}
         {session} executeSession={execute} user={session.users.find(user => user.id === userId)}

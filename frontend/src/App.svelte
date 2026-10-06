@@ -45,10 +45,11 @@
   import { createNotesCommands } from './notes-commands.js';
   import { commandCatalog } from './command-catalog.js';
   import { visibleNotes } from './notes-state.js';
-  import { clampPosition, expandedBounds, resizeBounds, WINDOW_RESIZE_AXES } from './window-state.js';
+  import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
+  import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
 
-  let { profile: profileInput, adapter: adapterInput, seed: seedInput, registerCommands, selectProfile,
+  let { profile: profileInput, adapter: adapterInput, seed: seedInput, savedScene: savedSceneInput, registerCommands, selectProfile,
     registerSessionScene, registerSessionView, session, executeSession,
     foreground = true, appearanceOwner = true, windowNamespace = '' } = $props();
   let sceneRoot;
@@ -57,6 +58,8 @@
   const profile = untrack(() => profileInput);
   const adapter = untrack(() => adapterInput);
   const seed = untrack(() => seedInput);
+  const savedScene = untrack(() => savedSceneInput);
+  const hasRetention = profile.capabilities.includes('scene.saved-session');
   const { Desktop, Window, MessagesWindow, NotesWindow, Applications } = adapter;
   const { applications } = profile;
   const macDesktop = profile.family === 'macos';
@@ -77,13 +80,15 @@
     'desktop-view-options': { ...applications.finder, width: 384, height: 500, minimumSize: { width: 360, height: 340 } },
   } : {};
 
-  let windows = $state([]);
-  let activeWindowId = $state(null);
-  let activeAppId = $state(profile.defaults.desktopAppId);
-  let runningAppIds = $state(adapter.closeKeepsRunning ? [profile.defaults.desktopAppId] : []);
+  let windows = $state(savedScene?.windows ?? []);
+  let activeWindowId = $state(savedScene?.activeWindowId ?? null);
+  let activeAppId = $state(savedScene?.activeAppId ?? profile.defaults.desktopAppId);
+  let runningAppIds = $state(savedScene?.runningAppIds ?? (adapter.closeKeepsRunning ? [profile.defaults.desktopAppId] : []));
   let pendingQuitAppIds = $state([]);
   const quitInFlight = new Set();
-  let switching = $state(applicationSwitchingDefaults());
+  let switching = $state({ ...applicationSwitchingDefaults(), ...savedScene?.switching });
+  let closedWindows = $state(savedScene?.closedWindows ?? {});
+  const pendingWindowViews = new Map(Object.entries(savedScene?.views ?? {}));
   let switcherControls = $state();
   let applicationMenuControls = $state();
   let switcherPreviewSlots = $state({});
@@ -121,11 +126,11 @@
     });
     return () => { cancelled = true; };
   });
-  let nextWindowId = 1;
+  let nextWindowId = savedScene?.nextWindowId ?? 1;
   let disposed = false;
   let area = $state({ width: 0, height: 0 });
-  let presentation = $state(fullScreenDefaults());
-  let spaceState = $state(spacesDefaults());
+  let presentation = $state({ ...fullScreenDefaults(), ...(savedScene ? { splitViews: savedScene.splitViews } : {}) });
+  let spaceState = $state({ ...spacesDefaults(), ...savedScene?.spaces });
   let missionControlControls = $state();
   let missionControlSlots = $state({});
   let launchpadState = $state(launchpadDefaults(profile));
@@ -248,7 +253,7 @@
     return () => { cancelled = true; };
   });
   // Application data outlives its window; close/minimize must not erase edits.
-  const initialData = profile.renderer === 'golden-gate' ? adapter.createSceneData(seed, profile) : adapter.createSceneData();
+  const initialData = profile.renderer === 'golden-gate' ? adapter.createSceneData(savedScene?.seed ?? seed, profile) : adapter.createSceneData();
   let notesState = $state(initialData.notes);
   let nativeState = $state(initialData.native);
   let messagesState = $state(initialData.messages);
@@ -264,8 +269,9 @@
   const desktopFileCommands = createFileCommands(desktopFileStore, desktopFilePolicy);
   let desktopState = $state({ selectedFileIds: [], selectionAnchorId: null, rename: null, marquee: null, positions: {},
     context: null, sortBy: 'none', viewOptions: desktopViewDefaults(profile.family, profile.renderer),
-    focusedControl: null, ...(hasDesktopStacks ? { stacks: desktopStacksDefaults() } : {}),
-    ...(hasDockContext ? { dock: { ...macDockDefaults(profile), ...initialData.dock } } : {}),
+    focusedControl: null, ...savedScene?.desktop,
+    ...(hasDesktopStacks ? { stacks: { ...desktopStacksDefaults(), ...savedScene?.desktop.stacks } } : {}),
+    ...(hasDockContext ? { dock: { ...macDockDefaults(profile), ...initialData.dock, ...savedScene?.dockOrder } } : {}),
     ...(hasWindowMenu ? { windowMenuOpen: false, windowMenuItem: null, windowMenuScrollTop: 0 } : {}) });
   const desktopItems = $derived(getDesktopItems());
   const desktopDetails = $derived(getDesktopDetails());
@@ -311,7 +317,8 @@
       dock.appWindows.selectedWindowId = windows.find(window => window.appId === dock.appWindows.appId)?.id ?? null;
     }
   });
-  let notesViewState = $state(initialData.notes ? { context: null, contextItem: null, focusedControl: null, scroll: { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } } : undefined);
+  let notesViewState = $state(initialData.notes ? { context: null, contextItem: null, focusedControl: null,
+    scroll: savedScene?.notesScroll ?? { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } } : undefined);
   let desktopView = null;
   let dockStackControls = $state();
   let dockStackAnchor = $state(null);
@@ -622,7 +629,8 @@
     if (!Object.hasOwn(commandCatalog, name)) throw new Error(`Missing native command descriptor: ${name}`);
   }
   const sceneCatalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) =>
-    descriptor.profiles.includes(profile.id) && !descriptor.capability.startsWith('session.') && descriptor.capability !== 'scene.seed'));
+    descriptor.profiles.includes(profile.id) && !descriptor.capability.startsWith('session.')
+    && !['scene.seed', 'scene.saved-session'].includes(descriptor.capability)));
   // Composite callbacks capture this binding, so they use the same sealed,
   // capability-guarded registry after native profile selection.
   handlers = Object.fromEntries(Object.entries(handlers).filter(([name]) => Object.hasOwn(sceneCatalog, name)));
@@ -636,6 +644,7 @@
       ...(messagesState ? { messages: messagesState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(nativeState ? { native: nativeState } : {}),
+      ...(hasRetention ? { retention: { closedWindows, automaticPersistence: false, reopen: 'last-ordinary-window-current-desktop' } } : {}),
     }),
     settleCommands, sceneCatalog, () => ({
       profiles: listOSProfiles().map(({ id, name, family, version }) => ({ profileId: id, name, family, version })),
@@ -863,12 +872,18 @@
     const element = managedWindowElement(id);
     if (!element || element.closest('[inert]') || getComputedStyle(element).visibility !== 'visible') return false;
     element.focus({ preventScroll: true });
-    return document.activeElement === element;
+    if (hasRetention && pendingWindowViews.has(id)) {
+      restoreRetainedView(element, pendingWindowViews.get(id), { noteId: notesState.selectedId, focus: foreground });
+      pendingWindowViews.delete(id);
+    }
+    return hasRetention ? element.contains(document.activeElement) : document.activeElement === element;
   }
   function createMacSceneFiles() {
     const sceneTime = initialData.files?.sceneTime ?? initialData.notes.timeBase + 42 * 60_000;
     const store = initialData.files ?? createMacDesktopFileStore(profile, sceneTime);
-    store.files.push(...createMacApplicationFiles(profile, sceneTime));
+    const catalog = createMacApplicationFiles(profile, sceneTime);
+    if (savedScene) for (const file of catalog) Object.assign(file, savedScene.catalogTimes[file.id]);
+    store.files.push(...catalog);
     return store;
   }
   function getDockMenuItems() {
@@ -1707,6 +1722,8 @@
   onMount(() => {
     const unregister = registerCommands(commands);
     const unregisterSession = registerSessionScene?.({
+      persist: captureSavedScene,
+      canSave: () => !disposed && !presentation.pairing && pendingQuitAppIds.length === 0,
       capture: captureSessionDesktop, restore: restoreSessionDesktop,
       ready: async () => { await tick(); const result = await startup; return !disposed && initialized && result?.status === 'applied'; },
     });
@@ -1801,15 +1818,22 @@
       ? appId : `${appId}-window-${nextWindowId}`);
     nextWindowId++;
     adapter.createWindow?.(nativeState, id, appId, { fresh });
+    const remembered = hasRetention && !fresh ? closedWindows[appId] : null;
+    if (hasRetention) delete closedWindows[appId];
+    const retainedBounds = remembered && (remembered.window.restoreBounds ?? remembered.window.bounds);
+    const normal = retainedBounds ? fitRetainedBounds(retainedBounds, app, area, Math.min(.9, retainedBounds.scale)) : null;
     windows.push({
-      id, appId, title: title ?? app.name,
-      minimized: false, fullScreen: false, [expandedProperty]: false,
-      bounds: adapter.initialBounds(app, area, windows.length, globalThis.innerHeight),
-      restoreBounds: null,
+      ...(remembered?.window ?? {}),
+      id, appId, title: title ?? remembered?.window.title ?? app.name,
+      minimized: false, fullScreen: false, [expandedProperty]: remembered?.window[expandedProperty] ?? false,
+      bounds: normal ? remembered.window[expandedProperty] ? expandedBounds(normal, area) : normal
+        : adapter.initialBounds(app, area, windows.length, globalThis.innerHeight),
+      restoreBounds: remembered?.window[expandedProperty] ? normal : null,
       ...(hasSpaces ? { spaceId: spaceState.lastDesktopId } : {}),
-      ...(macDesktop && appId === 'finder' ? { folderId: 'desktop' } : {}),
-      ...(hasDockContext && appId === 'settings' ? { settingsPane: 'dock' } : {}),
+      ...(macDesktop && appId === 'finder' ? { folderId: remembered?.window.folderId ?? 'desktop' } : {}),
+      ...(hasDockContext && appId === 'settings' ? { settingsPane: remembered?.window.settingsPane ?? 'dock' } : {}),
     });
+    if (remembered) pendingWindowViews.set(id, remembered.view);
     if (!runningAppIds.includes(appId)) runningAppIds.push(appId);
     activeWindowId = id;
     activeAppId = appId;
@@ -1854,6 +1878,16 @@
     const index = windows.findIndex(window => window.id === id);
     if (index < 0) return;
     const appId = windows[index].appId;
+    if (hasRetention) {
+      const closed = windows[index];
+      if (!closed.utilityKind && !windows.some(window => window.id !== id && window.appId === appId && !window.utilityKind)) {
+        closedWindows[appId] = {
+          window: { ...$state.snapshot(closed), minimized: false, fullScreen: false },
+          view: captureRetainedView(managedWindowElement(id), { noteId: notesState.selectedId }),
+        };
+      }
+      pendingWindowViews.delete(id);
+    }
     const pair = presentation.splitViews.find(entry => entry.leftWindowId === id || entry.rightWindowId === id);
     const partnerId = pair && (pair.leftWindowId === id ? pair.rightWindowId : pair.leftWindowId);
     const partner = windows.find(window => window.id === partnerId && window.fullScreen
@@ -1966,7 +2000,10 @@
     if (initialized && nextArea.width === area.width && nextArea.height === area.height) return;
     area = nextArea;
     for (const window of windows) {
-      const normal = adapter.fitNormalBounds(window[expandedProperty] ? window.restoreBounds : window.bounds, windowApplication(window), area);
+      const previous = window[expandedProperty] ? window.restoreBounds : window.bounds;
+      const normal = savedScene && !initialized
+        ? fitRetainedBounds(previous, windowApplication(window), area, Math.min(.9, previous.scale))
+        : adapter.fitNormalBounds(previous, windowApplication(window), area);
       if (window[expandedProperty]) {
         window.restoreBounds = normal;
         window.bounds = expandedBounds(normal, area);
@@ -1976,9 +2013,46 @@
     }
     if (!initialized) {
       initialized = true; starting = true;
-      startup = Promise.resolve(handlers['app.open']({ appId: profile.defaults.startupAppId }, {}))
+      startup = (savedScene ? restoreSavedViews() : Promise.resolve(handlers['app.open']({ appId: profile.defaults.startupAppId }, {})))
         .finally(() => { starting = false; });
     }
+  }
+
+  async function restoreSavedViews() {
+    await tick();
+    for (const window of windows) restoreRetainedView(managedWindowElement(window.id), pendingWindowViews.get(window.id),
+      { noteId: notesState.selectedId });
+    return { status: 'applied', target: {} };
+  }
+
+  async function captureSavedScene(previousFocus) {
+    await settleCommands();
+    const focusElement = sceneRoot.contains(document.activeElement) ? document.activeElement : previousFocus;
+    const dock = desktopState.dock;
+    const { activationAppIds, activationWindowIds, creationWindowIds, hiddenAppIds } = switching;
+    const { desktops, order, activeSpaceId, lastDesktopId, nextDesktopId } = spaceState;
+    const { selectedFileIds, selectionAnchorId, positions, sortBy, viewOptions } = desktopState;
+    const { enabled, groupBy, sortBy: stackSort, expandedStackIds, topFileIds } = desktopState.stacks;
+    return $state.snapshot({
+      seed: { version: 1, notes: notesState, files: { files: macFiles.files.filter(file => !file.readOnly),
+        nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime }, messages: messagesState, appearance: appearanceState,
+        dock: { ...Object.fromEntries(['pinnedAppIds', 'recentHistory', 'usageSequence',
+          'preferences', 'folderFileIds', 'folderPreferences'].map(key => [key, dock[key]])),
+          mainOrderAppIds: dock.mainOrderAppIds.filter(id => dock.pinnedAppIds.includes(id)),
+          secondaryOrderItemIds: dock.secondaryOrderItemIds.filter(id => dock.folderFileIds.some(fileId => dockFolderItemId(fileId) === id)) } },
+      catalogTimes: Object.fromEntries(macFiles.files.filter(file => file.readOnly).map(file =>
+        [file.id, { createdAt: file.createdAt, modifiedAt: file.modifiedAt, addedAt: file.addedAt, lastOpenedAt: file.lastOpenedAt }])),
+      dockOrder: { mainOrderAppIds: dock.mainOrderAppIds, secondaryOrderItemIds: dock.secondaryOrderItemIds },
+      windows, closedWindows,
+      views: Object.fromEntries(windows.map(window => [window.id, captureRetainedView(managedWindowElement(window.id),
+        { noteId: notesState.selectedId, focusElement })])),
+      nextWindowId, activeWindowId, activeAppId, runningAppIds,
+      switching: { activationAppIds, activationWindowIds, creationWindowIds, hiddenAppIds },
+      spaces: { desktops, order, activeSpaceId, lastDesktopId, nextDesktopId }, splitViews: presentation.splitViews,
+      desktop: { selectedFileIds, selectionAnchorId, positions, sortBy, viewOptions,
+        stacks: { enabled, groupBy, sortBy: stackSort, expandedStackIds, topFileIds } },
+      notesScroll: notesViewState.scroll,
+    });
   }
 </script>
 

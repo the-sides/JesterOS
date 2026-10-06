@@ -10,7 +10,7 @@ The mounted desktop exposes `globalThis.jesteros` with:
 - `inspect()`: a detached snapshot of supported command names and current window/application state. Changing this snapshot does not change the scene.
 - `describe(command?)`: detached, JSON-serializable version-1 catalog for every command, or one requested command. Includes supported profile IDs, capability, request/success-result JSON Schemas, runtime requirements, data/presentation effects, completion semantics, and current target identities. Unknown names reject with unsupported_command; non-string arguments reject with invalid_arguments. Querying never activates a window or changes the scene.
 
-The default Golden Gate27.0.1 exposes170 commands; preserved Mojave178/Sonoma163/High Sierra170/Windows190 remain selectable. New feature work is latest macOS only. The stable public object follows native remounts; during transition dispatch/discovery reject unavailable and inspect reports profile:null/transitioning:true. Immutable profile identity/coverage and native adapters are not a theme selector. Rust transport/controller remain deferred.
+The default Golden Gate27.0.1 exposes173 commands; preserved Mojave178/Sonoma163/High Sierra170/Windows190 remain selectable. New feature work is latest macOS only. The stable public object follows native remounts; during transition dispatch/discovery reject unavailable and inspect reports profile:null/transitioning:true. Immutable profile identity/coverage and native adapters are not a theme selector. Rust transport/controller remain deferred.
 
 Requests contain `command`, optional `requestId`, `target`, and `payload`. Command targets/payloads are plain JSON objects; omitted target/payload become empty objects. Explicit null, arrays, unrecognized request fields, unknown commands, and invalid command arguments are rejected. A supplied requestId must be a nonempty string and is echoed in results.
 
@@ -18,7 +18,7 @@ Results are `{ status: 'applied', target: ... }` or `{ status: 'rejected', error
 
 ## Machine-readable catalog
 
-`frontend/src/command-catalog.js` composes the canonical shared/native/session/power/seed inventory. Registration requires exact descriptor/handler parity for the selected layer and seals handlers. Golden Gate's `SessionHost` owns session/power/seed operations and delegates the private App layer; legacy scenes omit those capabilities but know the names and reject unsupported_profile before writes. Unregistered features are never advertised. Keep behavior tables and working notes current.
+`frontend/src/command-catalog.js` composes the canonical shared/native/session/power/seed/saved-session inventory. Registration requires exact descriptor/handler parity for the selected layer and seals handlers. Golden Gate's `SessionHost` owns session/power/seed/saved-session operations and delegates the private App layer; legacy scenes omit those capabilities but know the names and reject unsupported_profile before writes. Unregistered features are never advertised. Keep behavior tables and working notes current.
 
 `jesteros.describe()` returns `{ version:1, profile, profiles, commands, targets }`. Active profile metadata and snapshots identify the actual native scene. Profiles list supported IDs; targets.profiles lists installed profile IDs/names/family/version. Each commands entry has:
 
@@ -56,12 +56,12 @@ This is selection, not migration of incompatible open documents. Default is Gold
 
 ### Scene reset and complete seed replacement
 
-Golden Gate only, capability `scene.seed`; browser-local setup with no actor-desktop control, persistence, host service or profile migration.
+Golden Gate only, capability `scene.seed`; browser-local setup with no actor-desktop control, host service or profile migration. Seed replacement does not persist data; reset additionally clears the separate browser-local saved-session slot.
 
 | Command | Target | Payload | Behavior |
 | --- | --- | --- | --- |
-| `scene.reset` | `{}` | `{}` | Disposes all fictional users and restores the original default V1 fixture. |
-| `scene.replaceSeed` | `{}` | `{ seed }` | Validates a complete V1 replacement before any disposal; no partial merge. |
+| `scene.reset` | `{}` | `{}` | Clears only the Golden Gate saved-session storage slot before disposal, then restores the original default V1 fixture. Storage failure rejects unavailable without changing the live scene. |
+| `scene.replaceSeed` | `{}` | `{ seed }` | Validates a complete V1 replacement before any disposal; no partial merge or automatic save. Leaves the existing saved-session slot unchanged. |
 
 Both return `{ profileId:'macos-golden-gate-27.0.1', version:1, source:'default'\|'replacement' }`, with requestId when supplied. Available through lock/login/Guest confirmation and all power phases; completion waits for fresh active-root registration/DOM and ready default Messages. Old editors, private drafts, menus, user roots and timers are discarded. Queued outgoing commands reject unavailable; the three-method public object retains its identity. Invalid seeds reject invalid_arguments atomically; historical profiles reject unsupported_profile and do not advertise either name.
 
@@ -76,6 +76,27 @@ Complete V1 top-level shape is `{ version:1, notes, files, messages, appearance,
 - `dock`: persistent pins/order/recent usage, preferences, folder aliases and folder preferences only. Finder is first/pinned; order/history/sequence must agree and aliases must target live eligible folders. Transient focus/hover/drag/context/window tiles are not seed data.
 
 Bounds: 1,024 notes/user files/conversations/thread items;128 pinned conversations;64 tags per file;1Mi UTF-16 units per content string;4Mi aggregate string/key units; safe ASCII IDs up to128 characters excluding prototype keys. Only plain serializable closed data: no getters, symbols, sparse arrays, exotic prototypes or cycles. Counters leave room for one safe increment; numeric timestamps leave room for one increment within the Date range. Dock size16–128 and magnification32–192. See the actual schema for each required field, allowed association/icon and remaining per-field bound.
+
+### App retention and explicit browser-local saved sessions
+
+Golden Gate only, capability `scene.saved-session`; setup through the existing browser API, not an actor/operator panel. Root-owned app data survives ordinary close/quit. The last ordinary closed window retains its title, normal/zoom restore geometry, Finder location/selection, Settings pane and owned native view state. Reopen gets a fresh monotonic ID on the current ordinary desktop, nonminimized and outside a retired full-screen presentation. Utility closure does not overwrite ordinary memory. `window.create` ignores remembered windows. Other profiles retain their historical policy; launch-only interiors remain launch-only.
+
+| Command | Target | Payload | Behavior |
+| --- | --- | --- | --- |
+| `scene.session.save` | `{}` | `{}` | Captures every retained local root, validates the complete snapshot and synchronously replaces the one origin-local slot. No automatic save. Pending Split View choice/quit rejects unavailable before capture. |
+| `scene.session.restore` | `{}` | `{}` | Reads/validates the entire stored snapshot before disposal, then restores its baseline, local models, windows and owned view state. Completes after every saved root is ready, awake at signed-out login. Never restores authentication. |
+| `scene.session.clear` | `{}` | `{}` | Removes only the saved-session slot. Current model, DOM, selection, private credential drafts and presentation remain unchanged. |
+
+Applied target is `{ profileId:'macos-golden-gate-27.0.1', version:1, saved:true }` for save/restore or `saved:false` for clear, plus requestId when supplied. All session/power phases permit setup. Missing restore rejects not_found; malformed JSON, wrong version/profile, invalid scene invariants or oversized snapshots reject invalid_arguments; quota/denied/read/remove errors reject unavailable. Validation/storage failures preserve original roots and state. Programming capture/readiness/remount errors propagate rather than becoming a fake successful fallback.
+
+Storage key: `jesteros:macos-golden-gate-27.0.1:saved-session:v1`. Reload and profile return still start defaults; existing storage remains but is never automatically applied. `scene.reset` clears this slot before replacing the scene; `scene.replaceSeed` and leaving the profile do not clear it. Other origin keys are untouched. This is browser-origin-local persistence, never Rust/controller/server state, host authentication or secure credential storage.
+
+Closed envelope: `{ version:1, profileId, baseline:{source,seed}, locals:[{userId,scene}] }`. `savedSessionSchema` in `frontend/src/saved-session.js` specifies the exact storage format; command request schemas accept no snapshot payload. Baseline is the initial complete seed. Each saved local scene contains its current complete seed, exact generated-catalog timestamps, runtime Dock order, live windows, last ordinary closed-window/view records, allocation/activation/creation histories, running/hidden apps, ordinary/derived Spaces and Split View ratios, persistent desktop selection/placements/options/Stacks and semantic view/Notes scroll tokens. Runtime Dock order includes eligible running aliases/minimized tiles; current seed order contains only persistent pins/folder aliases.
+
+Only retained `local-alex` and optional `local-casey` are stored. Guest, password drafts, signed-in/locked state, power/progress, popup/drag/hover state and canonical focus pointers are excluded. Static semantic Notes title/body/search selection and owned scroll keys are permitted; matching-note offsets clamp to current text/scroll extent, readonly readers remain readonly and inert controls do not receive focus. Generated app identity/name/location is regenerated unchanged; created/modified/added/last-opened timestamps are restored independently.
+
+Limits: at most2Mi UTF-16 serialized units, two local roots,1,024 windows/views/history/placements,66 closed-app records and16 ordinary desktops, plus complete-seed field bounds. Only closed plain serializable data; no getters, symbols, sparse/exotic arrays/prototypes or cycles. Validate registered ownership, IDs/counters, exact live view/catalog/Dock sets, active/running relationships, file associations, HOME/full-screen/Space/Split View consistency and static semantic ownership before store/remount. Browser quota may reject below the format limit; no partial or silent fallback.
+
 
 
 ### Apps and windows
@@ -95,6 +116,9 @@ Bounds: 1,024 notes/user files/conversations/thread items;128 pinned conversatio
 Resize coordinates use the same physical workspace origin as `window.move`, not global screen or logical app-surface coordinates. A corner supplies both axes; a side supplies exactly one. Normal logical dimensions survive minimize, zoom/maximize restoration and viewport refitting. Native scale can decrease in a smaller workspace and recover on enlargement; positions may clamp. Minimum sizes are conservative implemented-layout limits, not researched factory minimums. Repeated same-area layout refresh preserves exact resized bounds.
 
 All installed profiles support `shell.window-create` and `app.lifecycle`. macOS browser-delivered Command/Ctrl+N creates an allowed active-app window outside editable controls; Command/Ctrl+Q quits the active app. Notes keeps its own new-note shortcut. Windows native New Window/Exit controls use the same contracts; Explorer/Edge use Ctrl+N and Notepad uses Ctrl+Shift+N, leaving Ctrl+N as new tab. These do not override shortcuts intercepted by the host.
+
+In Golden Gate, `app.open` with no live window also restores the last ordinary view described above; close/quit do not erase models or this memory. An explicit title overrides the remembered title. Reopen preserves zoom/normal restore geometry but allocates a new ID on the current ordinary desktop; `window.create` remains fresh and utility closure cannot replace the ordinary record.
+
 
 ### Page-contained full screen, Split View and modern Mac green menus
 
@@ -569,6 +593,9 @@ Application families are `win11.explorer.*`, `win11.notepad.*`, `win11.terminal.
 31. **OS-20 page-local power proof.** Strict168 Golden schemas compile;12 applied source and12 applied Rust-served request/results each cover all9 names. Native Apple-menu Sleep/Restart, F5/F6/F4, consumed wake, Escape/default Return and actual five-second unauthenticated startup passed. Original local Notes nodes/text/caret/scroll/windows/appearance survive; private credential DOM/draft/selection survives Cancel. Active/inactive Guest warning, cancel/discard/fresh entry and Guest-only post-boot logout passed.320×240 root/actions remain bounded, body scrolls internally and six Tabs alternate real controls. Invalid/stale/hidden/disabled/app/session barriers and36 historical unsupported requests are atomic; detached query mutations do not affect live state. Actual saver/boot timer IDs clear on remount; strict178/163/170/190 catalogs remain unchanged. Final Rust editor retains exact text/Notes/windows, selection19–37/scroll240/focus.148 tests/2270 assertions and build pass, no page/component errors beyond existing chunk advisory. Original SVG/CSS/simplified drift/fixed reopen/five-second timing are explicit limits, not native pixel/firmware claims.
 
 32. **OS-21 complete seed proof.** Strict170 Golden schemas compile;13 applied source requests and final Rust-served replacement/reset cover both names. Real complete custom/empty Notes/files/Messages/appearance/Dock, isolated users, safe literal HTML-like text, allocator continuation, default/phase reset, queued outgoing rejection and original DOM/timer disposal pass. Fourteen invalid cases preserve complete state/original editors; getter is never invoked. Eight historical requests reject atomically with unchanged inventories. Reproduced and fixed unrepresentable Date timestamps and maximum nested-graph eager metadata/ancestor scans. Actual1,024-file replacement completes in49ms; Get Info and ancestor trash recompute native details/descendant discovery. Final Rust off-state replacement, atomic date rejection and default reset retain the public object and return ready Messages. Source/production page errors empty;320×240/default/empty native surfaces observed.158 tests/2371 assertions and frontend/Rust builds pass; existing chunk advisory only. No pixel-equivalence claim.
+
+33. **OS-22 app/saved-session proof.** Three setup names bring Golden Gate to173 strict schemas; the saved-envelope schema also compiles.39 applied source/21 Rust records validate, including9/4 saved operations covering all three names. Real66-app close/reopen preserves title/geometry with fresh IDs;66-window restore preserves geometry/runtime Dock order. Native Notes caret13–29 backward/scroll180 and readonly caret5–19 backward/scroll120 retain; oversized offsets clamp, changed-note tokens do not overwrite selection and inert login focus stays intact. Independent local snapshots exclude Guest/private drafts. Six corrupt real snapshots, malformed JSON, injected read/write/remove/reset failures and pending Split View are atomic; sleep save and outgoing queued-remount rejection pass. Reload never auto-loads. Final rebuilt Rust snapshot restores unsigned login, two desktops, ratio0.37, minimized Messages tile, Downloads, Appearance and actual edited Notes/view/focus; clear preserves original DOM/state and reset removes only the slot/disposes roots. Twelve historical requests remain unsupported/atomic.183 tests/2724 assertions, production build and final empty page-error queries pass; existing chunk advisory remains. No host persistence or factory-pixel equivalence.
+
 
 
 

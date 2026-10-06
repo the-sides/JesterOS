@@ -160,7 +160,14 @@ An opaque scene-owned original desktop or credential-surface focus/selection/scr
 A complete, validated version-1 Notes/files/Messages/appearance/persistent-Dock fixture owned by the Golden Gate host. Each fictional user clones it independently. Detached inspection/discovery exposes this initial baseline, not current edits or a saved session; generated read-only app bundles and immutable profile identity remain separate.
 
 **Complete scene replacement**:
-Browser-local setup through `scene.reset` or `scene.replaceSeed`, without actor controls. Validate before disposal; replace all local/Guest roots, queues, menus, drafts and timers, then acknowledge only after a fresh awake desktop and Messages registration/DOM are ready. Outgoing queued work rejects unavailable. Reset restores the default fixture; replacement does not merge, persist or invoke host services.
+Browser-local setup through `scene.reset` or `scene.replaceSeed`, without actor controls. Validate before disposal; replace all local/Guest roots, queues, menus, drafts and timers, then acknowledge only after a fresh awake desktop and Messages registration/DOM are ready. Outgoing queued work rejects unavailable. Reset clears only the Golden Gate saved-session slot before restoring the default fixture; a storage failure preserves the live scene. Replacement does not merge, save, clear the existing slot or invoke host services.
+
+**Retained ordinary app view**:
+The last ordinary closed window's title, normal/zoom restore geometry, bounded Finder location/selection or Settings pane and owned native scroll/selection/focus token. App data remains root-owned. Reopen allocates a new ID on the current ordinary desktop; utility closure does not replace this memory, and fresh window creation does not reuse it. Semantic selection applies only to the matching note and clamps to current content; focus applies only to an available owned control.
+
+**Explicit saved local session**:
+A closed, validated version-1 browser-origin-local snapshot of the initial seed baseline and all retained local users' current models, open/remembered windows, Dock order, generated-file timestamps, Spaces/Split View and static semantic view tokens. Guest, credentials, signed-in state, power and transient presentation are excluded. Save/load are never automatic; explicit restore disposes originals and returns an awake signed-out login after every saved root is ready. Clear changes storage only; scene reset clears the slot and restores defaults. This is not Rust/controller persistence or authentication.
+
 
 
 

@@ -220,6 +220,10 @@ export function createSceneSeedCommands(ctx) {
     const seed = source === 'default' ? createDefaultSceneSeed(ctx.profile) : payload.seed;
     const result = validateSceneSeed(seed, ctx.profile);
     if (!result.ok) return rejected('invalid_arguments', result.message);
+    if (source === 'default' && ctx.beforeReset) {
+      const cleared = ctx.beforeReset();
+      if (cleared.status === 'rejected') return cleared;
+    }
     const detached = structuredClone(seed);
     await ctx.replaceScene(detached, source);
     return { status: 'applied', target: { profileId: ctx.profile.id, version: 1, source } };

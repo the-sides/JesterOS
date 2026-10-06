@@ -11,7 +11,7 @@ New feature work targets only the latest stable macOS. Golden Gate is independen
 - macOS Notes supports plain-text creation/editing, search, pinning, trash, and recovery; Finder shows bounded simulated Desktop/location contents and managed Get Info/Desktop view-option utilities. System Preferences/Settings has working bounded Dock/Appearance panes. Historical Mac profiles retain Launchpad; High Sierra/Mojave retain classic Dashboard and five local widgets. Golden Gate has neither retired shell presentation. Messages remains a fixed sample and other macOS interiors remain launch-only. Windows retains ten functional offline simulations. Wider researched inventories do not imply implemented workflows.
 - macOS Messages retains its sample conversation; its conversation selection, search, message editing/history, menu-bar clock and battery are fixed scene content.
 - All visual assets are local. No env files, API keys, database, authentication provider, or internet connection is required to run an installed build.
-- Browser-local `jesteros.execute()` supports **170 commands in Golden Gate**, 178 in Mojave, 163 in Sonoma, 170 in High Sierra, and 190 in Windows. `jesteros.inspect()` exposes detached state; `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Rust control and further app/menu features remain deferred.
+- Browser-local `jesteros.execute()` supports **173 commands in Golden Gate**, 178 in Mojave, 163 in Sonoma, 170 in High Sierra, and 190 in Windows. `jesteros.inspect()` exposes detached state; `jesteros.describe()` publishes typed contracts, capabilities, effects/completion semantics and live target IDs. See the [implemented command inventory](docs/feature-commands.md). Rust control and further app/menu features remain deferred.
 
 ## OS profile setup
 
@@ -48,7 +48,7 @@ Conditional [Linux research](docs/ubuntu-24.04-profile.md) selects **Ubuntu Desk
 
 ## Golden Gate scene fixtures
 
-`scene.reset` restores the default fixture; `scene.replaceSeed` installs a complete version-1 Notes/files/Messages/appearance/Dock fixture. Both dispose every fictional user root, discard edits and return an awake default local desktop with Messages ready, including from lock, Guest, confirmation, sleep or startup. These are browser API setup operations, not actor-desktop controls.
+`scene.reset` removes the Golden Gate browser-local saved-session slot and restores the default fixture; `scene.replaceSeed` installs a complete version-1 Notes/files/Messages/appearance/Dock fixture without changing that slot. Both dispose every fictional user root, discard edits and return an awake default local desktop with Messages ready, including from lock, Guest, confirmation, sleep or startup. These are browser API setup operations, not actor-desktop controls. A storage failure rejects reset before disposal.
 
 ```js
 const seed = jesteros.describe().targets.sceneSeed.seed;
@@ -57,7 +57,20 @@ await jesteros.execute({ command: 'scene.replaceSeed', payload: { seed } });
 await jesteros.execute({ command: 'scene.reset' });
 ```
 
-The detached seed is the initial baseline, **not an export of live edits or a saved session**. Each fictional user receives an independent clone. Replacement never merges or overrides profile identity/generated app bundles; invalid complete seeds reject before disposal. Same-profile selection preserves the replacement; reload or leaving/returning restores defaults. See [schema, limits and boundaries](docs/feature-commands.md#scene-reset-and-complete-seed-replacement). No storage, external media, host services or operator panel.
+The detached seed is the initial baseline, **not an export of live edits or a saved session**. Each fictional user receives an independent clone. Replacement never merges or overrides profile identity/generated app bundles; invalid complete seeds reject before disposal. Same-profile selection preserves the replacement; reload or leaving/returning restores defaults. See [schema, limits and boundaries](docs/feature-commands.md#scene-reset-and-complete-seed-replacement). Seed replacement does not save data or invoke external media, host services or an operator panel.
+
+## Golden Gate app retention and optional saved sessions
+
+Closing the last ordinary app window or quitting retains its model, title, normal/zoom restore geometry, Finder location/selection, Settings pane and owned native view state. Reopening allocates a fresh window ID on the current ordinary desktop; it does not revive a closed full-screen/minimized presentation. `window.create` remains fresh. Notes preserves matching-note caret/selection and actual scroll, including readonly Recently Deleted readers.
+
+```js
+await jesteros.execute({ command: 'scene.session.save' });
+await jesteros.execute({ command: 'scene.session.restore' }); // Awake, signed-out login.
+await jesteros.execute({ command: 'scene.session.clear' });   // Storage only; live scene unchanged.
+```
+
+Saving is explicit and browser-origin-local, never automatic. Reload still starts the default scene; restore requires fictional sign-in and never restores authentication. The bounded, validated version-1 slot retains local users' current models, windows, Spaces/Split View, Dock order, generated-file timestamps and semantic view state. Guest, passwords, authentication, power phases and transient menus/gestures are excluded. Clear removes only this slot; `scene.reset` also clears it. Quota/denied-storage failures reject honestly. No Rust/controller persistence or actor/operator panel. See [storage format, limits and failure behavior](docs/feature-commands.md#app-retention-and-explicit-browser-local-saved-sessions).
+
 
 
 
@@ -327,6 +340,9 @@ OS-19 proof: Golden Gate is the source-verified latest stable/default profile, w
 OS-20 proof: all **168** Golden Gate request/result schemas compile; **12 applied source and 12 applied Rust-served requests** each cover all nine power names and validate strictly. Native Apple-menu Sleep/Restart, F5/F6/F4, consumed wake, Escape/default Return, real five-second startup, wrong-phase/invalid/stale/hidden/disabled/control/app/session atomic barriers and detached discovery passed. Original Alex/Casey editors/data/caret/scroll/windows/appearance survive accepted cycles; cancellation preserves a real private credential node/draft/selection. Active/inactive Guest warnings, cancellation/deletion/fresh entry and Guest-only logout after startup passed. At320×240 both dialog actions remain inside the root, body scrolls internally and six Tabs alternate real controls. Actual saver/boot timer IDs clear on remount; historical178/163/170/190 catalogs compile and all36 power requests reject atomically. Final Rust-served original editor retains text/selection19–37/scroll240/exact Notes/windows and restored focus. **148 tests/2270 assertions** and production build pass; no component warnings or page errors, only existing large-bundle advisory. Native presentation is visually inspected, without a factory-pixel or screenshot-diff claim.
 
 OS-21 proof: all **170** Golden Gate request/result schemas compile strictly; thirteen applied source requests and the final Rust-served replacement/reset cover both setup names. Complete custom and empty fixtures drive real Notes/Messages/files/Dock/appearance; users remain isolated, text resembling HTML stays literal, invalid inputs preserve original editor nodes/state, and queued outgoing commands reject unavailable. Reset from every session/power presentation disposes all original roots/timers and returns ready default Messages behind the same public object. Eight historical requests reject atomically. Fixed a reproduced out-of-Date-range crash and eager invisible metadata/ancestor scans: the actual maximum 1,024-file nested replacement completes in49ms; Get Info and subsequent ancestor trash update real metadata/descendant discovery. Final Rust startup-off replacement, invalid-date rejection and reset pass with no page errors. **158 tests/2371 assertions** and frontend/Rust builds pass; only the existing bundle-size advisory remains. Artwork remains source-informed, not factory pixels.
+
+OS-22 proof: all **173** Golden Gate request/result schemas and the saved-envelope schema compile strictly; **39 applied source and 21 applied Rust-served records** validate, including all three saved-session names. All66 registered apps retain last ordinary title/geometry with fresh IDs; actual66-window save/restore preserves geometry and Dock order. Native Notes retains caret13–29 backward/scroll180, readonly reader caret5–19 backward/scroll120, clamps oversized offsets and does not steal inert login focus. Independent Alex/Casey snapshots exclude Guest/private credential drafts; corrupt snapshots, injected storage failures and pending Split View reject atomically. Reload never auto-restores. Final Rust restore returns unsigned login and preserves two desktops, Split View ratio0.37, minimized Messages tile, Finder Downloads, Appearance pane and native edited Notes. Clear leaves current DOM/state intact; reset removes the slot and disposes originals. Twelve historical requests remain unsupported/atomic. **183 tests/2,724 assertions**, production build and final empty page-error queries pass. No factory-pixel equivalence.
+
 
 
 

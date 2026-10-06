@@ -37,7 +37,7 @@ const publicCommands = Object.freeze({
   },
 });
 
-async function mountScene(profile, seedState) {
+async function mountScene(profile, seedState, savedSession) {
   const adapter = getProfileAdapter(profile.renderer);
   const currentSeed = profile.capabilities.includes('scene.seed')
     ? seedState ?? { source: 'default', seed: createDefaultSceneSeed(profile) } : null;
@@ -49,8 +49,9 @@ async function mountScene(profile, seedState) {
   adapter.prepareDocument();
   scene = mount(profile.capabilities.includes('session.fictional') ? SessionHost : App,
     { target, props: { profile, adapter, registerCommands, selectProfile,
-      ...(currentSeed ? { seed: currentSeed.seed, seedSource: currentSeed.source,
-        resetScene: (seed, source) => mountScene(profile, { seed, source }) } : {}) } });
+      ...(currentSeed ? { seed: currentSeed.seed, seedSource: currentSeed.source, savedSession,
+        resetScene: (seed, source) => mountScene(profile, { seed, source }),
+        restoreScene: value => mountScene(profile, value.baseline, value) } : {}) } });
   await tick();
   if (currentSeed && await activeCommands.ready() !== true) throw new Error('The fresh fictional scene did not finish startup.');
 }
