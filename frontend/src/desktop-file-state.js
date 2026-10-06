@@ -17,6 +17,28 @@ export function createMacDesktopFileStore(profile, sceneTime = 0) {
   return { files, nextFileId: 1, sceneTime };
 }
 
+// Bulk discovery resolves each ancestor once. A fresh pass follows moves/deletion;
+// no retained index can become stale when the mutable scene file array changes.
+export function liveMacFileRecords(store) {
+  const byId = new Map(store.files.map(file => [file.id, file]));
+  const removed = new Map();
+  function trashed(file) {
+    if (removed.has(file.id)) return removed.get(file.id);
+    const path = [], seen = new Set();
+    let current = file, value = false;
+    while (current) {
+      if (removed.has(current.id)) { value = removed.get(current.id); break; }
+      if (current.deleted) { removed.set(current.id, true); value = true; break; }
+      if (seen.has(current.id)) break;
+      seen.add(current.id); path.push(current.id);
+      current = byId.get(current.parentId);
+    }
+    for (const id of path) removed.set(id, value);
+    return value;
+  }
+  return store.files.filter(file => !trashed(file));
+}
+
 export function nextMacFileTimestamp(store) {
   return ++store.sceneTime;
 }

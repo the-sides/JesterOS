@@ -14,7 +14,7 @@ export const goldenGateProfile = {
     'shell.full-screen', 'shell.split-view', 'shell.window-green-menu', 'shell.mission-control',
     'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management',
     'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.appearance',
-    'scene.profile-selection', 'session.fictional', 'session.power', 'notes.plain-text', 'notes.presentation', 'messages.sample',
+    'scene.profile-selection', 'scene.seed', 'session.fictional', 'session.power', 'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {
     finder: { ...launchOnly('finder', 'Finder', 'main'), coverage: 'desktop-locations' },

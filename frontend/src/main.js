@@ -5,6 +5,7 @@ import UnsupportedProfile from './UnsupportedProfile.svelte';
 import { DEFAULT_PROFILE_ID, getOSProfile, listOSProfiles } from './os-profiles.js';
 import { getProfileAdapter } from './profile-adapters.js';
 import { rejected } from './feature-commands.js';
+import { createDefaultSceneSeed } from './scene-seed.js';
 import './fonts.css';
 import './styles.css';
 
@@ -36,8 +37,10 @@ const publicCommands = Object.freeze({
   },
 });
 
-async function mountScene(profile) {
+async function mountScene(profile, seedState) {
   const adapter = getProfileAdapter(profile.renderer);
+  const currentSeed = profile.capabilities.includes('scene.seed')
+    ? seedState ?? { source: 'default', seed: createDefaultSceneSeed(profile) } : null;
   activeCommands = null;
   if (scene) await unmount(scene);
   document.documentElement.dataset.osProfile = profile.id;
@@ -45,8 +48,11 @@ async function mountScene(profile) {
   document.documentElement.dataset.osRenderer = profile.renderer;
   adapter.prepareDocument();
   scene = mount(profile.capabilities.includes('session.fictional') ? SessionHost : App,
-    { target, props: { profile, adapter, registerCommands, selectProfile } });
+    { target, props: { profile, adapter, registerCommands, selectProfile,
+      ...(currentSeed ? { seed: currentSeed.seed, seedSource: currentSeed.source,
+        resetScene: (seed, source) => mountScene(profile, { seed, source }) } : {}) } });
   await tick();
+  if (currentSeed && await activeCommands.ready() !== true) throw new Error('The fresh fictional scene did not finish startup.');
 }
 
 async function selectProfile(profile) {

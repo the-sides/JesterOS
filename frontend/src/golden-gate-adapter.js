@@ -2,7 +2,8 @@ import Desktop from './GoldenGateDesktop.svelte';
 import Window from './GoldenGateWindow.svelte';
 import MessagesWindow from './GoldenGateMessagesWindow.svelte';
 import NotesWindow from './GoldenGateNotesWindow.svelte';
-import { createNotesState } from './notes-state.js';
+import { createDefaultSceneSeed } from './scene-seed.js';
+import { goldenGateProfile } from './golden-gate-profile.js';
 import { fitNormalBounds as fitBounds } from './window-state.js';
 
 // Simulation fit policy, not measured factory macOS window geometry.
@@ -23,9 +24,8 @@ function initialBounds(app, area, windowCount = 0, viewportHeight = area.height 
 function prepareDocument() {
   document.documentElement.classList.toggle('native-apple-font', /Mac|iPhone|iPad|iPod/.test(navigator.platform));
 }
-function createSceneData() {
-  // Latest fixture update matches the profile's fictional09:41 UTC clock.
-  return { notes: createNotesState(Date.UTC(2026, 8, 28, 8, 59)) };
+function createSceneData(seed, profile = goldenGateProfile) {
+  return seed ? structuredClone(seed) : createDefaultSceneSeed(profile);
 }
 export const goldenGateAdapter = Object.freeze({
   Desktop, Window, MessagesWindow, NotesWindow, expandedProperty: 'zoomed', closeKeepsRunning: true,

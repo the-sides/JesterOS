@@ -27,7 +27,7 @@
   import { createDesktopStacksCommands } from './desktop-stacks-commands.js';
   import { desktopStacks as buildDesktopStacks, desktopStackLayout, desktopStacksDefaults, reconcileDesktopStacks } from './desktop-stacks-model.js';
   import { desktopViewDefaults, desktopContextItems, sortDesktopItems, readDesktopFileInfo, desktopFileSize } from './desktop-context-model.js';
-  import { createMacDesktopFileStore, macDesktopItems, validMacDesktopName, nextMacFileTimestamp } from './desktop-file-state.js';
+  import { createMacDesktopFileStore, macDesktopItems, validMacDesktopName, nextMacFileTimestamp, liveMacFileRecords } from './desktop-file-state.js';
   import { createMacDockCommands } from './mac-dock-commands.js';
   import { macDockDefaults, macDockApps, macDockContextItems, macDockWindowCards, macDockItems, macDockTiles, recordMacAppUse } from './mac-dock-model.js';
   import { createMacApplicationFiles, applicationBundleId } from './mac-application-files.js';
@@ -48,7 +48,7 @@
   import { clampPosition, expandedBounds, resizeBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
 
-  let { profile: profileInput, adapter: adapterInput, registerCommands, selectProfile,
+  let { profile: profileInput, adapter: adapterInput, seed: seedInput, registerCommands, selectProfile,
     registerSessionScene, registerSessionView, session, executeSession,
     foreground = true, appearanceOwner = true, windowNamespace = '' } = $props();
   let sceneRoot;
@@ -56,6 +56,7 @@
   // instance instead of relabeling incompatible application/view state.
   const profile = untrack(() => profileInput);
   const adapter = untrack(() => adapterInput);
+  const seed = untrack(() => seedInput);
   const { Desktop, Window, MessagesWindow, NotesWindow, Applications } = adapter;
   const { applications } = profile;
   const macDesktop = profile.family === 'macos';
@@ -247,22 +248,24 @@
     return () => { cancelled = true; };
   });
   // Application data outlives its window; close/minimize must not erase edits.
-  const initialData = adapter.createSceneData();
+  const initialData = profile.renderer === 'golden-gate' ? adapter.createSceneData(seed, profile) : adapter.createSceneData();
   let notesState = $state(initialData.notes);
   let nativeState = $state(initialData.native);
-  let appearanceState = $state(macDesktop ? appearanceDefaults(profile) : undefined);
+  let messagesState = $state(initialData.messages);
+  let appearanceState = $state(macDesktop ? initialData.appearance ?? appearanceDefaults(profile) : undefined);
   $effect(() => {
     if (appearanceOwner) return applyAppearance(document.documentElement, profile, macDesktop ? appearanceState
       : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
   });
   let macFiles = $state(macDesktop ? createMacSceneFiles() : undefined);
+  const liveGoldenFiles = $derived(profile.renderer === 'golden-gate' ? liveMacFileRecords(macFiles) : null);
   const desktopFileStore = macDesktop ? macFiles : nativeState.apps;
   const desktopFilePolicy = macDesktop ? { validateName: validMacDesktopName } : {};
   const desktopFileCommands = createFileCommands(desktopFileStore, desktopFilePolicy);
   let desktopState = $state({ selectedFileIds: [], selectionAnchorId: null, rename: null, marquee: null, positions: {},
     context: null, sortBy: 'none', viewOptions: desktopViewDefaults(profile.family, profile.renderer),
     focusedControl: null, ...(hasDesktopStacks ? { stacks: desktopStacksDefaults() } : {}),
-    ...(hasDockContext ? { dock: macDockDefaults(profile) } : {}),
+    ...(hasDockContext ? { dock: { ...macDockDefaults(profile), ...initialData.dock } } : {}),
     ...(hasWindowMenu ? { windowMenuOpen: false, windowMenuItem: null, windowMenuScrollTop: 0 } : {}) });
   const desktopItems = $derived(getDesktopItems());
   const desktopDetails = $derived(getDesktopDetails());
@@ -584,7 +587,7 @@
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
       windowMenuAvailable: () => !spaceState.overview && !launchpadState.view && !dashboardOpen && (fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed),
-      getFiles: () => macDesktop ? macFiles.files.filter(file => !isTrashed(macFiles, file))
+      getFiles: () => macDesktop ? (liveGoldenFiles ?? macFiles.files.filter(file => !isTrashed(macFiles, file)))
         .map(file => ({ ...file, appId: file.appId ?? (file.kind === 'folder' ? 'finder' : 'preview') })) : getDesktopItems(),
       getItems: getDesktopItems,
       openedFile: (windowId, file) => {
@@ -619,7 +622,7 @@
     if (!Object.hasOwn(commandCatalog, name)) throw new Error(`Missing native command descriptor: ${name}`);
   }
   const sceneCatalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) =>
-    descriptor.profiles.includes(profile.id) && !descriptor.capability.startsWith('session.')));
+    descriptor.profiles.includes(profile.id) && !descriptor.capability.startsWith('session.') && descriptor.capability !== 'scene.seed'));
   // Composite callbacks capture this binding, so they use the same sealed,
   // capability-guarded registry after native profile selection.
   handlers = Object.fromEntries(Object.entries(handlers).filter(([name]) => Object.hasOwn(sceneCatalog, name)));
@@ -630,6 +633,7 @@
       ...(hasDashboard ? { dashboard: dashboardState } : {}),
       ...(hasAppearance ? { appearance: appearanceState } : {}),
       ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
+      ...(messagesState ? { messages: messagesState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(nativeState ? { native: nativeState } : {}),
     }),
@@ -667,8 +671,9 @@
             ({ stackId: id, name, fileIds: [...fileIds], topFileId, topIndex, expanded, browsing })),
           itemBounds: desktopView?.stackRects() ?? [],
         } } : {}),
-        locations: macFiles.files.filter(file => file.kind === 'folder' && !isTrashed(macFiles, file)).map(({ id, name, parentId, readOnly }) => ({ folderId: id, name, parentId, dropAllowed: id !== 'trash' && !readOnly })),
-        files: macFiles.files.filter(file => !isTrashed(macFiles, file)).map(({ id, name, parentId, kind, createdAt, modifiedAt, addedAt, lastOpenedAt, tags }) =>
+        locations: (liveGoldenFiles ? liveGoldenFiles.filter(file => file.kind === 'folder')
+          : macFiles.files.filter(file => file.kind === 'folder' && !isTrashed(macFiles, file))).map(({ id, name, parentId, readOnly }) => ({ folderId: id, name, parentId, dropAllowed: id !== 'trash' && !readOnly })),
+        files: (liveGoldenFiles ?? macFiles.files.filter(file => !isTrashed(macFiles, file))).map(({ id, name, parentId, kind, createdAt, modifiedAt, addedAt, lastOpenedAt, tags }) =>
           ({ fileId: id, name, parentId, kind, createdAt: createdAt ?? null, modifiedAt: modifiedAt ?? null,
             addedAt: addedAt ?? null, lastOpenedAt: lastOpenedAt ?? null, tags: [...(tags ?? [])] })),
         itemBounds: desktopView?.itemRects() ?? [],
@@ -861,8 +866,9 @@
     return document.activeElement === element;
   }
   function createMacSceneFiles() {
-    const store = createMacDesktopFileStore(profile, initialData.notes.timeBase + 42 * 60_000);
-    store.files.push(...createMacApplicationFiles(profile, initialData.notes.timeBase + 42 * 60_000));
+    const sceneTime = initialData.files?.sceneTime ?? initialData.notes.timeBase + 42 * 60_000;
+    const store = initialData.files ?? createMacDesktopFileStore(profile, sceneTime);
+    store.files.push(...createMacApplicationFiles(profile, sceneTime));
     return store;
   }
   function getDockMenuItems() {
@@ -974,7 +980,9 @@
   }
   function getDesktopDetails() {
     const items = nativeDesktopItems();
-    const ids = new Set([...desktopFileStore.files.map(file => file.id), ...items.map(item => item.id)]);
+    const ids = new Set(profile.renderer === 'golden-gate'
+      ? [...items.map(item => item.id), ...windows.filter(window => window.utilityKind === 'desktop-info').map(window => window.fileId)]
+      : [...desktopFileStore.files.map(file => file.id), ...items.map(item => item.id)]);
     return Object.fromEntries([...ids].map(fileId => [fileId, readDesktopFileInfo(desktopFileStore, fileId, items)]));
   }
 
@@ -2002,6 +2010,7 @@
           <Applications appId={window.appId} windowId={window.id} {profile} native={adapter.nativeForWindow(nativeState, window.id)} execute={commands.execute} registerView={registerApplicationView} />
         {:else if window.appId === 'messages'}
           <MessagesWindow
+            {...(messagesState ? { scene: messagesState } : {})}
             assets={profile.assets}
             active={active && interactive}
             zoomed={window.zoomed}

@@ -10,7 +10,7 @@ The mounted desktop exposes `globalThis.jesteros` with:
 - `inspect()`: a detached snapshot of supported command names and current window/application state. Changing this snapshot does not change the scene.
 - `describe(command?)`: detached, JSON-serializable version-1 catalog for every command, or one requested command. Includes supported profile IDs, capability, request/success-result JSON Schemas, runtime requirements, data/presentation effects, completion semantics, and current target identities. Unknown names reject with unsupported_command; non-string arguments reject with invalid_arguments. Querying never activates a window or changes the scene.
 
-The default Golden Gate27.0.1 exposes168 commands; preserved Mojave178/Sonoma163/High Sierra170/Windows190 remain selectable. New feature work is latest macOS only. The stable public object follows native remounts; during transition dispatch/discovery reject unavailable and inspect reports profile:null/transitioning:true. Immutable profile identity/coverage and native adapters are not a theme selector. Rust transport/controller remain deferred.
+The default Golden Gate27.0.1 exposes170 commands; preserved Mojave178/Sonoma163/High Sierra170/Windows190 remain selectable. New feature work is latest macOS only. The stable public object follows native remounts; during transition dispatch/discovery reject unavailable and inspect reports profile:null/transitioning:true. Immutable profile identity/coverage and native adapters are not a theme selector. Rust transport/controller remain deferred.
 
 Requests contain `command`, optional `requestId`, `target`, and `payload`. Command targets/payloads are plain JSON objects; omitted target/payload become empty objects. Explicit null, arrays, unrecognized request fields, unknown commands, and invalid command arguments are rejected. A supplied requestId must be a nonempty string and is echoed in results.
 
@@ -18,7 +18,7 @@ Results are `{ status: 'applied', target: ... }` or `{ status: 'rejected', error
 
 ## Machine-readable catalog
 
-`frontend/src/command-catalog.js` composes the canonical shared/native/session/power inventory. Registration requires exact descriptor/handler parity for the selected layer and seals handlers. Golden Gate's `SessionHost` owns session/power operations and delegates the private App layer; legacy scenes omit those capabilities but know the names and reject unsupported_profile before writes. Unregistered features are never advertised. Keep behavior tables and working notes current.
+`frontend/src/command-catalog.js` composes the canonical shared/native/session/power/seed inventory. Registration requires exact descriptor/handler parity for the selected layer and seals handlers. Golden Gate's `SessionHost` owns session/power/seed operations and delegates the private App layer; legacy scenes omit those capabilities but know the names and reject unsupported_profile before writes. Unregistered features are never advertised. Keep behavior tables and working notes current.
 
 `jesteros.describe()` returns `{ version:1, profile, profiles, commands, targets }`. Active profile metadata and snapshots identify the actual native scene. Profiles list supported IDs; targets.profiles lists installed profile IDs/names/family/version. Each commands entry has:
 
@@ -53,6 +53,30 @@ The tables below identify profile support for each implemented slice. Unexpected
 | `scene.selectProfile` | `{ profileId }` | `{}` | Selects an installed native profile. Same ID preserves state. A different ID disposes the old scene and mounts fresh native data/windows/menu/focus/scroll state; completion waits for the new DOM and command registration. Unknown IDs reject unsupported_profile before mutation. |
 
 This is selection, not migration of incompatible open documents. Default is Golden Gate27.0.1. Each profile uses its own fictional Notes epoch, including empty-collection creation; replacing a session-enabled profile also discards its fictional user roots.
+
+### Scene reset and complete seed replacement
+
+Golden Gate only, capability `scene.seed`; browser-local setup with no actor-desktop control, persistence, host service or profile migration.
+
+| Command | Target | Payload | Behavior |
+| --- | --- | --- | --- |
+| `scene.reset` | `{}` | `{}` | Disposes all fictional users and restores the original default V1 fixture. |
+| `scene.replaceSeed` | `{}` | `{ seed }` | Validates a complete V1 replacement before any disposal; no partial merge. |
+
+Both return `{ profileId:'macos-golden-gate-27.0.1', version:1, source:'default'\|'replacement' }`, with requestId when supplied. Available through lock/login/Guest confirmation and all power phases; completion waits for fresh active-root registration/DOM and ready default Messages. Old editors, private drafts, menus, user roots and timers are discarded. Queued outgoing commands reject unavailable; the three-method public object retains its identity. Invalid seeds reject invalid_arguments atomically; historical profiles reject unsupported_profile and do not advertise either name.
+
+`inspect().state.sceneSeed` and `describe().targets.sceneSeed` expose `{ source, seed }`; discovery additionally declares complete replacement and false operatorDesktopControls/persistence/hostServices/profileIdentityChange boundaries. This detached **initial baseline is not current edited data**. Each fictional user independently clones it. Selecting the current profile preserves it; reload or leaving/returning resets it.
+
+Complete V1 top-level shape is `{ version:1, notes, files, messages, appearance, dock }`; exact field/item schemas are in `describe().commands['scene.replaceSeed'].requestSchema`:
+
+- `notes`: `timeBase`, `notes[{id,text,pinned,deleted,createdAt,updatedAt}]`, `selectedId`, `folder`, `search`, `sidebarVisible`. Unique note IDs, ordered representable timestamps and a selected item in the visible folder/filter, or null. Empty notes are valid.
+- `files`: `files`, `nextFileId`, `sceneTime`. Each user record requires `id,parentId,name,kind,appId,icon,content,deleted,revision`; optional timestamps/tags follow the closed schema. Canonical live disk/desktop/downloads/trash folder anchors are required. Parents must exist and be folders; cycles, protected application namespaces, invalid names and case-insensitive live sibling collisions reject. Allocation counters must exceed existing file-N IDs. Generated read-only application records remain separate.
+- `messages`: `pinned[{name,initials,tint,selected}]`, `conversations[{name,initials,tint,time,preview}]`, `thread{name,initials,tint,timestampLabel,timestamp,items}`. At most one selected pin; hex tints and valid UTC ISO timestamps. Thread items are incoming/outgoing literal `text` with optional sender/delivery, or the built-in original `trail` illustration with optional sender. No arbitrary media/URLs/HTML execution; empty collections remain empty. Actor controls remain intentionally noninteractive.
+- `appearance`: supported light/dark mode, eight preset accents and preset/custom hex highlight.
+- `dock`: persistent pins/order/recent usage, preferences, folder aliases and folder preferences only. Finder is first/pinned; order/history/sequence must agree and aliases must target live eligible folders. Transient focus/hover/drag/context/window tiles are not seed data.
+
+Bounds: 1,024 notes/user files/conversations/thread items;128 pinned conversations;64 tags per file;1Mi UTF-16 units per content string;4Mi aggregate string/key units; safe ASCII IDs up to128 characters excluding prototype keys. Only plain serializable closed data: no getters, symbols, sparse arrays, exotic prototypes or cycles. Counters leave room for one safe increment; numeric timestamps leave room for one increment within the Date range. Dock size16–128 and magnification32–192. See the actual schema for each required field, allowed association/icon and remaining per-field bound.
+
 
 ### Apps and windows
 
@@ -543,5 +567,8 @@ Application families are `win11.explorer.*`, `win11.notepad.*`, `win11.terminal.
 30. **OS-19 latest-profile/session proof.** Source-verified Golden Gate27.0.1 is default; independently authored shell/Notes/Messages and13 session names replace no historical renderer. Strict159 request/result schemas compile;25 applied real-browser session requests cover all13 names. Native Control+Command+Q/F7, wrong/correct input, fixed choices/optional menu, isolated Alex/Casey edits/palette/bounds, Guest acknowledgement/cancel/delete/fresh re-entry and320×240 trapped focus/internal scrolling passed. Direct return preserves original Notes DOM/text/selection/scroll/geometry; final Rust-served path restores exact edited state/focus and rejects locked mutation. Modern green/full-screen retention, actual Mission Control/Escape, Stacks and Appearance pane were exercised. Legacy178/163/170/190 catalogs compile and all reject session.lock atomically.135 tests/1732 assertions; final frontend/Rust build has no component warnings, native source/production page errors are empty. Large-bundle advisory and lack of native VM/factory-pixel measurements remain explicit.
 
 31. **OS-20 page-local power proof.** Strict168 Golden schemas compile;12 applied source and12 applied Rust-served request/results each cover all9 names. Native Apple-menu Sleep/Restart, F5/F6/F4, consumed wake, Escape/default Return and actual five-second unauthenticated startup passed. Original local Notes nodes/text/caret/scroll/windows/appearance survive; private credential DOM/draft/selection survives Cancel. Active/inactive Guest warning, cancel/discard/fresh entry and Guest-only post-boot logout passed.320×240 root/actions remain bounded, body scrolls internally and six Tabs alternate real controls. Invalid/stale/hidden/disabled/app/session barriers and36 historical unsupported requests are atomic; detached query mutations do not affect live state. Actual saver/boot timer IDs clear on remount; strict178/163/170/190 catalogs remain unchanged. Final Rust editor retains exact text/Notes/windows, selection19–37/scroll240/focus.148 tests/2270 assertions and build pass, no page/component errors beyond existing chunk advisory. Original SVG/CSS/simplified drift/fixed reopen/five-second timing are explicit limits, not native pixel/firmware claims.
+
+32. **OS-21 complete seed proof.** Strict170 Golden schemas compile;13 applied source requests and final Rust-served replacement/reset cover both names. Real complete custom/empty Notes/files/Messages/appearance/Dock, isolated users, safe literal HTML-like text, allocator continuation, default/phase reset, queued outgoing rejection and original DOM/timer disposal pass. Fourteen invalid cases preserve complete state/original editors; getter is never invoked. Eight historical requests reject atomically with unchanged inventories. Reproduced and fixed unrepresentable Date timestamps and maximum nested-graph eager metadata/ancestor scans. Actual1,024-file replacement completes in49ms; Get Info and ancestor trash recompute native details/descendant discovery. Final Rust off-state replacement, atomic date rejection and default reset retain the public object and return ready Messages. Source/production page errors empty;320×240/default/empty native surfaces observed.158 tests/2371 assertions and frontend/Rust builds pass; existing chunk advisory only. No pixel-equivalence claim.
+
 
 

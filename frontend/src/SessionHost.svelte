@@ -7,9 +7,12 @@
   import { commandCatalog } from './command-catalog.js';
   import { fictionalSessionDefaults, createFictionalSessionCommands, sessionTargets, signOutFictionalSessions } from './fictional-session.js';
   import { fictionalPowerDefaults, createFictionalPowerCommands, powerTargets } from './fictional-power.js';
+  import { createSceneSeedCommands } from './scene-seed.js';
 
-  let { profile: profileInput, adapter: adapterInput, registerCommands, selectProfile } = $props();
+  let { profile: profileInput, adapter: adapterInput, seed: seedInput, seedSource = 'default',
+    resetScene, registerCommands, selectProfile } = $props();
   const profile = untrack(() => profileInput), adapter = untrack(() => adapterInput);
+  const seed = untrack(() => seedInput);
   let session = $state(fictionalSessionDefaults(profile));
   let power = $state(fictionalPowerDefaults(profile));
   let retainedIds = $state(['local-alex']);
@@ -92,14 +95,16 @@
   const powerOperations = createFictionalPowerCommands({ profile, power, session, available: () => !disposed,
     settle, getView: () => powerView, captureReturn: capturePowerReturn, restoreReturn: restorePowerReturn,
     lockSession: () => operations['session.lock']({}, {}), signOutForBoot });
+  const seedOperations = createSceneSeedCommands({ profile, available: () => !disposed, replaceScene: (value, source) => resetScene(value, source) });
   const catalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) => descriptor.profiles.includes(profile.id)));
-  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, operations[name] ?? powerOperations[name] ?? ((target, payload) => {
+  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, operations[name] ?? powerOperations[name] ?? seedOperations[name] ?? ((target, payload) => {
     if (disposed || (!interactive() && name !== 'scene.selectProfile')) return rejected('unavailable', 'Wake/start and sign in before interacting with the fictional desktop.');
     const controller = activeController();
     return controller ? controller.execute({ command: name, target, payload }) : rejected('unavailable', 'The retained desktop is being prepared.');
   })]));
   const commands = createFeatureCommands(handlers,
-    () => ({ ...(activeController()?.inspect().state ?? { profile }), session: $state.snapshot(session), power: $state.snapshot(power) }), settle,
+    () => ({ ...(activeController()?.inspect().state ?? { profile }), session: $state.snapshot(session), power: $state.snapshot(power),
+      sceneSeed: { source: seedSource, seed: structuredClone(seed) } }), settle,
     catalog, () => {
       const targets = activeController()?.describe().targets ?? {};
       if (!interactive() && targets.windows) targets.windows = targets.windows.map(window => ({ ...window,
@@ -107,15 +112,21 @@
         ...(window.resize ? { resize: { ...window.resize, available: false } } : {}) }));
       return { ...targets, session: { ...sessionTargets(session, surfaceView,
         session.menu ? menuViews.get(menuKey(session.activeUserId, session.menu.menuId)) : null), desktopAvailable: interactive() },
-        power: powerTargets(power, powerView) };
+        power: powerTargets(power, powerView),
+        sceneSeed: { source: seedSource, seed, completeReplacement: true,
+          boundaries: { operatorDesktopControls: false, persistence: false, hostServices: false, profileIdentityChange: false } } };
     }, () => disposed ? null : profile, commandCatalog);
   let queue = Promise.resolve();
   function execute(request) {
-    const result = queue.then(() => commands.execute(request));
+    const result = queue.then(() => disposed
+      ? { ...rejected('unavailable', 'The fictional scene has been replaced.'),
+        ...(typeof request?.requestId === 'string' ? { requestId: request.requestId } : {}) }
+      : commands.execute(request));
     queue = result.catch(() => {});
     return result;
   }
-  const publicCommands = Object.freeze({ execute, inspect: commands.inspect, describe: commands.describe });
+  const publicCommands = Object.freeze({ execute, inspect: commands.inspect, describe: commands.describe,
+    ready: () => scenes.get(session.activeUserId)?.ready() ?? Promise.resolve(false) });
   $effect(() => {
     document.documentElement.dataset.sessionPhase = session.phase;
     return () => { delete document.documentElement.dataset.sessionPhase; };
@@ -158,7 +169,7 @@
   {#each retainedIds as userId (userId)}
     <div class="session-desktop" class:inactive={userId !== session.activeUserId}
       data-session-user={userId} inert={userId !== session.activeUserId || !interactive()} aria-hidden={userId !== session.activeUserId || !interactive()}>
-      <App {profile} {adapter} {selectProfile} registerCommands={controller => registerDesktop(userId, controller)}
+      <App {profile} {adapter} {seed} {selectProfile} registerCommands={controller => registerDesktop(userId, controller)}
         registerSessionScene={facade => registerScene(userId, facade)}
         registerSessionView={view => registerNativeView(userId, view)}
         {session} executeSession={execute} user={session.users.find(user => user.id === userId)}

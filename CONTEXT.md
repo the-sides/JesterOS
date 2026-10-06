@@ -156,5 +156,12 @@ An accepted restart/shutdown signs out every fictional user but retains original
 **Power return token**:
 An opaque scene-owned original desktop or credential-surface focus/selection/scroll capture. Cancel restores the connected original, including private credential drafts kept mounted inert behind confirmation. No credentials are published in inspection or serialized state.
 
+**Scene seed baseline**:
+A complete, validated version-1 Notes/files/Messages/appearance/persistent-Dock fixture owned by the Golden Gate host. Each fictional user clones it independently. Detached inspection/discovery exposes this initial baseline, not current edits or a saved session; generated read-only app bundles and immutable profile identity remain separate.
+
+**Complete scene replacement**:
+Browser-local setup through `scene.reset` or `scene.replaceSeed`, without actor controls. Validate before disposal; replace all local/Guest roots, queues, menus, drafts and timers, then acknowledge only after a fresh awake desktop and Messages registration/DOM are ready. Outgoing queued work rejects unavailable. Reset restores the default fixture; replacement does not merge, persist or invoke host services.
+
+
 
 

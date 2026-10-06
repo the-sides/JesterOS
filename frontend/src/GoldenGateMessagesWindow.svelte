@@ -2,20 +2,8 @@
   import WindowControls from './WindowControls.svelte';
   import './golden-gate-documents.css';
 
-  let { onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu,
+  let { scene, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu,
     fullScreen = false, revealedTop = true, modernGreenMenu = true, active = true, zoomed = false } = $props();
-  // Authored fictional scene. No imported contact photos, messages, or account data.
-  const pinned = [
-    { name: 'Casey', initials: 'CR', tint: '#d39a72' },
-    { name: 'Studio', initials: 'ST', tint: '#7d99ac' },
-    { name: 'Trail Crew', initials: 'TC', tint: '#789d82', selected: true },
-  ];
-  const conversations = [
-    { name: 'Jordan Lee', initials: 'JL', tint: '#a49ab7', time: '9:32 AM', preview: 'The sketches look great. See you later!' },
-    { name: 'Morgan Park', initials: 'MP', tint: '#b08f77', time: '9:18 AM', preview: 'I left the book by your desk.' },
-    { name: 'Weekend Plans', initials: 'WP', tint: '#8ca3b9', time: 'Yesterday', preview: 'Let’s meet at the café on Saturday.' },
-    { name: 'Sam Rivera', initials: 'SR', tint: '#9baa81', time: 'Yesterday', preview: 'Thanks for the recommendation!' },
-  ];
   const symbols = {
     search: 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0m-1 5 6 6',
     filter: 'M4 6h16M7 12h10M10 18h4',
@@ -47,35 +35,39 @@
     <label class="golden-gate-document-search golden-gate-messages-search">{@render symbol('search')}<input type="search" aria-label="Search conversations — sample only" placeholder="Search" disabled /></label>
     <div class="golden-gate-messages-conversation-scroll">
       <ul class="golden-gate-messages-pinned" aria-label="Pinned sample conversations">
-        {#each pinned as conversation}
+        {#each scene.pinned as conversation}
           <li class:selected={conversation.selected} aria-current={conversation.selected ? 'true' : undefined}>
             <button type="button" aria-label={`${conversation.name} — sample only`} disabled>{@render avatar(conversation.initials, conversation.tint)}<span>{conversation.name}</span></button>
           </li>
+        {:else}
+          <li>No pinned conversations</li>
         {/each}
       </ul>
       <ul class="golden-gate-messages-conversations">
-        {#each conversations as conversation}
+        {#each scene.conversations as conversation}
           <li>
             <button type="button" aria-label={`${conversation.name} — sample only`} disabled>
               {@render avatar(conversation.initials, conversation.tint)}
               <span class="golden-gate-messages-conversation-copy"><span class="golden-gate-messages-conversation-heading"><strong>{conversation.name}</strong><time>{conversation.time}</time></span><span class="golden-gate-messages-conversation-preview">{conversation.preview}</span></span>
             </button>
           </li>
+        {:else}
+          <li>No conversations</li>
         {/each}
       </ul>
     </div>
   </aside>
   <div class="golden-gate-messages-thread">
     <header class="golden-gate-messages-recipient-toolbar" data-window-drag>
-      <button type="button" class="golden-gate-messages-recipient golden-gate-document-capsule" data-window-no-drag aria-label="Trail Crew conversation details — sample only" disabled>{@render avatar('TC', '#789d82')}<span>Trail Crew</span>{@render symbol('chevron')}</button>
+      <button type="button" class="golden-gate-messages-recipient golden-gate-document-capsule" data-window-no-drag aria-label={`${scene.thread.name} conversation details — sample only`} disabled>{@render avatar(scene.thread.initials, scene.thread.tint)}<span>{scene.thread.name}</span>{@render symbol('chevron')}</button>
       <button type="button" class="golden-gate-document-tool golden-gate-document-capsule golden-gate-messages-call" data-window-no-drag aria-label="Video call — sample only" disabled>{@render symbol('video')}</button>
     </header>
-    <ol class="golden-gate-messages-history" aria-label="Fictional conversation with Trail Crew">
-      <li class="golden-gate-messages-timestamp"><time datetime="2026-09-28T09:41:00Z">Today 9:41 AM</time></li>
-      <li class="golden-gate-messages-bubble outgoing"><p>Morning! Where are we meeting?</p></li>
-      <li class="golden-gate-messages-bubble incoming"><span class="golden-gate-messages-sender">Casey Rivera</span><p>At the trailhead by the coast. I made a little sketch of the route.</p></li>
+    <ol class="golden-gate-messages-history" aria-label={`Fictional conversation with ${scene.thread.name}`}>
+      <li class="golden-gate-messages-timestamp"><time datetime={scene.thread.timestamp}>{scene.thread.timestampLabel}</time></li>
+      {#each scene.thread.items as item}
+        {#if item.kind === 'trail'}
       <li class="golden-gate-messages-artwork">
-        <span class="golden-gate-messages-sender">Casey Rivera</span>
+        {#if item.sender}<span class="golden-gate-messages-sender">{item.sender}</span>{/if}
         <svg viewBox="0 0 340 190" role="img" aria-label="Original illustration of a coastal trail, hills, and a small orange tent">
           <rect width="340" height="190" rx="18" fill="#d5e8eb" />
           <circle cx="260" cy="42" r="21" fill="#f4d794" />
@@ -88,8 +80,16 @@
           <path d="m22 154 20-7m-17 16 28-9m234 10 25-5m-16 13 21-5" stroke="#edf5ee" stroke-width="2" stroke-linecap="round" opacity=".65" />
         </svg>
       </li>
-      <li class="golden-gate-messages-bubble incoming"><span class="golden-gate-messages-sender">Jordan Lee</span><p>I’ll bring the picnic. See you at ten!</p></li>
-      <li class="golden-gate-messages-bubble outgoing golden-gate-messages-last"><p>Perfect. See you both there!</p><span class="golden-gate-messages-delivered">Delivered · sample</span></li>
+        {:else}
+          <li class="golden-gate-messages-bubble {item.direction}" class:golden-gate-messages-last={Boolean(item.delivery)}>
+            {#if item.sender}<span class="golden-gate-messages-sender">{item.sender}</span>{/if}
+            <p>{item.text}</p>
+            {#if item.delivery}<span class="golden-gate-messages-delivered">{item.delivery}</span>{/if}
+          </li>
+        {/if}
+      {:else}
+        <li>No messages</li>
+      {/each}
     </ol>
     <div class="golden-gate-messages-composer" aria-label="Message composer — sending unavailable">
       <button type="button" class="golden-gate-document-tool golden-gate-document-capsule" aria-label="Add photos, stickers, polls, and attachments — sample only" disabled>{@render symbol('plus')}</button>
