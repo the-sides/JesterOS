@@ -49,6 +49,12 @@
   import { APPLICATION_MENU_UTILITY_SIZES, goldenApplicationMenuItems, createApplicationMenuCommands } from './application-menu.js';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
+  import { createNotesFileCommands } from './notes-file-commands.js';
+  import { createFileDialogCommands } from './file-dialog-commands.js';
+  import GoldenGateFileSheet from './GoldenGateFileSheet.svelte';
+  import GoldenGatePrintDialog from './GoldenGatePrintDialog.svelte';
+  import GoldenGatePrintCenter from './GoldenGatePrintCenter.svelte';
+  import { createFinderFileCommands } from './finder-file-commands.js';
   import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
@@ -70,6 +76,7 @@
   const expandedProperty = adapter.expandedProperty;
   const hasMenuBar = profile.capabilities.includes('shell.menu-bar');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
+  const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
@@ -96,6 +103,12 @@
   let closedWindows = $state(savedScene?.closedWindows ?? {});
   const pendingWindowViews = new Map(Object.entries(savedScene?.views ?? {}));
   const applicationUtilityReturnFocus = new Map();
+  let fileDialogState = $state({ current: null });
+  let fileDialogControls = $state();
+  let fileDialogController = $state();
+  $effect(() => {
+    if (hasFileWorkflows && !foreground) fileDialogController?.suspend();
+  });
   let switcherControls = $state();
   let applicationMenuControls = $state();
   let switcherPreviewSlots = $state({});
@@ -265,6 +278,7 @@
   let nativeState = $state(initialData.native);
   let messagesState = $state(initialData.messages);
   let appearanceState = $state(macDesktop ? initialData.appearance ?? appearanceDefaults(profile) : undefined);
+  let printingState = $state(hasFileWorkflows ? initialData.printing : undefined);
   $effect(() => {
     if (appearanceOwner) return applyAppearance(document.documentElement, profile, macDesktop ? appearanceState
       : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
@@ -623,9 +637,87 @@
   );
   if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
     getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes' && !window.utilityKind).id),
-    isVisible: () => !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
+    isVisible: () => sceneInteractionsAvailable() && !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
       && windows.some(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window)),
   }));
+  if (hasFileWorkflows) {
+    let fontBytes;
+    const fontLoader = () => fontBytes ??= (async () => {
+      const response = await fetch(`${import.meta.env.BASE_URL}fonts/LiberationSans-Regular.ttf`);
+      if (!response.ok) throw new Error('The bundled PDF font is unavailable.');
+      return new Uint8Array(await response.arrayBuffer());
+    })().catch(error => { fontBytes = undefined; throw error; });
+    const fileCommands = createNotesFileCommands(notesState, macFiles, printingState, {
+      available: fileWorkflowsAvailable, fontLoader,
+      captureLease: () => fileDialogController.captureLease(),
+      otherTextSize: fileWorkflowOtherTextSize,
+      isNotesVisible: () => !fileDialogState.current && Boolean(notesView)
+        && windows.some(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window)),
+      prepareNotesFocus: async () => {
+        const window = windows.find(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window));
+        if (!window) return false;
+        focusWindow(window.id);
+        return focusApplicationServiceBody(window.id);
+      },
+      notesCreated: async (noteId, focus) => {
+        clearNotesPresentation();
+        await tick(); await tick();
+        if (focus && sceneInteractionsAvailable() && notesState.selectedId === noteId) {
+          const window = windows.find(window => window.id === activeWindowId && window.appId === 'notes' && !window.utilityKind);
+          if (window) await focusApplicationServiceBody(window.id, noteId);
+        }
+        const control = document.activeElement?.dataset?.notesControl;
+        notesViewState.focusedControl = ['title', 'body', 'search'].includes(control) ? { control } : null;
+      },
+    });
+    Object.assign(handlers, fileCommands);
+    const fileDialog = createFileDialogCommands({
+      state: fileDialogState, files: macFiles, getIdPrefix: () => windowNamespace, fontLoader,
+      alive: () => !disposed, available: fileWorkflowsAvailable, getSource: fileDialogSource,
+      getView: () => fileDialogControls, captureReturn: captureSessionDesktop,
+      settle: async () => { await tick(); await tick(); },
+      restoreReturn: async (snapshot, dialog) => {
+        if (!sceneInteractionsAvailable() || activeWindowId !== dialog.windowId) return false;
+        if (notesState.selectedId === dialog.noteId) return restoreSessionDesktop(snapshot);
+        return focusKeyboardWindow(dialog.windowId);
+      },
+      invoke: (command, target, payload) => fileCommands[command](target, payload),
+    });
+    fileDialogController = fileDialog;
+    Object.assign(handlers, fileDialog.handlers);
+    Object.assign(handlers, createFinderFileCommands({
+      files: macFiles, available: windowInteractionsAvailable,
+      getWindow: windowId => activeAppId === 'finder' && activeWindowId === windowId
+        ? windows.find(window => window.id === windowId && window.appId === 'finder' && !window.utilityKind
+          && !window.minimized && windowPresented(window)) : null,
+      canAddFiles: canAddWorkflowFiles,
+      openFile: fileId => handlers['desktop.open']({ fileId }, {}),
+      navigate: (windowId, folderId) => handlers['desktop.folder.navigate']({ windowId, folderId }, {}),
+      openInfo: fileId => openDesktopUtility('desktop-info', fileId),
+      getDesktopSelection: () => activeAppId === 'finder' && activeWindowId === null ? desktopState.selectedFileIds : null,
+      selectDesktop: fileId => { desktopState.selectedFileIds = [fileId]; desktopState.selectionAnchorId = fileId; },
+    }));
+    handlers['notes.document.create'] = async (target, payload) => {
+      if (Object.keys(target).length || Object.keys(payload).length)
+        return rejected('invalid_arguments', 'Use an empty New Note target and payload.');
+      if (!windowInteractionsAvailable()) return rejected('unavailable', 'New Note is unavailable.');
+      const time = notesState.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), notesState.timeBase);
+      let number = notesState.notes.length + 1;
+      while (notesState.notes.some(note => note.id === `note-${number}`) && number < Number.MAX_SAFE_INTEGER - 1) number++;
+      const noteId = `note-${number}`;
+      const record = { id: noteId, text: '', pinned: false, deleted: false, createdAt: time + 1, updatedAt: time + 1 };
+      const delta = persistentStringUnits(record) + String(notesState.notes.length).length
+        + noteId.length - (notesState.selectedId?.length ?? 0) + 'notes'.length - notesState.folder.length - notesState.search.length;
+      if (notesState.notes.length >= 1024 || time >= 8_640_000_000_000_000 - 1 || number >= Number.MAX_SAFE_INTEGER - 1
+        || workflowTextSize() + delta > 4 * 1024 * 1024)
+        return rejected('limit_exceeded', 'New Note exceeds the bounded scene record, clock or content budget.');
+      const opened = await handlers['app.open']({ appId: 'notes' }, {});
+      if (opened.status !== 'applied') return opened;
+      const created = await handlers['notes.create']({}, { focus: true });
+      return created.status === 'applied'
+        ? { status: 'applied', target: { noteId: created.target.noteId, windowId: opened.target.windowId } } : created;
+    };
+  }
   if (hasApplicationMenu) Object.assign(handlers, createApplicationMenuCommands({
     profile, notes: notesState,
     available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
@@ -670,6 +762,7 @@
       ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
       ...(messagesState ? { messages: messagesState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
+      ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(nativeState ? { native: nativeState } : {}),
       ...(hasRetention ? { retention: { closedWindows, automaticPersistence: false, reopen: 'last-ordinary-window-current-desktop' } } : {}),
     }),
@@ -814,6 +907,11 @@
         eligibleIds: visibleNotes(notesState).map(({ id }) => id),
       } } : {}),
       ...(hasApplicationMenu ? { applicationMenu: applicationMenuTargets() } : {}),
+      ...(hasFileWorkflows ? { fileDialog: $state.snapshot(fileDialogController.targets()), printing: {
+        printerId: 'studio-printer', printerName: 'Studio Printer', fictional: true,
+        jobs: printingState.jobs.map(({ id, title, status, copies, pageCount, pageFrom, pageTo, printedPages }) =>
+          ({ jobId: id, title, status, copies, pageCount, pageFrom, pageTo, printedPages })),
+      } } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
 
@@ -878,8 +976,15 @@
     return () => { if (applicationViews.get(windowId) === view) applicationViews.delete(windowId); };
   }
 
-  function sceneInteractionsAvailable() {
+  function sceneCoreAvailable() {
     return !disposed && (foreground || starting || !initialized) && (adapter.windowInteractionsAvailable?.(nativeState) ?? true);
+  }
+  function sceneInteractionsAvailable() {
+    return sceneCoreAvailable() && !fileDialogState.current;
+  }
+  function fileWorkflowsAvailable() {
+    return sceneCoreAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view
+      && !dashboardOpen && !switching.switcher && !presentation.pairing;
   }
   function windowInteractionsAvailable() {
     return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view && !dashboardOpen;
@@ -1205,9 +1310,9 @@
       || range.end - range.start > 1024 * 1024) return null;
     return { windowId, noteId, control, revision: source.note.updatedAt, start: range.start, end: range.end };
   }
-  async function focusApplicationServiceBody(windowId) {
+  async function focusApplicationServiceBody(windowId, noteId = notesState.selectedId) {
     await tick(); await tick();
-    if (!applicationServiceSource({ windowId, noteId: notesState.selectedId, control: 'body' })) return false;
+    if (!applicationServiceSource({ windowId, noteId, control: 'body' })) return false;
     const body = managedWindowElement(windowId).querySelector('[data-notes-control="body"]');
     body.focus({ preventScroll: true });
     return document.activeElement === body;
@@ -1311,7 +1416,7 @@
     return windowPresented(window);
   }
   function windowInteractive(window) {
-    return foreground && !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
+    return foreground && !fileDialogState.current && !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
       && fullScreenStage.mode !== 'pairing' && windowPresented(window);
   }
   function measureStageArea() {
@@ -1508,6 +1613,78 @@
     await tick();
     return focused;
   }
+  function fileDialogSource(windowId) {
+    if (!fileWorkflowsAvailable() || activeAppId !== 'notes' || activeWindowId !== windowId) return null;
+    const window = windows.find(window => window.id === windowId && window.appId === 'notes' && !window.utilityKind
+      && !window.minimized && windowPresented(window));
+    const note = visibleNotes(notesState).find(note => note.id === notesState.selectedId);
+    return window && note ? { noteId: note.id, text: note.text, createdAt: note.createdAt, updatedAt: note.updatedAt } : null;
+  }
+  function persistentDockData() {
+    const dock = desktopState.dock;
+    return { pinnedAppIds: dock.pinnedAppIds, recentHistory: dock.recentHistory, usageSequence: dock.usageSequence,
+      preferences: dock.preferences, folderFileIds: dock.folderFileIds, folderPreferences: dock.folderPreferences,
+      mainOrderAppIds: dock.mainOrderAppIds.filter(id => dock.pinnedAppIds.includes(id)),
+      secondaryOrderItemIds: dock.secondaryOrderItemIds.filter(id => dock.folderFileIds.some(fileId => dockFolderItemId(fileId) === id)) };
+  }
+  function persistentStringUnits(value) {
+    if (typeof value === 'string') return value.length;
+    if (!value || typeof value !== 'object') return 0;
+    let total = 0;
+    for (const key of Object.keys(value)) total += key.length + persistentStringUnits(value[key]);
+    return total;
+  }
+  function fileWorkflowOtherTextSize() {
+    return persistentStringUnits({ version: 1, notes: null, files: null, printing: null,
+      messages: messagesState, appearance: appearanceState, dock: persistentDockData() });
+  }
+  function workflowTextSize() {
+    return fileWorkflowOtherTextSize() + persistentStringUnits(notesState) + persistentStringUnits(printingState)
+      + persistentStringUnits({ files: macFiles.files.filter(file => !file.readOnly),
+        nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime });
+  }
+  function canAddWorkflowFiles(records) {
+    const count = macFiles.files.reduce((total, file) => total + (file.readOnly ? 0 : 1), 0);
+    let extra = 0;
+    for (let index = 0; index < records.length; index++)
+      extra += persistentStringUnits(records[index]) + String(count + index).length;
+    return workflowTextSize() + extra <= 4 * 1024 * 1024;
+  }
+  function fileWorkflowKeydown(event) {
+    if (!hasFileWorkflows || event.defaultPrevented || event.isComposing || !(event.metaKey || event.ctrlKey)
+      || event.altKey || !windowInteractionsAvailable()) return;
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest('[inert], [aria-modal="true"]')
+      || (!sceneRoot.contains(target) && target !== document.body && target !== document.documentElement)) return;
+    const key = event.key.toLowerCase();
+    const window = windows.find(window => window.id === activeWindowId);
+    let request;
+    if (key === 'n' && !event.shiftKey && activeAppId === 'notes') request = { command: 'notes.document.create' };
+    else if (key === 'n' && event.shiftKey && activeAppId === 'finder') request = window && !window.utilityKind
+      ? { command: 'finder.folder.create', target: { windowId: window.id } } : activeWindowId === null ? { command: 'desktop.folder.create' } : null;
+    else if (!event.shiftKey && key === 'd' && activeAppId === 'notes' && window?.appId === 'notes' && !window.utilityKind)
+      request = { command: 'notes.duplicate', target: { noteId: notesState.selectedId }, payload: { focus: true } };
+    else if (!event.shiftKey && ['d', 'o'].includes(key) && activeAppId === 'finder') request = window && !window.utilityKind
+      ? { command: key === 'd' ? 'finder.file.duplicate' : 'finder.file.open', target: { windowId: window.id } }
+      : key === 'd' && activeWindowId === null ? { command: 'finder.file.duplicate' }
+        : key === 'o' && activeWindowId === null && desktopState.selectedFileIds.length === 1
+          ? { command: 'desktop.open', target: { fileId: desktopState.selectedFileIds[0] } } : null;
+    else if (!event.shiftKey && key === 'i' && activeAppId === 'finder') request = window && !window.utilityKind
+      ? { command: 'finder.info.open', target: { windowId: window.id } }
+      : activeWindowId === null && desktopState.selectedFileIds.length === 1
+        ? { command: 'desktop.info.open', target: { fileId: desktopState.selectedFileIds[0] } } : null;
+    else if (!event.shiftKey && key === 'p' && activeAppId === 'notes' && window?.appId === 'notes' && !window.utilityKind)
+      request = { command: 'fileDialog.open', target: { windowId: window.id }, payload: { format: 'print' } };
+    else if (!event.shiftKey && key === 'w' && window) request = { command: 'window.close', target: { windowId: window.id } };
+    else if (!event.shiftKey && ['d', 'o', 'p', 's'].includes(key)) {
+      // These belong to this simulated application, never Chrome's host file,
+      // print or bookmark UI. Notes autosaves its existing local model.
+      event.preventDefault(); event.stopPropagation(); return;
+    }
+    if (!request) return;
+    event.preventDefault(); event.stopPropagation();
+    if (!event.repeat) commands.execute(request);
+  }
   function sharedMenusAvailable() {
     return sceneInteractionsAvailable() && !spaceState.overview && !launchpadState.view && !dashboardOpen
       && !switching.switcher && !presentation.pairing && !desktopState.dock?.appWindows
@@ -1526,10 +1703,19 @@
     const textControl = ['title', 'body', 'search'].includes(control)
       && original.closest('[data-window-id]')?.dataset.windowId === appWindows.find(window => window.appId === 'notes' && !window.utilityKind)?.id
       ? control : null;
+    const finderWindow = appId === 'finder' && active?.appId === 'finder' && !active.utilityKind ? active : null;
+    const finderDesktop = appId === 'finder' && !active;
+    const finderFolder = finderWindow ? liveFile(macFiles, finderWindow.folderId) : finderDesktop ? liveFile(macFiles, 'desktop') : null;
+    const finderIds = finderWindow?.finderSelectedFileIds ?? (finderDesktop ? desktopState.selectedFileIds : []);
     const commandMenus = appCommandMenuProviders({ profile, appId, enabled, activeWindow: active,
       notes: appId === 'notes' ? { available: Boolean(notesView && appWindows.some(window => !window.utilityKind && !window.minimized && windowPresented(window))),
+        documentAvailable: Boolean(active?.appId === 'notes' && !active.utilityKind && !active.minimized && windowPresented(active)),
         selected: visibleNotes(notesState).find(note => note.id === notesState.selectedId),
-        sidebarVisible: notesState.sidebarVisible, textControl, hasText: Boolean(textControl && original.value.length) } : null });
+        sidebarVisible: notesState.sidebarVisible, textControl, hasText: Boolean(textControl && original.value.length) } : null,
+      finder: appId === 'finder' ? { windowId: finderWindow?.id ?? null, folderId: finderFolder?.id ?? null,
+        writable: Boolean(finderFolder && !finderFolder.readOnly && finderFolder.id !== 'trash'),
+        selected: finderFolder ? liveMacFileRecords(macFiles).filter(file => finderIds.includes(file.id)
+          && (file.parentId === finderFolder.id || finderDesktop && file.id === 'disk')) : [] } : null });
     return [
       { menuId: 'application', kind: 'application', label: app?.name ?? '', appId,
         enabled,
@@ -1895,7 +2081,7 @@
     const unregister = registerCommands(commands);
     const unregisterSession = registerSessionScene?.({
       persist: captureSavedScene,
-      canSave: () => !disposed && !presentation.pairing && pendingQuitAppIds.length === 0,
+      canSave: () => !disposed && !presentation.pairing && !fileDialogState.current && pendingQuitAppIds.length === 0,
       capture: captureSessionDesktop, restore: restoreSessionDesktop,
       menuProviders: sharedMenuProviders, menusAvailable: sharedMenusAvailable,
       prepareMenus: () => clearSwitchingPresentations(false, true), restoreMenus: restoreSwitchingPresentations,
@@ -1916,6 +2102,7 @@
       listen(window, 'keydown', dashboardKeydown, true),
       listen(window, 'keydown', spacesKeydown, true),
       listen(window, 'keydown', fullScreenKeydown, true),
+      listen(window, 'keydown', fileWorkflowKeydown, true),
       listen(document, 'pointermove', stagePointerMove, true),
       listen(document, 'pointerdown', stagePointerDown, true),
       listen(document, 'pointerup', stagePointerUp, true),
@@ -1931,10 +2118,15 @@
       if (!disposed && foreground && dashboardState.view && dashboardControls?.available())
         commands.execute({ command: 'dashboard.clock.advance', payload: { seconds: 1 } });
     }, 1000) : null;
+    const printingTimer = hasFileWorkflows ? setInterval(() => {
+      if (fileWorkflowsAvailable() && printingState.jobs.some(job => job.status === 'queued' || job.status === 'printing'))
+        commands.execute({ command: 'printing.advance', payload: { pages: 1 } });
+    }, 1000) : null;
     return () => {
       disposed = true; stopScene?.(); unregister(); unregisterSession?.();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
+      if (printingTimer !== null) clearInterval(printingTimer);
       if (stageDrag) stagePointerUp({ pointerId: stageDrag.pointerId, type: 'pointercancel' });
     };
   });
@@ -2222,10 +2414,7 @@
     return $state.snapshot({
       seed: { version: 1, notes: notesState, files: { files: macFiles.files.filter(file => !file.readOnly),
         nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime }, messages: messagesState, appearance: appearanceState,
-        dock: { ...Object.fromEntries(['pinnedAppIds', 'recentHistory', 'usageSequence',
-          'preferences', 'folderFileIds', 'folderPreferences'].map(key => [key, dock[key]])),
-          mainOrderAppIds: dock.mainOrderAppIds.filter(id => dock.pinnedAppIds.includes(id)),
-          secondaryOrderItemIds: dock.secondaryOrderItemIds.filter(id => dock.folderFileIds.some(fileId => dockFolderItemId(fileId) === id)) } },
+        printing: printingState, dock: persistentDockData() },
       catalogTimes: Object.fromEntries(macFiles.files.filter(file => file.readOnly).map(file =>
         [file.id, { createdAt: file.createdAt, modifiedAt: file.modifiedAt, addedAt: file.addedAt, lastOpenedAt: file.lastOpenedAt }])),
       dockOrder: { mainOrderAppIds: dock.mainOrderAppIds, secondaryOrderItemIds: dock.secondaryOrderItemIds },
@@ -2270,6 +2459,8 @@
           <GoldenGateAboutApp application={applications[window.appId]} {profile} windowId={window.id} execute={commands.execute} />
         {:else if window.utilityKind === 'application-settings'}
           <GoldenGateNotesSettings preferences={notesState.preferences} windowId={window.id} execute={commands.execute} />
+        {:else if hasFileWorkflows && window.appId === 'printcenter'}
+          <GoldenGatePrintCenter printing={printingState} execute={commands.execute} />
         {:else if Applications}
           <Applications appId={window.appId} windowId={window.id} {profile} native={adapter.nativeForWindow(nativeState, window.id)} execute={commands.execute} registerView={registerApplicationView} />
         {:else if window.appId === 'messages'}
@@ -2438,11 +2629,23 @@
     <MacApplicationMenu {profile} app={applications[switching.appMenu.appId]} state={switching.appMenu}
       items={appMenuItems} anchor={applicationMenuAnchor} execute={commands.execute} bind:this={applicationMenuControls} />
   {/if}
+  {#if fileDialogState.current}
+    <div class="file-dialog-backdrop">
+      {#if fileDialogState.current.format === 'print'}
+        <GoldenGatePrintDialog dialog={fileDialogState.current} files={macFiles.files}
+          execute={commands.execute} bind:this={fileDialogControls} />
+      {:else}
+        <GoldenGateFileSheet dialog={fileDialogState.current} files={macFiles.files}
+          execute={commands.execute} bind:this={fileDialogControls} />
+      {/if}
+    </div>
+  {/if}
 </Desktop>
 </div>
 
 <style>
   .scene-root { position: absolute; inset: 0; }
+  .file-dialog-backdrop { position: absolute; inset: 0; z-index: 20000; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 8px; background: #0002; overflow: hidden; }
   .stage-backdrop { position: absolute; z-index: 1; background: black; pointer-events: none; }
   .split-divider { position: absolute; width: 4px; background: #171717; cursor: col-resize; touch-action: none; outline: none; }
   .split-divider:focus-visible { background: var(--appearance-focus, #5797dc); }

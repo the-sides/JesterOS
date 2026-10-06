@@ -31,7 +31,7 @@ const bounds = object({ x: number(-MAX_COUNTER), y: number(-MAX_COUNTER), width:
 const desktopId = { ...identity, pattern: '^desktop-[1-9][0-9]*$' };
 const scrollPosition = object({ top: number(), left: number() });
 const scrollKey = choice('notes-list', 'notes-body', 'messages-conversations', 'messages-thread', 'finder-contents',
-  'window-content', 'settings-dock', 'settings-appearance', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings');
+  'window-content', 'settings-dock', 'settings-appearance', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue');
 const selectionKey = choice('notes-title', 'notes-body', 'notes-search');
 const viewToken = object({
   scroll: array(object({ key: scrollKey, top: number(), left: number() }), 10),
@@ -142,7 +142,8 @@ function validateView(view, window, seed) {
   if (!unique(view.scroll.map(entry => entry.key)) || !unique(view.selections.map(entry => entry.key))) return false;
   const allowed = window.utilityKind ? [window.utilityKind] : window.appId === 'notes' ? ['notes-list', 'notes-body']
     : window.appId === 'messages' ? ['messages-conversations', 'messages-thread'] : window.appId === 'finder' ? ['finder-contents']
-      : window.appId === 'settings' ? [`settings-${window.settingsPane}`] : ['window-content'];
+      : window.appId === 'settings' ? [`settings-${window.settingsPane}`]
+        : window.appId === 'printcenter' ? ['printing-queue'] : ['window-content'];
   if (window.utilityKind || (window.appId !== 'notes' && window.appId !== 'messages')) allowed.push('window-content');
   if (view.scroll.some(entry => !allowed.includes(entry.key))) return false;
   if (window.utilityKind || window.appId !== 'notes') return view.selections.length === 0 && view.focusKey === null;

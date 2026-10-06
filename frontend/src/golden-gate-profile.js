@@ -14,6 +14,7 @@ export const goldenGateProfile = {
     'shell.full-screen', 'shell.split-view', 'shell.window-green-menu', 'shell.mission-control',
     'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management',
     'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.menu-bar', 'shell.application-menu', 'shell.appearance',
+    'shell.file-workflows',
     'scene.profile-selection', 'scene.seed', 'scene.saved-session', 'session.fictional', 'session.power', 'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {
@@ -68,7 +69,7 @@ export const goldenGateProfile = {
     photobooth: launchOnly('photobooth', 'Photo Booth'),
     podcasts: launchOnly('podcasts', 'Podcasts'),
     preview: launchOnly('preview', 'Preview'),
-    printcenter: launchOnly('printcenter', 'Print Center'),
+    printcenter: { ...launchOnly('printcenter', 'Print Center'), coverage: 'print-queue' },
     quicktime: launchOnly('quicktime', 'QuickTime Player'),
     screensharing: launchOnly('screensharing', 'Screen Sharing'),
     screenshot: launchOnly('screenshot', 'Screenshot'),

@@ -16,6 +16,16 @@
   const contents = $derived(folderId === 'trash' ? files.filter(file => file.deleted)
     : unavailable ? [] : files.filter(file => file.parentId === folderId && !isTrashed(store, file)));
   const desktop = $derived(files.find((file) => file.id === 'desktop' && !file.deleted));
+  const fileWorkflows = $derived(profile.capabilities.includes('shell.file-workflows'));
+  function selectFile(file, event) {
+    const fileIds = event.metaKey || event.ctrlKey
+      ? selectedFileIds.includes(file.id) ? selectedFileIds.filter(id => id !== file.id) : [...selectedFileIds, file.id]
+      : [file.id];
+    return execute({ command: 'finder.selection.set', target: { windowId }, payload: { fileIds } });
+  }
+  function openFile(file) {
+    return execute({ command: 'finder.file.open', target: { windowId, fileId: file.id }, payload: {} });
+  }
 
   function navigate(destination) {
     return execute({ command: 'desktop.folder.navigate',
@@ -51,6 +61,16 @@
   <div class="folder-contents" role="list" aria-label="Items in folder">
     {#each contents as file (file.id)}
       <div class="folder-item" class:selected={selectedFileIds.includes(file.id)} role="listitem" data-folder-item-id={file.id} aria-current={selectedFileIds.includes(file.id) ? 'true' : undefined}>
+        {#if fileWorkflows}
+          <button class={file.kind === 'folder' ? 'folder-directory' : 'folder-file'} type="button"
+            data-finder-file-id={file.id} aria-label={file.name}
+            draggable={!!dockState && folderId !== 'trash' && (file.kind === 'folder' || file.kind === 'application') && file.id !== 'disk'}
+            ondragstart={event => dragShortcut(event, file)} ondragend={event => endShortcutDrag(event, file)}
+            onclick={event => selectFile(file, event)} ondblclick={() => openFile(file)}
+            onkeydown={event => { if (event.key === 'Enter') { event.preventDefault(); openFile(file); } }}>
+            <Icon name={file.icon ?? (file.kind === 'folder' ? 'folder' : 'pdf')} assets={profile.assets}/><span class="folder-label">{file.name}</span>
+          </button>
+        {:else}
         {#if file.kind === 'folder'}
           <button class="folder-directory" type="button" aria-label={`Open ${file.name}`} disabled={folderId === 'trash'}
             draggable={!!dockState && folderId !== 'trash' && file.id !== 'disk'}
@@ -68,6 +88,7 @@
           {:else}
             <div class="folder-file"><Icon name={file.icon ?? 'pdf'} assets={profile.assets}/><span class="folder-label">{file.name}</span></div>
           {/if}
+        {/if}
         {/if}
       </div>
     {:else}
@@ -91,7 +112,7 @@
   .folder-item :global(.app-icon), .folder-item :global(.sonoma-icon) { display: block; width: 64px; height: 64px; }
   .folder-label { max-width: 100%; padding: 0 2px; overflow-wrap: anywhere; }
   .selected .folder-label { background: var(--appearance-selection, #3875cc); color: var(--appearance-selection-ink, white); border-radius: 3px; }
-  .folder-directory:focus-visible { outline: 2px solid var(--appearance-focus, #73a6e6); outline-offset: 4px; border-radius: 3px; }
+  .folder-directory:focus-visible, .folder-file:focus-visible { outline: 2px solid var(--appearance-focus, #73a6e6); outline-offset: 4px; border-radius: 3px; }
   .folder-navigation button:focus-visible { outline: 2px solid var(--appearance-focus, #73a6e6); outline-offset: 1px; }
   .folder-empty { grid-column: 1 / -1; margin: 50px 0; color: var(--appearance-muted, #777); text-align: center; }
   .folder-status { flex-shrink: 0; min-height: 23px; padding: 4px 12px; border-top: 1px solid var(--appearance-soft-border, #d3d3d3); background: var(--appearance-panel, #f3f3f3); color: var(--appearance-muted, #666); text-align: center; font-size: 11px; }

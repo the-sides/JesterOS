@@ -12,6 +12,7 @@ const scrollSelectors = {
   'desktop-view-options': '.view-inspector',
   'application-about': '.golden-gate-about-app',
   'application-settings': '.golden-gate-notes-settings',
+  'printing-queue': '[data-print-center-view="queue"] [data-print-center-area="jobs"]',
 };
 const controlSelectors = {
   'notes-title': '[data-golden-gate-notes-control="title"]',

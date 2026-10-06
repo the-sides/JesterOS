@@ -92,6 +92,22 @@ const execute = (handlers, action, target = {}, payload = {}) => handlers[`scene
 
 // Fixtures use the same exported defaults and original App window records as
 // consumers, not schema/source snapshots or private validator helpers.
+test('live and remembered printer queue viewports belong only to actual Print Center windows', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  const printer = addWindow(scene, 'printcenter');
+  scene.views[printer.id].scroll = [{ key: 'printing-queue', top: 245, left: 0 }];
+  expect(validate(snapshot).ok).toBe(true);
+  scene.views.messages.scroll.push({ key: 'printing-queue', top: 245, left: 0 });
+  const before = structuredClone(snapshot);
+  expect(validate(snapshot).ok).toBe(false);
+  expect(snapshot).toEqual(before);
+  scene.views.messages.scroll.pop();
+  const remembered = fixture();
+  remember(remembered.locals[0].scene, 'printcenter', {},
+    { scroll: [{ key: 'printing-queue', top: 310, left: 0 }], selections: [], focusKey: null });
+  expect(validate(remembered).ok).toBe(true);
+});
+
 test('complete one- and two-local snapshots preserve distinct baseline/current data and accept empty live scenes', () => {
   const snapshot = fixture(true);
   snapshot.baseline.source = 'replacement';

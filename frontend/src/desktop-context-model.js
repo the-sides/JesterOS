@@ -12,6 +12,12 @@ export function desktopViewDefaults(family, renderer) {
 }
 
 export function desktopFileSize(file) {
+  const prefix = 'data:application/pdf;base64,';
+  if (typeof file.content === 'string' && file.content.startsWith(prefix)) {
+    const bytes = file.content.slice(prefix.length);
+    if (bytes.length && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(bytes))
+      return bytes.length / 4 * 3 - (bytes.endsWith('==') ? 2 : bytes.endsWith('=') ? 1 : 0);
+  }
   return typeof file.content === 'string' ? encoder.encode(file.content).byteLength
     : file.content && typeof file.content === 'object' ? encoder.encode(JSON.stringify(file.content)).byteLength : 0;
 }
@@ -92,7 +98,7 @@ export function readDesktopFileInfo(store, fileId, items = []) {
   const folder = file.kind === 'folder';
   const size = folder ? undefined : desktopFileSize(file);
   const kind = file.id === 'disk' ? 'Volume' : folder ? 'Folder' : file.kind === 'image' ? 'Image document'
-    : /\.pdf$/i.test(file.name) ? 'PDF document' : 'Text document';
+    : /\.pdf$/i.test(file.name) || typeof file.content === 'string' && file.content.startsWith('data:application/pdf;base64,') ? 'PDF document' : 'Text document';
   return { fileId, name: file.name, icon: file.icon ?? (folder ? 'folder' : file.kind === 'image' ? 'image-file' : 'pdf'),
     kind, parentName, path: deleted ? 'Trash' : ancestors.join(' / '), revision: file.revision, deleted,
     ...(folder ? { itemCount: store.files.filter(entry => entry.parentId === file.id && !entry.deleted).length }

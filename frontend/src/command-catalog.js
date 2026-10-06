@@ -1,4 +1,4 @@
-import { MOJAVE_PROFILE_ID } from './os-profiles.js';
+import { MOJAVE_PROFILE_ID, getOSProfile } from './os-profiles.js';
 import { defineCommand, NONE, text, identity, flag, number, offset, choice, object, match, empty } from './command-schema.js';
 import { windows11ShellCatalog } from './windows11-shell-catalog.js';
 import { windows11AppCatalog } from './windows11-app-commands.js';
@@ -19,6 +19,9 @@ import { sceneSeedCatalog } from './scene-seed-catalog.js';
 import { savedSessionCatalog } from './saved-session-catalog.js';
 import { menuBarCatalog } from './menu-bar-catalog.js';
 import { applicationMenuCatalog } from './application-menu-catalog.js';
+import { fileWorkflowCatalog } from './file-workflow-catalog.js';
+import { fileDialogCatalog } from './file-dialog-catalog.js';
+import { finderFileCatalog } from './finder-file-commands.js';
 
 const MAC_PROFILES = [MOJAVE_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -56,6 +59,13 @@ export const commandCatalog = {
   ...savedSessionCatalog,
   ...menuBarCatalog,
   ...applicationMenuCatalog,
+  ...fileWorkflowCatalog(getOSProfile('macos-golden-gate-27.0.1')),
+  ...fileDialogCatalog,
+  ...finderFileCatalog,
+  ...Object.fromEntries([defineCommand(['macos-golden-gate-27.0.1'], 'notes.document.create', 'shell.file-workflows', empty, empty,
+    ['Interactive local Golden scene and available workspace; no blocking File sheet.', 'Complete record, clock, identity and whole-seed content capacity before opening.'],
+    ['Create exactly one new local plain-text note and activate its ordinary Notes document window, reopening remembered geometry only when required. Utilities are not document substitutes. Focus the actual new title field.'],
+    ['notes', 'windows', 'activeAppId', 'activeWindowId', 'closedWindows'], NONE, object({ noteId: identity, windowId: identity }))]),
   ...Object.fromEntries([
   defineShared('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
     ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],

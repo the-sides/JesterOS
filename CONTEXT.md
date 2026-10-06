@@ -167,7 +167,7 @@ An accepted restart/shutdown signs out every fictional user but retains original
 An opaque scene-owned original desktop or credential-surface focus/selection/scroll capture. Cancel restores the connected original, including private credential drafts kept mounted inert behind confirmation. No credentials are published in inspection or serialized state.
 
 **Scene seed baseline**:
-A complete, validated version-1 Notes/files/Messages/appearance/persistent-Dock fixture owned by the Golden Gate host. Each fictional user clones it independently. Detached inspection/discovery exposes this initial baseline, not current edits or a saved session; generated read-only app bundles and immutable profile identity remain separate.
+A complete, validated version-1 Notes/files/printing/Messages/appearance/persistent-Dock fixture owned by the Golden Gate host. Each fictional user clones it independently. Printing is required closed data with empty defaults; older incomplete V1 fixtures reject before disposal. Detached inspection/discovery exposes this initial baseline, not current edits or a saved session; generated read-only app bundles and immutable profile identity remain separate.
 
 **Complete scene replacement**:
 Browser-local setup through `scene.reset` or `scene.replaceSeed`, without actor controls. Validate before disposal; replace all local/Guest roots, queues, menus, drafts and timers, then acknowledge only after a fresh awake desktop and Messages registration/DOM are ready. Outgoing queued work rejects unavailable. Reset clears only the Golden Gate saved-session slot before restoring the default fixture; a storage failure preserves the live scene. Replacement does not merge, save, clear the existing slot or invoke host services.
@@ -192,3 +192,17 @@ The application-menu Services child routes an exact current original Notes title
 
 
 
+
+**MENU-04 delivery / next slice**:
+Current Golden Gate discovery has206 typed commands, including19 bounded File workflow additions. MENU-04 is implemented and exercised:189 source records (178 applied/11 rejected),38 rebuilt Rust records (36 applied/2 rejected), and76 atomic historical rejections pass strict validation.242 tests/3217 assertions and final build pass. The backlog has38 completed original items/248 remaining; continue MENU-05 next. Earlier MENU-03/187 evidence remains historical.
+
+**Bounded File document workflow**:
+Golden-only `shell.file-workflows` connects actual Notes New/Close/Duplicate/Markdown/PDF/Print and Finder current-child selection/New Folder/subtree Duplicate/Open/Get Info to canonical commands. Notes autosaves, with no fake Save/Open Recent; imports are intentionally disabled because flat plain-text records cannot represent native Imported Notes folders/formats. New focuses actual title and ordinary retained geometry; duplicate preserves entire source text into an unpinned selected copy without consuming About utility memory. Launch-only app interiors remain launch-only.
+
+**Owned transient File pane**:
+Exact dialog/ordinary Notes window/source identity with native contained focus/Tab, cancel/Escape/Command-W, physical inner files/preview scroll and inert underlay. Draft name/folder/tags/range/copies never serialize. Save as PDF from Print returns to exact Print options on cancel. Busy cancellation and lock/unlock invalidate captured pending output leases; stale source/menu/dialog IDs never retarget files. Focused Notes/window/app mutations and saving all retained local roots reject while a pane exists, including inactive-root panes. Automation scopes exact data-file-dialog-id and owner/user roots, not generic dialog roles or hidden substring matches.
+
+**Virtual PDF and print archive**:
+Real Markdown escaped title/full body and embedded Liberation Sans PDF use existing virtual files only, with TextEdit/Preview association and explicit collision replacement preserving identity/creation metadata. Lazy pdf-lib/fontkit shares A4 preview/output pagination; unsupported glyphs reject honestly. Imported archive canonical base64/PDF header/footer checks are bounded envelope validation, not full PDF parsing. Printing V1 `{nextJobId,jobs}` retains immutable selected-page PDF/copies/progress and terminal archives independently per root, included in complete seeds and explicit local saved sessions. Limits1024 jobs/pages,99 copies,1Mi base64/title per job and4Mi aggregate string/key units across the complete persistent seed; safe counter/Date limits also apply. Explicit all-local saved sessions separately retain their2Mi envelope limit. Actual foreground-awake one-second FIFO worker and pause/resume/cancel/advance share the queue, never a mirror; Studio Printer is fictional, with no host IO/download/physical printer.
+
+Primary27 Notes inputs: [create/edit](https://support.apple.com/guide/notes/create-and-edit-notes-not9474646a9/4.13/mac/27), [import/export/print](https://support.apple.com/guide/notes/import-export-and-print-notes-not201900c07/4.13/mac/27). Exact19-command schemas, printing fields, results and live discovery are recorded in [feature commands](docs/feature-commands.md#menu-04--bounded-golden-gate-file-workflows).
