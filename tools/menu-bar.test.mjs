@@ -3,6 +3,9 @@ import { createMenuBarCommands, menuBarDefaults, menuBarRequest, menuBarTargets 
 import { helpMenuProviders } from '../frontend/src/help-menu-model.js';
 import { createHelpViewerCommands } from '../frontend/src/help-viewer-commands.js';
 import { goldenGateProfile } from '../frontend/src/golden-gate-profile.js';
+import { appleMenuItems } from '../frontend/src/apple-menu.js';
+import { fictionalSessionDefaults, signOutFictionalSessions } from '../frontend/src/fictional-session.js';
+import { fictionalPowerDefaults, createFictionalPowerCommands } from '../frontend/src/fictional-power.js';
 
 const leaf = (id, command = 'window.focus') => ({ id, label: id, enabled: true,
   request: { command, target: command.startsWith('session.') || command.startsWith('power.') ? {} : { windowId: id }, payload: {} } });
@@ -450,4 +453,28 @@ test('a searched Help topic opens its real reader after menu query teardown and 
   expect(pane).toBeNull();
   expect(s.focus()).toEqual({ kind: 'editor', editor: s.editor });
   expect(s.editor.caret).toBe(7);
+});
+
+test('releasing Option during Apple return-focus cannot turn an accepted immediate restart into a confirmation modal', async () => {
+  const session = fictionalSessionDefaults(goldenGateProfile), power = fictionalPowerDefaults(goldenGateProfile);
+  let option = true;
+  const powerCommands = createFictionalPowerCommands({ profile: goldenGateProfile, session, power,
+    available: () => true, settle: async () => {}, captureReturn: () => {}, restoreReturn: async () => {},
+    signOutForBoot: async () => signOutFictionalSessions(session),
+    getView: () => ({
+      controlIds: () => power.pending ? ['cancel', 'confirm'] : power.phase === 'booting' ? ['surface'] : [],
+      focus: () => true,
+    }),
+  });
+  const s = consumer([provider('apple', [])], undefined, { profile: goldenGateProfile,
+    projectMenus: () => [provider('apple', appleMenuItems({ profile: goldenGateProfile, session, option, desktopAvailable: true }))],
+    invoke: request => powerCommands[request.command](request.target ?? {}, request.payload ?? {}),
+  });
+  await s.request('open', 'apple');
+  s.setRestoreHook(() => { option = false; });
+  const result = await s.request('execute', 'apple', { itemId: 'restart' });
+  expect(result.status).toBe('applied');
+  expect(power.phase).toBe('booting'); expect(power.pending).toBeNull();
+  expect(session.phase).toBe('login'); expect(session.users.every(user => !user.signedIn)).toBe(true);
+  expect(s.state.menuId).toBeNull();
 });

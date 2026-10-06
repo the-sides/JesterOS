@@ -12,6 +12,9 @@ const scrollSelectors = {
   'desktop-view-options': '.view-inspector',
   'application-about': '.golden-gate-about-app',
   'application-settings': '.golden-gate-notes-settings',
+  'system-about': '.system-about-panel',
+  'system-force-quit': '.force-quit-panel',
+  'system-information': '.system-information-panel',
   'printing-queue': '[data-print-center-view="queue"] [data-print-center-area="jobs"]',
   'service-panel': '[data-service-scroll]',
 };

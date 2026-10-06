@@ -5,14 +5,15 @@
   let draft = $state('');
   let acknowledged = $state(false);
   const selected = $derived(session.users.find(user => user.id === (session.phase === 'locked' ? session.activeUserId : session.selectedUserId)));
-  const userList = $derived(session.phase === 'login' && session.loginView === 'users' && !session.guestConfirmation);
-  const identity = $derived(`${session.phase}:${selected?.id ?? ''}:${session.guestConfirmation}:${userList}`);
+  const logoutUser = $derived(session.users.find(user => user.id === session.logoutPending?.userId));
+  const userList = $derived(session.phase === 'login' && session.loginView === 'users' && !session.logoutPending);
+  const identity = $derived(`${session.phase}:${selected?.id ?? ''}:${session.logoutPending?.userId ?? ''}:${userList}`);
   const sceneDate = $derived(new Date(profile.defaults.sceneTime));
   const dateLabel = $derived(new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(sceneDate));
   const timeLabel = $derived(new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'UTC' }).format(sceneDate).replace(/\s?[AP]M$/, ''));
   function request(command, target = {}, payload = {}) { return execute({ command, target, payload }); }
   function available(element) {
-    return Boolean((session.phase !== 'desktop' || session.guestConfirmation) && element?.isConnected
+    return Boolean((session.phase !== 'desktop' || session.logoutPending) && element?.isConnected
       && !element.disabled && !element.closest('[inert]') && element.getClientRects().length
       && getComputedStyle(element).visibility !== 'hidden');
   }
@@ -39,7 +40,7 @@
   }
   $effect(() => {
     identity; draft = ''; acknowledged = false;
-    tick().then(() => { if (!root?.contains(document.activeElement)) focus(session.guestConfirmation ? 'guest-end-cancel' : userList ? `user:${session.users[0].id}` : selected?.kind === 'guest' ? 'guest-acknowledge' : 'password'); });
+    tick().then(() => { if (!root?.contains(document.activeElement)) focus(session.logoutPending ? 'logout-cancel' : userList ? `user:${session.users[0].id}` : selected?.kind === 'guest' ? 'guest-acknowledge' : 'password'); });
   });
   $effect(() => {
     if (!root) return;
@@ -51,7 +52,7 @@
   function observed(event) { const controlId = event.target.dataset.sessionControl; if (controlId && available(event.target)) request('session.focus', { controlId }); }
   function keyboard(event) {
     if (!available(root) || event.isComposing) return;
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (session.guestConfirmation) request('session.guest.respond', {}, { accept: false }); else if (!userList) request('session.login.back'); return; }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (session.logoutPending) request('session.logout.respond', {}, { accept: false }); else if (!userList) request('session.login.back'); return; }
     const list = controls(), index = list.indexOf(document.activeElement);
     if (!list.length) return;
     let next;
@@ -71,14 +72,18 @@
   }
 </script>
 
-<div class="golden-gate-session" class:confirmation={session.guestConfirmation} bind:this={root} data-session-surface data-os-profile={profile.id} role="dialog" aria-modal="true" aria-label={session.guestConfirmation ? 'Log out Guest User' : session.phase === 'locked' ? 'Lock Screen' : 'Login Window'} tabindex="-1" style:background-image={session.guestConfirmation ? undefined : `url("${profile.assets.wallpaper}")`} onkeydown={keyboard} onfocusin={observed}>
+<div class="golden-gate-session" class:confirmation={Boolean(session.logoutPending)} bind:this={root} data-session-surface data-os-profile={profile.id} role="dialog" aria-modal="true" aria-label={session.logoutPending ? `Log out ${logoutUser.name}` : session.phase === 'locked' ? 'Lock Screen' : 'Login Window'} tabindex="-1" style:background-image={session.logoutPending ? undefined : `url("${profile.assets.wallpaper}")`} onkeydown={keyboard} onfocusin={observed}>
   <div class="content">
-    {#if session.guestConfirmation}
-      <div class="guest-dialog">
-        <svg class="guest-symbol" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 5 45 42H3Z" fill="#f7c957" stroke="#b58b28" stroke-linejoin="round"/><path d="M24 17v12" stroke="#765414" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="35" r="2" fill="#765414"/></svg>
+    {#if session.logoutPending}
+      <div class="logout-dialog">
+        {#if logoutUser.kind === 'guest'}
+          <svg class="logout-symbol" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 5 45 42H3Z" fill="#f7c957" stroke="#b58b28" stroke-linejoin="round"/><path d="M24 17v12" stroke="#765414" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="35" r="2" fill="#765414"/></svg>
+        {:else}
+          <svg class="logout-symbol" viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="4" width="42" height="40" rx="12" fill="#9ba6b5"/><circle cx="24" cy="18" r="7" fill="white"/><path d="M11 38c0-16 26-16 26 0Z" fill="white"/></svg>
+        {/if}
         <h1>Are you sure you want to log out?</h1>
-        <p>All files and changes in this fictional Guest desktop will be deleted. Local users’ desktops will be kept.</p>
-        <div class="actions"><button type="button" data-session-control="guest-end-cancel" onclick={() => request('session.guest.respond', {}, { accept: false })}>Cancel</button><button type="button" class="default" data-session-control="guest-end-confirm" onclick={() => request('session.guest.respond', {}, { accept: true })}>Delete Files and Log Out</button></div>
+        <p>{#if logoutUser.kind === 'guest'}All files and changes in this fictional Guest desktop will be deleted. Local users’ desktops will be kept.{:else}Log out {logoutUser.name} from this simulated Mac. Local documents, drafts, and windows remain in this scene for your next fictional sign-in. Other users are not logged out.{/if}</p>
+        <div class="actions"><button type="button" data-session-control="logout-cancel" onclick={() => request('session.logout.respond', {}, { accept: false })}>Cancel</button><button type="button" class="default" data-session-control="logout-confirm" onclick={() => request('session.logout.respond', {}, { accept: true })}>{logoutUser.kind === 'guest' ? 'Delete Files and Log Out' : 'Log Out'}</button></div>
       </div>
     {:else}
       <div class="clock" aria-label="Fixed fictional scene time"><div class="date">{dateLabel}</div><time datetime={profile.defaults.sceneTime} class="time">{timeLabel}</time></div>
@@ -152,10 +157,10 @@
   .confirmation { background: #0004; }
   .confirmation::before { background: transparent; }
   .confirmation .content { justify-content: center; gap: 0; }
-  .guest-dialog { width: min(390px, 100%); box-sizing: border-box; border-radius: 22px; padding: 25px; border: 1px solid var(--appearance-menu-border, #ffffffa0); color: var(--appearance-ink, #222); background: var(--appearance-menu-bg, #f4f0e9ed); backdrop-filter: blur(28px) saturate(1.35); box-shadow: inset 0 1px 1px #fffa, 0 16px 45px #0005; text-shadow: none; text-align: center; }
-  .guest-dialog h1 { margin-top: 14px; font-weight: 650; }
-  .guest-dialog p { font-size: 12px; line-height: 1.5; }
-  .guest-symbol { display: block; margin: auto; width: 48px; height: 48px; }
+  .logout-dialog { width: min(390px, 100%); box-sizing: border-box; border-radius: 22px; padding: 25px; border: 1px solid var(--appearance-menu-border, #ffffffa0); color: var(--appearance-ink, #222); background: var(--appearance-menu-bg, #f4f0e9ed); backdrop-filter: blur(28px) saturate(1.35); box-shadow: inset 0 1px 1px #fffa, 0 16px 45px #0005; text-shadow: none; text-align: center; }
+  .logout-dialog h1 { margin-top: 14px; font-weight: 650; }
+  .logout-dialog p { font-size: 12px; line-height: 1.5; }
+  .logout-symbol { display: block; margin: auto; width: 48px; height: 48px; }
   .actions { display: flex; justify-content: end; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
   .actions button { background: var(--appearance-card, #ffffffa0); color: inherit; border: 1px solid var(--appearance-border, #bbb8); border-radius: 18px; padding: 7px 14px; }
   .actions .default { background: var(--appearance-accent, #0878ef); color: var(--appearance-accent-ink, white); border-color: transparent; }

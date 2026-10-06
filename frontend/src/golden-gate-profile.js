@@ -15,7 +15,7 @@ export const goldenGateProfile = {
     'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management',
     'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.menu-bar', 'shell.application-menu', 'shell.appearance',
     'shell.file-workflows', 'shell.edit-workflows', 'shell.view-workflows', 'shell.window-extensions',
-    'shell.help-workflows', 'shell.services-workflows',
+    'shell.help-workflows', 'shell.services-workflows', 'shell.apple-menu',
     'scene.profile-selection', 'scene.seed', 'scene.saved-session', 'session.fictional', 'session.power', 'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {
@@ -79,7 +79,7 @@ export const goldenGateProfile = {
     siriai: launchOnly('siriai', 'Siri AI'),
     stickies: launchOnly('stickies', 'Stickies'),
     stocks: launchOnly('stocks', 'Stocks'),
-    systeminformation: launchOnly('systeminformation', 'System Information'),
+    systeminformation: { ...launchOnly('systeminformation', 'System Information'), coverage: 'system-report-summary' },
     terminal: launchOnly('terminal', 'Terminal'),
     textedit: launchOnly('textedit', 'TextEdit'),
     tips: launchOnly('tips', 'Tips'),
@@ -96,5 +96,9 @@ export const goldenGateProfile = {
   assets: { wallpaper: '/golden-gate/wallpaper.svg',
     messages: '/messages', fonts: ['/fonts/InterVariable.woff2'] },
   defaults: { startupAppId: 'messages', desktopAppId: 'finder', clockLabel: 'Mon 9:41 AM',
-    sceneTime: '2026-09-28T09:41:00.000Z', batteryPercent: 87, accountName: 'Alex Morgan' },
+    sceneTime: '2026-09-28T09:41:00.000Z', batteryPercent: 87, accountName: 'Alex Morgan',
+    // Invented scene identity; never derived from this browser or host hardware.
+    machine: { modelName: 'MacBook Air', modelDetail: 'M2, 2022', chip: 'Apple M2', memoryGB: 8,
+      startupDisk: 'Macintosh HD', serialNumber: 'JESTEROS-FICTIONAL-001', buildNumber: 'JESTEROS-GOLDEN-GATE-001' },
+  },
 };

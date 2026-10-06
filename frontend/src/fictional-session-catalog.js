@@ -5,19 +5,19 @@ const menuId = choice('apple', 'users');
 const userId = choice('local-alex', 'local-casey', 'guest');
 const define = (name, target, payload, requires, presentation, result) => {
   const entry = defineCommand(profiles, `session.${name}`, 'session.fictional', target, payload, requires,
-    presentation, ['Only fictional page-local session/user state; original isolated desktops remain mounted except confirmed Guest ending.'], NONE, result);
+    presentation, ['Only fictional page-local session/user state; original isolated local desktops remain mounted. Departing Guest logout discards only its ephemeral root.'], NONE, result);
   entry[1].resultSchema.additionalProperties = false;
   return entry;
 };
 const retained = 'Retained original desktops, document/editor DOM/data/caret/scroll/window bounds; no host identity, provider, credentials or saved-session storage.';
 export const fictionalSessionCatalog = Object.fromEntries([
   define('lock', empty, empty, ['An interactive signed-in desktop.'], [retained, 'Lock retained active user and show native macOS credential form.'], object({ phase: { const: 'locked' }, userId })),
-  define('login.open', empty, empty, ['No Guest-end confirmation.'], [retained, 'Present native login user choices; retain and lock current session.'], object({ phase: { const: 'login' } })),
-  define('user.select', object({ userId }), empty, ['Login/lock presentation, not desktop or Guest confirmation.'], ['Choose fictional profile; show real credential or Guest acknowledgement form.'], object({ userId })),
+  define('login.open', empty, empty, ['No logout confirmation.'], [retained, 'Present native login user choices; retain and lock current session.'], object({ phase: { const: 'login' } })),
+  define('user.select', object({ userId }), empty, ['Login/lock presentation, not desktop or logout confirmation.'], ['Choose fictional profile; show real credential or Guest acknowledgement form.'], object({ userId })),
   define('login.submit', empty, object({ passcode: { type: 'string', maxLength: 5 }, acknowledgeGuest: flag }, NONE),
     ['Selected local user requires fixed fictional passcode scene; Guest requires acknowledgeGuest:true and no passcode.'],
     ['Incorrect fictional input visibly errors without activation; accepted input prepares/resumes exact isolated original desktop. No password draft retained/published.'], object({ userId, accepted: flag })),
-  define('login.back', empty, empty, ['Login/lock, no Guest confirmation.'], ['Return to login choices only; never bypass authentication.'], object({ phase: { const: 'login' } })),
+  define('login.back', empty, empty, ['Login/lock, no logout confirmation.'], ['Return to login choices only; never bypass authentication.'], object({ phase: { const: 'login' } })),
   define('menu.open', object({ menuId }), {
     ...object({ position: choice('first', 'last'), itemId: identity }, NONE), not: match({ position: true, itemId: true }),
   }, ['Interactive desktop; actual shared native invoker visible/connected. Users menu additionally enabled.'],
@@ -27,10 +27,14 @@ export const fictionalSessionCatalog = Object.fromEntries([
   define('menu.focus', object({ menuId, itemId: identity }), object({ observe: flag }, NONE), ['Matching shared open provider and real enabled item.'],
     ['Focus actual owned menu target; observe:true records existing native focus without moving it.'], object({ menuId, itemId: identity })),
   define('menu.select', object({ menuId, itemId: identity }), empty, ['Matching shared open provider and enabled native leaf.'],
-    ['Dismiss and restore original desktop focus before canonical lock/login/power/user/Guest action; user choice still requires sign-in.'], object({ menuId, itemId: identity })),
-  define('focus', object({ controlId: identity }), empty, ['Actually rendered visible login/lock/Guest-confirmation control.'], ['Focus actual owned control, never inert retained desktop.'], object({ controlId: identity })),
+    ['Dismiss and restore original desktop focus before canonical Apple/user action; user choice still requires sign-in.'], object({ menuId, itemId: identity })),
+  define('focus', object({ controlId: identity }), empty, ['Actually rendered visible login/lock/logout-confirmation control.'], ['Focus actual owned control, never inert retained desktop.'], object({ controlId: identity })),
   define('fastUserSwitching.set', empty, object({ enabled: flag }), ['Mac optional menu; bounded page-local toggle, not native Menu Bar settings or administrator privileges.'],
     ['Show/hide native upper-right full-name menu. No Users & Groups/auth privilege implementation.'], object({ enabled: flag })),
-  define('guest.end', empty, empty, ['Interactive active signed-in Guest.'], ['Present real delete-at-logout confirmation; retain original inert Guest desktop until decision.'], object({ confirmationRequired: { const: true } })),
-  define('guest.respond', empty, object({ accept: flag }), ['Open Guest-end confirmation.'], ['Cancel restores original Guest focus/scroll; accept destroys only Guest desktop/data and returns login choices. Local sessions remain retained.'], object({ accepted: flag, phase: choice('desktop', 'login') })),
+  define('logout', empty, object({ confirm: flag }, NONE), ['Interactive signed-in local or Guest desktop.'],
+    ['Confirm by default in a real Cancel/Log Out surface. confirm:false is explicit Option/chord intent and signs out without that action confirmation. Retain local document models/original desktop; discard only departing Guest data. Never locks another signed-in account or invokes host logout.'],
+    object({ confirmationRequired: flag, userId, phase: choice('desktop', 'login') })),
+  define('logout.respond', empty, object({ accept: flag }), ['Open logout confirmation owned by the current signed-in user.'],
+    ['Cancel restores that original account’s desktop focus/scroll; accept signs out only that account. Guest accept destroys only its ephemeral root. Return login choices; local roots remain retained.'],
+    object({ accepted: flag, userId, phase: choice('desktop', 'login') })),
 ]);

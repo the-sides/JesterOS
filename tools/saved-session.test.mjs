@@ -685,3 +685,27 @@ test('Saved View state rejects impossible chrome, hidden List documents, invalid
     addWindow(scene, 'notes', { utilityKind: 'application-about', finderBrowseMode: 'icons' });
   });
 });
+
+test('saved system utilities retain owned scroll and running-app selection without allowing foreign chooser state', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  const about = addWindow(scene, 'finder', { utilityKind: 'system-about', title: 'About This Mac' });
+  const chooser = addWindow(scene, 'finder', { utilityKind: 'system-force-quit', title: 'Force Quit Applications', forceQuitSelectedAppId: 'messages' });
+  const report = addWindow(scene, 'systeminformation');
+  delete about.folderId; delete chooser.folderId;
+  scene.views[about.id].scroll = [{ key: 'system-about', top: 70, left: 0 }];
+  scene.views[chooser.id].scroll = [{ key: 'system-force-quit', top: 80, left: 0 }];
+  scene.views[report.id].scroll = [{ key: 'system-information', top: 90, left: 0 }];
+  expect(validate(snapshot)).toEqual({ ok: true });
+  for (const mutate of [
+    copy => { copy.windows.find(window => window.id === chooser.id).forceQuitSelectedAppId = 'mail'; },
+    copy => { copy.windows.find(window => window.id === about.id).forceQuitSelectedAppId = 'messages'; },
+    copy => { delete copy.windows.find(window => window.id === chooser.id).forceQuitSelectedAppId; },
+    copy => { copy.windows.find(window => window.id === chooser.id).appId = 'messages'; },
+    copy => { copy.views[about.id].scroll[0].key = 'system-force-quit'; },
+    copy => { copy.views[report.id].scroll[0].key = 'notes-body'; },
+    copy => { const duplicate = addWindow(copy, 'finder', { utilityKind: 'system-about' }); delete duplicate.folderId; },
+  ]) {
+    const bad = structuredClone(snapshot); mutate(bad.locals[0].scene);
+    expect(validate(bad).ok).toBe(false);
+  }
+});

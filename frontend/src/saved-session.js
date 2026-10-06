@@ -33,7 +33,7 @@ const bounds = object({ x: number(-MAX_COUNTER), y: number(-MAX_COUNTER), width:
 const desktopId = { ...identity, pattern: '^desktop-[1-9][0-9]*$' };
 const scrollPosition = object({ top: number(), left: number() });
 const scrollKey = choice('notes-list', 'notes-body', 'messages-conversations', 'messages-thread', 'finder-contents',
-  'window-content', 'settings-dock', 'settings-appearance', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel');
+  'window-content', 'settings-dock', 'settings-appearance', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel', 'system-about', 'system-force-quit', 'system-information');
 const selectionKey = choice('notes-title', 'notes-body', 'notes-search',
   'service-name', 'service-email', 'service-phone', 'service-notes', 'service-to', 'service-subject', 'service-body');
 const viewToken = object({
@@ -48,7 +48,8 @@ const windowRecord = object({
   folderId: safeKey(), finderSelectedFileIds: ids(safeKey()), settingsPane: choice('dock', 'appearance'),
   finderPresentation: finderPresentationSchema, notesPresentation: notesPresentationSchema,
   finderBrowseMode: choice('icons', 'list', 'columns', 'gallery'),
-  utilityKind: choice('desktop-info', 'desktop-view-options', 'application-about', 'application-settings'), fileId: safeKey(), infoSections: object({ general: flag, name: flag }),
+  utilityKind: choice('desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'system-about', 'system-force-quit'),
+  fileId: safeKey(), infoSections: object({ general: flag, name: flag }), forceQuitSelectedAppId: nullable(identity),
 }, ['id', 'appId', 'title', 'minimized', 'fullScreen', 'zoomed', 'bounds', 'restoreBounds', 'spaceId']);
 const rootSnapshot = object({
   seed: sceneSeedSchema, windows: array(windowRecord),
@@ -152,7 +153,7 @@ function validateView(view, window, seed) {
     : service ? ['service-panel', 'window-content']
       : window.appId === 'messages' ? ['messages-conversations', 'messages-thread'] : window.appId === 'finder' ? ['finder-contents']
         : window.appId === 'settings' ? [`settings-${window.settingsPane}`]
-          : window.appId === 'printcenter' ? ['printing-queue'] : ['window-content'];
+          : window.appId === 'printcenter' ? ['printing-queue'] : window.appId === 'systeminformation' ? ['system-information'] : ['window-content'];
   if (window.utilityKind || (window.appId !== 'notes' && window.appId !== 'messages')) allowed.push('window-content');
   if (view.scroll.some(scroll => !allowed.includes(scroll.key)
     || (scroll.key === 'service-panel' ? !Object.hasOwn(scroll, 'recordId') || scroll.recordId !== (entry?.id ?? null)
@@ -232,6 +233,7 @@ function validateRoot(scene, userId, profile) {
       return invalid('Live windows must belong to running applications and live ordinary home desktops.');
     }
     if (window.zoomed !== (window.restoreBounds !== null)) return invalid('Zoomed windows require retained normal restore bounds; unzoomed windows must not have restore bounds.');
+    if (Object.hasOwn(window, 'forceQuitSelectedAppId') && window.utilityKind !== 'system-force-quit') return invalid('Only the Force Quit chooser owns an application selection.');
     if (window.utilityKind) {
       if (Object.hasOwn(window, 'folderId') || Object.hasOwn(window, 'finderSelectedFileIds')
         || Object.hasOwn(window, 'finderPresentation') || Object.hasOwn(window, 'notesPresentation')
@@ -243,6 +245,14 @@ function validateRoot(scene, userId, profile) {
         const owner = `${window.appId}:${window.utilityKind}`;
         if (utilityOwners.has(owner)) return invalid('An application can have at most one live utility of each app-menu kind.');
         utilityOwners.add(owner);
+      } else if (window.utilityKind === 'system-about' || window.utilityKind === 'system-force-quit') {
+        if (window.appId !== 'finder' || Object.hasOwn(window, 'fileId') || Object.hasOwn(window, 'infoSections')) return invalid('System utilities belong to the simulated Finder shell and contain no desktop-file metadata.');
+        const owner = `${window.appId}:${window.utilityKind}`;
+        if (utilityOwners.has(owner)) return invalid('Each local desktop has at most one system utility of each kind.');
+        utilityOwners.add(owner);
+        if (window.utilityKind === 'system-force-quit' && (!Object.hasOwn(window, 'forceQuitSelectedAppId')
+          || window.forceQuitSelectedAppId !== null && (!registered(window.forceQuitSelectedAppId)
+            || !scene.runningAppIds.includes(window.forceQuitSelectedAppId)))) return invalid('Force Quit selection must name a currently running application or be null.');
       } else {
         if (window.appId !== 'finder') return invalid('Desktop utilities belong only to Finder.');
         if (window.utilityKind === 'desktop-info' ? !files.has(window.fileId) || !Object.hasOwn(window, 'infoSections')

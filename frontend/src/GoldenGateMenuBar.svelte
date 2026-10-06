@@ -267,14 +267,14 @@
   }
   function toggle(event, menu) {
     event.preventDefault(); event.stopPropagation();
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || !available(menu.menuId)) return;
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || (event.altKey && menu.menuId !== 'apple') || !available(menu.menuId)) return;
     request(menuState.menuId === menu.menuId ? 'close' : 'open', menu.menuId);
   }
   function hover(menu) {
     if (menuState.menuId && menuState.menuId !== menu.menuId && available(menu.menuId)) request('open', menu.menuId);
   }
   function invokerKey(event, menu) {
-    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) {
+    if (event.isComposing || event.ctrlKey || event.metaKey || (event.altKey && menu.menuId !== 'apple')) {
       if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
       event.stopPropagation();
       return;
@@ -312,7 +312,7 @@
       bind:this={invokers[menu.menuId]} type="button" role="menuitem" data-menu-invoker={menu.menuId}
       disabled={!menu.enabled || !foreground} aria-disabled={!menu.enabled || !foreground}
       class:located={location?.menuId === menu.menuId}
-      aria-label={menu.kind === 'apple' ? 'Apple menu — session controls' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.label}
+      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.label}
       aria-haspopup="menu" aria-expanded={Boolean(openMenu?.menuId === menu.menuId)} aria-controls={`golden-menu-${menu.menuId}-0`}
       onpointerdown={invokerPointer} onpointerenter={() => hover(menu)} onclick={event => toggle(event, menu)}
       onkeydown={event => invokerKey(event, menu)} oncontextmenu={suppressContext}>

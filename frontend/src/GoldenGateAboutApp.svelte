@@ -11,6 +11,7 @@
     'plain-text': 'Local plain-text notes; no cloud sync or rich-text editing.',
     'dock-preferences': 'Simulated Dock preferences; no host system settings are changed.',
     'print-queue': 'Local fictional printer queue and immutable PDF output; no physical printer is used.',
+    'system-report-summary': 'Read-only fictional machine/software/running-application summary; no host diagnostics or full hardware/network/software tree.',
   };
 </script>
 

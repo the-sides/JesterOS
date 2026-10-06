@@ -3,7 +3,7 @@
   import App from './App.svelte';
   import MacSessionSurface from './MacSessionSurface.svelte';
   import MacPowerSurface from './MacPowerSurface.svelte';
-  import { createFeatureCommands, rejected } from './feature-commands.js';
+  import { createFeatureCommands, isRecord, rejected } from './feature-commands.js';
   import { commandCatalog } from './command-catalog.js';
   import { fictionalSessionDefaults, createFictionalSessionCommands, sessionTargets, sessionMenuItems, signOutFictionalSessions } from './fictional-session.js';
   import { fictionalPowerDefaults, createFictionalPowerCommands, powerTargets } from './fictional-power.js';
@@ -11,6 +11,7 @@
   import { createSavedSessionCommands, clearSavedSession, savedSessionStorageKey } from './saved-session.js';
   import { menuBarDefaults, createMenuBarCommands, menuBarTargets, menuBarRequest } from './menu-bar.js';
   import { helpMenuProviders } from './help-menu-model.js';
+  import { appleMenuItems } from './apple-menu.js';
 
   let { profile: profileInput, adapter: adapterInput, seed: seedInput, seedSource = 'default', savedSession: savedSessionInput,
     resetScene, restoreScene, registerCommands, selectProfile } = $props();
@@ -23,6 +24,7 @@
   let power = $state(fictionalPowerDefaults(profile));
   let menuBar = $state(menuBarDefaults());
   let sceneRevision = $state(0);
+  let appleOption = $state(false);
   let menuLifecycle = null;
   const menuDefinitions = $derived.by(sharedMenuDefinitions);
   let retainedIds = $state(savedSession?.locals.map(local => local.userId) ?? ['local-alex']);
@@ -30,7 +32,7 @@
   const controllers = new Map(), scenes = new Map(), menuViews = new Map(), desktopReturns = new Map();
   let surfaceView = null, powerView = null, powerReturn = null;
   const powerAvailable = () => !disposed && power.phase === 'awake' && !power.pending;
-  const interactive = () => powerAvailable() && session.phase === 'desktop' && !session.guestConfirmation;
+  const interactive = () => powerAvailable() && session.phase === 'desktop' && !session.logoutPending;
   const activeController = () => controllers.get(session.activeUserId);
   const menuKey = (userId, menuId) => `${userId}/${menuId}`;
   function registerDesktop(userId, controller) {
@@ -102,19 +104,17 @@
     sceneRevision;
     const local = scenes.get(session.activeUserId)?.menuProviders() ?? [];
     const activeName = session.users.find(user => user.id === session.activeUserId)?.name ?? '';
-    const items = menuId => sessionMenuItems(profile, session, menuId).map(item => ({ ...item,
-      ...(item.id === 'lock' ? { shortcut: '⌃⌘Q' } : {}),
-      ...(menuId === 'users' && item.id.startsWith('user:') ? { radio: true } : {}),
-      request: item.powerCommand ? { command: item.powerCommand }
-        : item.id === 'lock' ? { command: 'session.lock' }
-        : item.id === 'login' ? { command: 'session.login.open' }
-        : item.id === 'guest-end' ? { command: 'session.guest.end' }
+    const users = sessionMenuItems(profile, session, 'users').map(item => ({ ...item,
+      ...(item.id.startsWith('user:') ? { radio: true } : {}),
+      request: item.id === 'login' ? { command: 'session.login.open' }
         : { command: 'session.user.select', target: { userId: item.id.slice(5) } },
     }));
+    const apple = appleMenuItems({ profile, session, option: appleOption,
+      ...(scenes.get(session.activeUserId)?.appleMenuContext() ?? {}) });
     return helpMenuProviders([
-      { menuId: 'apple', kind: 'apple', label: 'Apple menu', enabled: true, items: items('apple') },
+      { menuId: 'apple', kind: 'apple', label: 'Apple menu', enabled: true, items: apple },
       ...local,
-      { menuId: 'users', kind: 'users', label: activeName, enabled: session.fastUserSwitching, items: items('users') },
+      { menuId: 'users', kind: 'users', label: activeName, enabled: session.fastUserSwitching, items: users },
     ], menuBar, profile);
   }
   async function invokeMenuRequest(request) {
@@ -123,10 +123,24 @@
       const login = await operations['session.login.open']({}, {});
       if (login.status !== 'applied') return login;
     }
-    const operation = operations[command] ?? powerOperations[command];
+    const operation = appleOperations[command] ?? operations[command] ?? powerOperations[command];
     return operation ? operation(target, payload)
       : activeController()?.execute({ command, target, payload }) ?? rejected('unavailable', 'The retained desktop is being prepared.');
   }
+  const appleOperations = {
+    'menu.appleOption.set': (target, payload) => {
+      if (!profile.capabilities.includes('shell.apple-menu')) return rejected('unsupported_profile', 'Only Golden Gate represents Apple-menu modifiers.');
+      if (!isRecord(target) || Reflect.ownKeys(target).length || !isRecord(payload)
+        || Reflect.ownKeys(payload).length !== 1 || typeof payload.enabled !== 'boolean') {
+        return rejected('invalid_arguments', 'Use an empty target and {enabled:boolean}.');
+      }
+      if (disposed || payload.enabled && (!interactive() || scenes.get(session.activeUserId)?.menusAvailable() !== true)) {
+        return rejected('unavailable', 'An interactive represented menu bar is required to hold Option.');
+      }
+      appleOption = payload.enabled;
+      return { status: 'applied', target: { enabled: appleOption } };
+    },
+  };
   const menuOperations = createMenuBarCommands({
     profile, state: menuBar, getMenus: sharedMenuDefinitions,
     getView: menuId => menuViews.get(menuKey(session.activeUserId, menuId)),
@@ -186,22 +200,22 @@
   const seedOperations = createSceneSeedCommands({ profile, available: () => !disposed,
     beforeReset: clearStoredSession, replaceScene: (value, source) => resetScene(value, source) });
   const catalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) => descriptor.profiles.includes(profile.id)));
-  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, menuOperations[name] ?? operations[name] ?? powerOperations[name] ?? seedOperations[name] ?? savedOperations[name] ?? ((target, payload) => {
+  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, appleOperations[name] ?? menuOperations[name] ?? operations[name] ?? powerOperations[name] ?? seedOperations[name] ?? savedOperations[name] ?? ((target, payload) => {
     if (disposed || (!interactive() && name !== 'scene.selectProfile')) return rejected('unavailable', 'Wake/start and sign in before interacting with the fictional desktop.');
     const controller = activeController();
     return controller ? controller.execute({ command: name, target, payload }) : rejected('unavailable', 'The retained desktop is being prepared.');
   })]));
   const commands = createFeatureCommands(handlers,
     () => ({ ...(activeController()?.inspect().state ?? { profile }), session: $state.snapshot(session), power: $state.snapshot(power),
-      menuBar: $state.snapshot(menuBar),
+      menuBar: { ...$state.snapshot(menuBar), appleOption },
       sceneSeed: { source: seedSource, seed: structuredClone(seed) } }), settle,
     catalog, () => {
       const targets = activeController()?.describe().targets ?? {};
       if (!interactive() && targets.windows) targets.windows = targets.windows.map(window => ({ ...window,
         presentationInteractive: false, ...(session.phase !== 'desktop' || power.phase !== 'awake' ? { presentationVisible: false } : {}),
         ...(window.resize ? { resize: { ...window.resize, available: false } } : {}) }));
-      return { ...targets, menuBar: menuBarTargets(menuBar, sharedMenuDefinitions(),
-        menuId => menuViews.get(menuKey(session.activeUserId, menuId))), session: { ...sessionTargets(session, surfaceView), desktopAvailable: interactive(),
+      return { ...targets, menuBar: { ...menuBarTargets(menuBar, sharedMenuDefinitions(),
+        menuId => menuViews.get(menuKey(session.activeUserId, menuId))), appleOption }, session: { ...sessionTargets(session, surfaceView), desktopAvailable: interactive(),
         boundaries: { ...sessionTargets(session).boundaries, savedSessions: true, guestSaved: false, credentialsSaved: false } },
         power: powerTargets(power, powerView),
         savedSession: { version: 1, storageKey: savedSessionStorageKey(profile), automaticSave: false, automaticRestore: false,
@@ -241,21 +255,42 @@
   onMount(() => {
     const unregister = registerCommands(publicCommands);
     function keyboard(event) {
-      if (disposed || event.defaultPrevented || event.isComposing || power.pending) return;
+      if (disposed || event.defaultPrevented || event.isComposing) return;
       const key = event.key.toLowerCase();
+      if (key === 'alt' && interactive()) {
+        void execute({ command: 'menu.appleOption.set', payload: { enabled: true } });
+        return;
+      }
+      if (power.pending) return;
       const alias = event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey;
-      let command;
+      let command, payload;
       if ((power.phase === 'saver' || power.phase === 'sleeping') && !['control', 'shift', 'alt', 'meta'].includes(key)) command = 'power.wake';
       else if (power.phase === 'off' && (alias && event.key === 'F4' || key === 'enter' || key === ' ')) command = 'power.start';
-      else if (powerAvailable() && !session.guestConfirmation && alias && event.key === 'F5') command = 'power.screenSaver.start';
-      else if (powerAvailable() && !session.guestConfirmation && alias && event.key === 'F6') command = 'power.sleep';
+      else if (powerAvailable() && !session.logoutPending && alias && event.key === 'F5') command = 'power.screenSaver.start';
+      else if (powerAvailable() && !session.logoutPending && alias && event.key === 'F6') command = 'power.sleep';
       else if (interactive() && (alias && event.key === 'F7'
         || event.ctrlKey && event.metaKey && !event.shiftKey && !event.altKey && key === 'q')) command = 'session.lock';
+      else if (interactive() && event.metaKey && event.altKey && !event.ctrlKey && !event.shiftKey && key === 'escape') command = 'system.forceQuit.open';
+      else if (interactive() && event.metaKey && event.shiftKey && !event.ctrlKey && key === 'q') {
+        command = 'session.logout'; payload = { confirm: !event.altKey };
+      }
       if (!command) return;
-      event.preventDefault(); event.stopImmediatePropagation(); void execute({ command });
+      event.preventDefault(); event.stopImmediatePropagation(); void execute({ command, ...(payload ? { payload } : {}) });
+    }
+    function releaseOption(event) {
+      if (appleOption && (event.type === 'blur' || !event.altKey)) {
+        void execute({ command: 'menu.appleOption.set', payload: { enabled: false } });
+      }
     }
     window.addEventListener('keydown', keyboard, true);
-    return () => { disposed = true; menuLifecycle.clear(); unregister(); window.removeEventListener('keydown', keyboard, true); };
+    window.addEventListener('keyup', releaseOption, true);
+    window.addEventListener('blur', releaseOption);
+    return () => {
+      disposed = true; menuLifecycle.clear(); unregister();
+      window.removeEventListener('keydown', keyboard, true);
+      window.removeEventListener('keyup', releaseOption, true);
+      window.removeEventListener('blur', releaseOption);
+    };
   });
 </script>
 
@@ -274,7 +309,7 @@
         windowNamespace={userId === 'local-alex' ? '' : `${userId}--`} />
     </div>
   {/each}
-  {#if power.phase === 'awake' && (session.phase !== 'desktop' || session.guestConfirmation)}
+  {#if power.phase === 'awake' && (session.phase !== 'desktop' || session.logoutPending)}
     <div class="session-presentation" inert={Boolean(power.pending)} aria-hidden={Boolean(power.pending)}>
       <MacSessionSurface {profile} {session} {execute} registerView={view => registerNativeView(null, view)} />
     </div>

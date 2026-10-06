@@ -7,10 +7,10 @@ const define = (name, target, payload, requires, presentation, result) => {
   entry[1].resultSchema.additionalProperties = false;
   return entry;
 };
-const awake = 'Awake desktop, login or lock presentation; no power or Guest-end confirmation.';
-const locked = 'Awake interactive signed-in desktop, already locked signed-in user or login presentation; no power or Guest-end confirmation.';
+const awake = 'Awake desktop, login or lock presentation; no power or logout confirmation.';
+const locked = 'Awake interactive signed-in desktop, already locked signed-in user or login presentation; no power or logout confirmation.';
 const retained = 'Retain original page-local local-user documents, editor/model/DOM identity and windows; never recreate local desktops.';
-const confirmation = 'Present actual Cancel and confirmation controls, initially focus Cancel; Guest deletion occurs only after acceptance.';
+const confirmation = 'Unless confirm:false, present actual Cancel and confirmation controls and initially focus Cancel. Guest deletion occurs only after accepted confirmation or explicit bypass.';
 export const fictionalPowerCatalog = Object.fromEntries([
   define('screenSaver.start', empty, empty, [locked],
     [retained, 'Lock a desktop session immediately, then show original wallpaper with deterministic elapsed-time drift; no scene-clock change or native aerial assets.'],
@@ -21,10 +21,12 @@ export const fictionalPowerCatalog = Object.fromEntries([
   define('wake', empty, empty, ['Only screen saver or sleeping; no pending confirmation.'],
     ['Return to the unchanged locked/login session without authenticating, unlocking, or starting an off scene.'],
     object({ phase: { const: 'awake' } })),
-  define('restart', empty, empty, [awake], [retained, confirmation],
-    object({ confirmationRequired: { const: true }, action: { const: 'restart' } })),
-  define('shutdown', empty, empty, [awake], [retained, confirmation],
-    object({ confirmationRequired: { const: true }, action: { const: 'shutdown' } })),
+  define('restart', empty, object({ confirm: flag }, NONE), [awake], [retained, confirmation,
+    'confirm:false explicitly bypasses the action confirmation using the same real host sign-out/startup transition. Existing local-window retention policy remains unchanged.'],
+    object({ confirmationRequired: flag, action: { const: 'restart' } })),
+  define('shutdown', empty, object({ confirm: flag }, NONE), [awake], [retained, confirmation,
+    'confirm:false explicitly bypasses the action confirmation using the same real host sign-out/off transition. Existing local-window retention policy remains unchanged.'],
+    object({ confirmationRequired: flag, action: { const: 'shutdown' } })),
   define('respond', empty, object({ accept: flag }), ['An open restart or shutdown confirmation.'],
     [retained, 'Cancel restores the original active root/focus without sign-out. Acceptance clears signed-in/locked flags, discards Guest only, and presents restart startup or shutdown black. No save-changes/reopen controls.'],
     object({ accepted: flag, phase: choice('awake', 'booting', 'off') })),

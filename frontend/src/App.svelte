@@ -47,6 +47,12 @@
   import { visibleNotes, createNote } from './notes-state.js';
   import { appCommandMenuProviders } from './app-command-menus.js';
   import { APPLICATION_MENU_UTILITY_SIZES, goldenApplicationMenuItems, createApplicationMenuCommands } from './application-menu.js';
+  import { SYSTEM_UTILITY_SIZES } from './apple-menu.js';
+  import { createAppleCommands } from './apple-commands.js';
+  import { recordSystemRecent, clearSystemRecents } from './system-state.js';
+  import GoldenGateAboutThisMac from './GoldenGateAboutThisMac.svelte';
+  import GoldenGateSystemInformation from './GoldenGateSystemInformation.svelte';
+  import GoldenGateForceQuit from './GoldenGateForceQuit.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -101,6 +107,7 @@
   const hasWindowExtensions = profile.capabilities.includes('shell.window-extensions');
   const hasHelpWorkflows = profile.capabilities.includes('shell.help-workflows');
   const hasServices = profile.capabilities.includes('shell.services-workflows');
+  const hasAppleMenu = profile.capabilities.includes('shell.apple-menu');
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
@@ -112,6 +119,7 @@
   const hasAppearance = profile.capabilities.includes('shell.appearance');
   const modernMac = macDesktop && profile.capabilities.includes('shell.window-green-menu');
   const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
+  const WINDOW_UTILITY_SIZES = { ...APPLICATION_MENU_UTILITY_SIZES, ...SYSTEM_UTILITY_SIZES };
   const desktopUtilityApps = macDesktop ? {
     'desktop-info': { ...applications.finder, width: 360, height: 560, minimumSize: { width: 300, height: 300 } },
     'desktop-view-options': { ...applications.finder, width: 384, height: 500, minimumSize: { width: 360, height: 340 } },
@@ -126,7 +134,8 @@
   const switching = $state({ ...applicationSwitchingDefaults(profile), ...savedScene?.switching });
   let closedWindows = $state(savedScene?.closedWindows ?? {});
   const pendingWindowViews = new Map(Object.entries(savedScene?.views ?? {}));
-  const applicationUtilityReturnFocus = new Map();
+  const utilityReturnFocus = new Map();
+  let utilityPreparation = $state.raw(null);
   let fileDialogState = $state({ current: null });
   let fileDialogControls = $state();
   let fileDialogController = $state();
@@ -329,6 +338,7 @@
   let nativeState = $state(initialData.native);
   let messagesState = $state(initialData.messages);
   let communicationsState = $state(hasServices ? initialData.communications : undefined);
+  const systemState = $state(hasAppleMenu ? initialData.system : undefined);
   let appearanceState = $state(macDesktop ? initialData.appearance ?? appearanceDefaults(profile) : undefined);
   let printingState = $state(hasFileWorkflows ? initialData.printing : undefined);
   let editingPreferences = $state(hasEditWorkflows ? initialData.editing : undefined);
@@ -339,6 +349,28 @@
       : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
   });
   let macFiles = $state(macDesktop ? createMacSceneFiles() : undefined);
+  let recentDocumentCursor = hasAppleMenu ? macFiles.files.reduce((latest, file) =>
+    file.kind === 'document' && Number.isFinite(file.lastOpenedAt) ? Math.max(latest, file.lastOpenedAt) : latest, 0) : 0;
+  $effect(() => {
+    if (!hasAppleMenu) return;
+    // All actual document-open workflows advance this existing file clock.
+    // Start beyond restored timestamps so a previously cleared menu stays clear.
+    const opened = macFiles.files.filter(file => file.kind === 'document'
+      && Number.isFinite(file.lastOpenedAt) && file.lastOpenedAt > recentDocumentCursor)
+      .sort((left, right) => left.lastOpenedAt - right.lastOpenedAt);
+    for (const file of opened) {
+      recentDocumentCursor = file.lastOpenedAt;
+      recordSystemRecent(systemState, 'documents', file.id);
+    }
+  });
+  $effect(() => {
+    if (!hasAppleMenu) return;
+    for (const window of windows) {
+      if (window.utilityKind === 'system-force-quit' && !runningAppIds.includes(window.forceQuitSelectedAppId)) {
+        window.forceQuitSelectedAppId = runningAppIds.includes(activeAppId) ? activeAppId : runningAppIds[0] ?? null;
+      }
+    }
+  });
   const liveGoldenFiles = $derived(profile.renderer === 'golden-gate' ? liveMacFileRecords(macFiles) : null);
   const desktopFileStore = macDesktop ? macFiles : nativeState.apps;
   const desktopFilePolicy = macDesktop ? { validateName: validMacDesktopName } : {};
@@ -682,6 +714,7 @@
         if (!macDesktop) return;
         const window = windows.find(window => window.id === windowId);
         liveFile(macFiles, file.id).lastOpenedAt = nextMacFileTimestamp(macFiles);
+        if (hasAppleMenu && file.kind === 'document') recordSystemRecent(systemState, 'documents', file.id);
         if (file.kind === 'application') return;
         if (file.kind === 'folder') setFinderFolder(window, file.id);
         else window.fileId = file.id;
@@ -922,7 +955,23 @@
     available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
     getActiveAppId: () => activeAppId, getRunningAppIds: () => runningAppIds,
     isHidden: isAppHidden, isQuitting: appId => pendingQuitAppIds.includes(appId),
-    openPanel: openApplicationUtility, getPanel: getApplicationPanel, focusPanel: focusApplicationPanel,
+    openPanel: (appId, kind) => openWindowPanel(appId, kind,
+      kind === 'application-about' ? `About ${applications[appId].name}` : `${applications[appId].name} Settings`),
+    getPanel: id => {
+      const entry = getWindowPanel(id);
+      return entry && Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, entry.window.utilityKind) ? entry : null;
+    },
+    focusPanel: focusWindowPanel,
+  }));
+  if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
+    profile, available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
+    getRunningAppIds: () => runningAppIds,
+    openAbout: () => openWindowPanel('finder', 'system-about', 'About This Mac'),
+    openInformation: () => openWindowPanel('systeminformation', undefined, 'System Information'),
+    openForceQuit: () => openWindowPanel('finder', 'system-force-quit', 'Force Quit Applications'),
+    getPanel: getSystemPanel, controlIds: systemPanelControls, focusPanel: focusWindowPanel,
+    forceQuit: appId => quitApplication(appId, true), relaunchDesktop: relaunchFinder,
+    clearRecents: () => clearSystemRecents(systemState),
   }));
   if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
     native: nativeState,
@@ -953,6 +1002,7 @@
       ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
       ...(messagesState ? { messages: messagesState } : {}),
       ...(hasServices ? { communications: communicationsState, services: services.targets() } : {}),
+      ...(hasAppleMenu ? { system: systemState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1115,6 +1165,7 @@
       ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
       ...(hasHelpWorkflows ? { helpViewer: helpViewer.targets() } : {}),
       ...(hasServices ? { services: services.targets() } : {}),
+      ...(hasAppleMenu ? { system: systemTargets() } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
 
@@ -1480,7 +1531,7 @@
     });
   }
   function windowApplication(window) {
-    const app = applications[window.appId], utility = APPLICATION_MENU_UTILITY_SIZES[window.utilityKind];
+    const app = applications[window.appId], utility = WINDOW_UTILITY_SIZES[window.utilityKind];
     return utility ? { ...app, ...utility } : desktopUtilityApps[window.utilityKind] ?? app;
   }
   async function openDesktopUtility(utilityKind, fileId) {
@@ -1498,40 +1549,70 @@
     await focusKeyboardWindow(window.id);
     return { status: 'applied', target: { windowId: window.id, ...(fileId ? { fileId } : {}) } };
   }
-  function getApplicationPanel(windowId) {
-    const window = windows.find(entry => entry.id === windowId && Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, entry.utilityKind));
+  function getWindowPanel(windowId) {
+    const window = windows.find(entry => entry.id === windowId);
     if (!window || window.minimized || !windowPresented(window) || !windowInteractionsAvailable()
       || switching.switcher || presentation.pairing || pendingQuitAppIds.includes(window.appId)) return null;
     const element = managedWindowElement(windowId)?.querySelector('[data-application-panel-scroll]');
     return element?.isConnected && !element.closest('[inert]') && element.getClientRects().length
       ? { window, element } : null;
   }
-  async function focusApplicationPanel(entry, control) {
+  async function focusWindowPanel(entry, control) {
     const find = panel => control === 'panel' ? panel?.element
-      : panel?.element.querySelector(`[data-application-settings-control="${control}"]`);
+      : panel?.element.querySelector(`[data-application-settings-control="${CSS.escape(control)}"]`);
     let node = find(entry);
     if (!node?.isConnected || node.disabled || !node.getClientRects().length) return false;
     focusWindow(entry.window.id);
     await tick(); await tick();
-    node = find(getApplicationPanel(entry.window.id));
+    node = find(getWindowPanel(entry.window.id));
     if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return false;
-    node.focus({ preventScroll: true });
-    return document.activeElement === node;
+    node.focus();
+    await tick();
+    return document.activeElement === node && getWindowPanel(entry.window.id)?.element.contains(node) === true;
   }
-  async function openApplicationUtility(appId, utilityKind) {
-    let window = windows.find(entry => entry.appId === appId && entry.utilityKind === utilityKind);
-    if (!window) {
-      const returnFocus = captureSessionDesktop();
-      const title = utilityKind === 'application-about' ? `About ${applications[appId].name}` : `${applications[appId].name} Settings`;
-      const id = openWindow(appId, title, true, utilityKind);
-      applicationUtilityReturnFocus.set(id, returnFocus);
-      window = windows.find(entry => entry.id === id);
-    } else focusWindow(window.id);
-    await tick(); await tick();
-    const entry = getApplicationPanel(window.id);
-    if (!entry || !await focusApplicationPanel(entry, utilityKind === 'application-settings' ? 'sort-by' : 'panel'))
-      return rejected('unavailable', 'The application utility did not mount its native panel.');
-    return { status: 'applied', target: { appId, windowId: window.id } };
+  async function openWindowPanel(appId, utilityKind, title) {
+    if (pendingQuitAppIds.includes(appId)) return rejected('unavailable', 'Resolve the pending application quit before opening its panel.');
+    const snapshot = captureWindowPreparation();
+    const preparation = { appId, windowId: null, snapshot, createdIds: [] };
+    utilityPreparation = preparation;
+    try {
+      let window = utilityKind && windows.find(entry => entry.appId === appId && entry.utilityKind === utilityKind);
+      if (window) focusWindow(window.id);
+      else {
+        const id = openWindow(appId, title, Boolean(utilityKind), utilityKind);
+        window = windows.find(entry => entry.id === id);
+        if (!snapshot.windows.some(entry => entry.id === id)) preparation.createdIds.push(id);
+        if (utilityKind) utilityReturnFocus.set(id, snapshot.returnFocus);
+      }
+      preparation.windowId = window.id;
+      if (utilityKind === 'system-force-quit' && !Object.hasOwn(window, 'forceQuitSelectedAppId')) {
+        window.forceQuitSelectedAppId = runningAppIds.includes(snapshot.activeAppId)
+          ? snapshot.activeAppId : runningAppIds[0] ?? null;
+      }
+      await tick(); await tick();
+      const entry = getWindowPanel(window.id);
+      const control = utilityKind === 'application-settings' ? 'sort-by'
+        : utilityKind === 'system-force-quit' && window.forceQuitSelectedAppId ? `app:${window.forceQuitSelectedAppId}` : 'panel';
+      if (!entry || !await focusWindowPanel(entry, control) || !sceneCoreAvailable()
+        || activeWindowId !== window.id || activeAppId !== appId) {
+        await rollbackWindowPreparation(preparation);
+        return rejected('unavailable', 'The owned system/application panel did not finish native preparation.');
+      }
+      return { status: 'applied', target: { appId, windowId: window.id } };
+    } catch (error) {
+      await rollbackWindowPreparation(preparation);
+      throw error;
+    } finally {
+      if (utilityPreparation === preparation) utilityPreparation = null;
+    }
+  }
+  function getSystemPanel(windowId) {
+    const entry = getWindowPanel(windowId);
+    return entry?.element.hasAttribute('data-system-panel') ? entry : null;
+  }
+  function systemPanelControls(entry) {
+    return entry ? ['panel', ...[...entry.element.querySelectorAll('[data-application-settings-control]')]
+      .filter(node => !node.disabled && node.getClientRects().length).map(node => node.dataset.applicationSettingsControl)] : [];
   }
   function servicesAvailable() {
     return hasServices && windowInteractionsAvailable() && !switching.switcher && !presentation.pairing;
@@ -1649,13 +1730,14 @@
     const candidate = $state.snapshot(notesState); createNote(candidate, text);
     return workflowTextSize() - persistentStringUnits(notesState) + persistentStringUnits(candidate) <= 4 * 1024 * 1024;
   }
-  function captureServicePreparation() {
+  function captureWindowPreparation() {
     return { windows: $state.snapshot(windows), switching: $state.snapshot(switching), running: [...runningAppIds],
       activeAppId, activeWindowId, nextWindowId, closed: $state.snapshot(closedWindows),
-      dock: $state.snapshot(desktopState.dock), spaces: $state.snapshot(spaceState), returnFocus: captureSessionDesktop() };
+      dock: $state.snapshot(desktopState.dock), spaces: $state.snapshot(spaceState), returnFocus: captureSessionDesktop(),
+      system: hasAppleMenu ? $state.snapshot(systemState) : null };
   }
   async function prepareServiceDestination(appId, entry, source) {
-    const snapshot = captureServicePreparation(), previousIds = new Set(windows.map(window => window.id));
+    const snapshot = captureWindowPreparation(), previousIds = new Set(windows.map(window => window.id));
     const windowId = openWindow(appId), window = windows.find(window => window.id === windowId);
     const preparation = { appId, windowId, entry, snapshot, createdIds: previousIds.has(windowId) ? [] : [windowId], source };
     servicePreparation = preparation;
@@ -1685,12 +1767,17 @@
   async function rollbackServiceDestination(preparation, source) {
     if (servicePreparation === preparation) servicePreparation = null;
     if (servicePending?.windowId === preparation.windowId) servicePending = null;
+    await rollbackWindowPreparation(preparation, () => serviceSources.current(source)
+      && activeAppId === source.appId && activeWindowId === source.windowId);
+    serviceEpoch++;
+  }
+  async function rollbackWindowPreparation(preparation, sourceCurrent = null) {
     if (disposed) return;
     const owned = activeWindowId === preparation.windowId && activeAppId === preparation.appId;
     for (const id of preparation.createdIds) {
       const index = windows.findIndex(window => window.id === id);
       if (index >= 0) windows.splice(index, 1);
-      serviceViews.delete(id); pendingWindowViews.delete(id);
+      serviceViews.delete(id); pendingWindowViews.delete(id); utilityReturnFocus.delete(id);
     }
     if (owned) {
       const snapshot = preparation.snapshot, byId = new Map(windows.map(window => [window.id, window]));
@@ -1698,12 +1785,11 @@
       Object.assign(switching, snapshot.switching); runningAppIds = snapshot.running; activeAppId = snapshot.activeAppId;
       activeWindowId = snapshot.activeWindowId; nextWindowId = snapshot.nextWindowId; closedWindows = snapshot.closed;
       desktopState.dock = snapshot.dock; Object.assign(spaceState, snapshot.spaces);
+      if (hasAppleMenu && snapshot.system) Object.assign(systemState, snapshot.system);
       await tick(); await tick();
-      if (sceneCoreAvailable() && serviceSources.current(source) && activeAppId === source.appId && activeWindowId === source.windowId)
-        await restoreSessionDesktop(snapshot.returnFocus);
+      if (sceneCoreAvailable() && (!sourceCurrent || sourceCurrent())) await restoreSessionDesktop(snapshot.returnFocus);
       else if (sceneCoreAvailable() && activeWindowId) await focusKeyboardWindow(activeWindowId);
     } else if (activeWindowId && !windows.some(window => window.id === activeWindowId)) focusRemaining();
-    serviceEpoch++;
   }
   async function prepareServiceSource(source) {
     if (!serviceSources.owns(source) || !serviceSources.current(source)) return false;
@@ -1711,7 +1797,7 @@
     return await focusKeyboardWindow(source.windowId) && serviceSources.current(source);
   }
   async function showServiceFileInfo(source) {
-    const snapshot = captureServicePreparation(), before = new Set(windows.map(window => window.id)), windowIds = [];
+    const snapshot = captureWindowPreparation(), before = new Set(windows.map(window => window.id)), windowIds = [];
     const preparation = { appId: 'finder', windowId: null, snapshot, createdIds: [], source };
     servicePreparation = preparation;
     for (const file of source.files) {
@@ -2210,13 +2296,48 @@
     return { preferences: { notes: { ...notesState.preferences } },
       panels: windows.filter(window => Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, window.utilityKind)).map(window => {
         const element = managedWindowElement(window.id)?.querySelector('[data-application-panel-scroll]');
-        return { appId: window.appId, windowId: window.id, kind: window.utilityKind, available: Boolean(getApplicationPanel(window.id)),
+        return { appId: window.appId, windowId: window.id, kind: window.utilityKind, available: Boolean(getWindowPanel(window.id)),
           controlIds: ['panel', ...[...(element?.querySelectorAll('[data-application-settings-control]') ?? [])]
             .map(control => control.dataset.applicationSettingsControl)],
           focusedControl: element?.contains(document.activeElement)
             ? document.activeElement === element ? 'panel' : document.activeElement.dataset.applicationSettingsControl ?? null : null,
           scroll: element ? { top: element.scrollTop, left: element.scrollLeft } : null };
       }) };
+  }
+  function appleMenuContext() {
+    const desktopAvailable = windowInteractionsAvailable() && !switching.switcher && !presentation.pairing;
+    const heading = (id, label) => ({ id, label, heading: true, enabled: false });
+    const applicationItems = systemState.recentItems.applications.map(appId => ({ id: `recent-app:${appId}`,
+      label: applications[appId].name, enabled: desktopAvailable && !pendingQuitAppIds.includes(appId),
+      request: { command: 'app.open', target: { appId } } }));
+    const documentItems = systemState.recentItems.documents.map(id => liveFile(macFiles, id))
+      .filter(file => file?.kind === 'document' && !isTrashed(macFiles, file)).map(file => ({
+        id: `recent-document:${file.id}`, label: file.name, enabled: desktopAvailable,
+        request: { command: 'desktop.open', target: { fileId: file.id } },
+      }));
+    return { desktopAvailable, recentItems: [
+      heading('recent-applications', 'Applications'),
+      ...(applicationItems.length ? applicationItems : [{ id: 'no-recent-applications', label: 'No Recent Applications', enabled: false }]),
+      { ...heading('recent-documents', 'Documents'), separatorBefore: true },
+      ...(documentItems.length ? documentItems : [{ id: 'no-recent-documents', label: 'No Recent Documents', enabled: false }]),
+      { ...heading('recent-servers', 'Servers'), separatorBefore: true },
+      { id: 'no-recent-servers', label: 'No Recent Servers', enabled: false },
+      { id: 'clear-recent-items', label: 'Clear Menu', separatorBefore: true,
+        enabled: desktopAvailable && Boolean(systemState.recentItems.applications.length || systemState.recentItems.documents.length),
+        request: { command: 'system.recents.clear' } },
+    ] };
+  }
+  function systemTargets() {
+    return { runningAppIds: [...runningAppIds], panels: windows.filter(window =>
+      Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind) || window.appId === 'systeminformation' && !window.utilityKind).map(window => {
+      const entry = getSystemPanel(window.id), element = managedWindowElement(window.id)?.querySelector('[data-system-panel]');
+      return { windowId: window.id, appId: window.appId, kind: window.utilityKind ?? 'system-information',
+        available: Boolean(entry), controlIds: systemPanelControls(entry),
+        ...(window.utilityKind === 'system-force-quit' ? { selectedAppId: window.forceQuitSelectedAppId } : {}),
+        focusedControl: element?.contains(document.activeElement)
+          ? document.activeElement === element ? 'panel' : document.activeElement.dataset.applicationSettingsControl ?? null : null,
+        scroll: element ? { top: element.scrollTop, left: element.scrollLeft } : null };
+    }), boundaries: { hostHardware: false, hostProcesses: false, localDocumentRecovery: true, fictionalServers: false } };
   }
   function dismissDockPresentation() {
     if (!hasDockContext) return;
@@ -2522,6 +2643,7 @@
     // Session Lock/fast switching can interrupt a root-native service queue.
     // Capture the committed source presentation, never its private candidate.
     if (servicePreparation) return servicePreparation.snapshot.returnFocus;
+    if (utilityPreparation) return utilityPreparation.snapshot.returnFocus;
     const scroll = [];
     for (const node of sceneRoot.querySelectorAll('*')) {
       if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)
@@ -2560,6 +2682,7 @@
   function fileWorkflowOtherTextSize() {
     return persistentStringUnits({ version: 1, notes: null, files: null, printing: null,
       editing: editingPreferences, viewing, messages: messagesState, ...(hasServices ? { communications: communicationsState } : {}),
+      ...(hasAppleMenu ? { system: systemState } : {}),
       appearance: appearanceState, dock: persistentDockData() });
   }
   function workflowTextSize() {
@@ -3162,7 +3285,7 @@
       persist: captureSavedScene,
       canSave: () => !disposed && !presentation.pairing && !fileDialogState.current && pendingQuitAppIds.length === 0,
       capture: captureSessionDesktop, restore: restoreSessionDesktop,
-      menuProviders: sharedMenuProviders, menusAvailable: sharedMenusAvailable,
+      menuProviders: sharedMenuProviders, menusAvailable: sharedMenusAvailable, appleMenuContext,
       prepareMenus: () => clearSwitchingPresentations(false, true), restoreMenus: restoreSwitchingPresentations,
       ready: async () => { await tick(); const result = await startup; return !disposed && initialized && result?.status === 'applied'; },
     });
@@ -3264,8 +3387,8 @@
   }
 
   function openWindow(appId, title, fresh = false, utilityKind) {
-    const app = utilityKind && Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, utilityKind)
-      ? { ...applications[appId], ...APPLICATION_MENU_UTILITY_SIZES[utilityKind] } : applications[appId];
+    const app = utilityKind && Object.hasOwn(WINDOW_UTILITY_SIZES, utilityKind)
+      ? { ...applications[appId], ...WINDOW_UTILITY_SIZES[utilityKind] } : applications[appId];
     unhideApplication(appId);
     if (fresh || !windows.some(window => window.appId === appId && !window.utilityKind)) cancelPairingForActivation(null);
     switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
@@ -3274,6 +3397,7 @@
       if (title !== undefined) existing.title = title;
       focusWindow(existing.id);
       if (hasDockContext) recordMacAppUse(desktopState.dock, appId);
+      if (hasAppleMenu) recordSystemRecent(systemState, 'applications', appId);
       return existing.id;
     }
     const id = windowNamespace + (nextWindowId === 1 && appId === profile.defaults.startupAppId
@@ -3312,6 +3436,7 @@
       recordMacAppUse(desktopState.dock, appId);
       dismissDockPresentation();
     }
+    if (hasAppleMenu && !utilityKind) recordSystemRecent(systemState, 'applications', appId);
     if (hasDesktopStacks) desktopState.stacks.focusedStackId = null;
     return id;
   }
@@ -3347,9 +3472,9 @@
     const index = windows.findIndex(window => window.id === id);
     if (index < 0) return;
     const appId = windows[index].appId;
-    const wasActive = activeWindowId === id, returnFocus = applicationUtilityReturnFocus.get(id);
-    const appUtility = Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, windows[index].utilityKind);
-    applicationUtilityReturnFocus.delete(id);
+    const wasActive = activeWindowId === id, returnFocus = utilityReturnFocus.get(id);
+    const appUtility = Object.hasOwn(WINDOW_UTILITY_SIZES, windows[index].utilityKind);
+    utilityReturnFocus.delete(id);
     if (hasRetention) {
       const closed = windows[index];
       if (!closed.utilityKind && !windows.some(window => window.id !== id && window.appId === appId && !window.utilityKind)) {
@@ -3394,14 +3519,16 @@
     pendingQuitAppIds = pendingQuitAppIds.filter(entry => entry !== appId);
   }
 
-  async function quitApplication(appId) {
+  async function quitApplication(appId, force = false) {
     if (quitInFlight.has(appId)) return rejected('unavailable', 'Application quit is already being processed.');
     if (!pendingQuitAppIds.includes(appId)) pendingQuitAppIds.push(appId);
     quitInFlight.add(appId);
     try {
       let window;
-      while (!disposed && (window = windows.findLast(entry => entry.appId === appId))) {
-        const result = await handlers['window.close']({ windowId: window.id }, {});
+      while (!disposed && (window = windows.findLast(entry => entry.appId === appId
+        && !(force && appId === profile.defaults.desktopAppId && Object.hasOwn(SYSTEM_UTILITY_SIZES, entry.utilityKind))))) {
+        const result = force ? (await closeWindow(window.id), { status: 'applied' })
+          : await handlers['window.close']({ windowId: window.id }, {});
         if (result?.status === 'rejected') {
           cancelAppQuit(appId);
           return result;
@@ -3412,7 +3539,7 @@
         }
       }
       if (disposed) return rejected('unavailable', 'The outgoing scene has been disposed.');
-      runningAppIds = runningAppIds.filter(entry => entry !== appId);
+      if (!(force && appId === profile.defaults.desktopAppId)) runningAppIds = runningAppIds.filter(entry => entry !== appId);
       switching.hiddenAppIds = switching.hiddenAppIds.filter(id => id !== appId);
       if (!hasMenuBar) switching.appMenu = null;
       if (activeAppId === appId) {
@@ -3424,10 +3551,25 @@
       cancelAppQuit(appId);
       await tick();
       if (switching.switcher) await switcherControls?.focus(switching.switcher.selectedItemId);
-      return { status: 'applied', target: { appId }, quit: true, confirmationRequired: false };
+      return force
+        ? { status: 'applied', target: { appId, quit: true, confirmationRequired: false } }
+        : { status: 'applied', target: { appId }, quit: true, confirmationRequired: false };
     } finally {
       quitInFlight.delete(appId);
     }
+  }
+  async function relaunchFinder() {
+    const chooser = windows.find(window => window.utilityKind === 'system-force-quit');
+    const result = await quitApplication('finder', true);
+    if (result.status !== 'applied') return result;
+    const windowId = openWindow('finder');
+    await tick(); await tick();
+    if (chooser && windows.includes(chooser)) {
+      focusWindow(chooser.id);
+      const entry = getSystemPanel(chooser.id);
+      if (entry) await focusWindowPanel(entry, 'app:finder');
+    } else if (sceneCoreAvailable()) await focusKeyboardWindow(windowId);
+    return { status: 'applied', target: { appId: 'finder', relaunched: true, windowId } };
   }
 
   function minimizeWindow(id) {
@@ -3515,7 +3657,7 @@
     return $state.snapshot({
       seed: { version: 1, notes: notesState, files: { files: macFiles.files.filter(file => !file.readOnly),
         nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime }, messages: messagesState, appearance: appearanceState,
-        printing: printingState, editing: editingPreferences, viewing, communications: communicationsState, dock: persistentDockData() },
+        printing: printingState, editing: editingPreferences, viewing, communications: communicationsState, system: systemState, dock: persistentDockData() },
       catalogTimes: Object.fromEntries(macFiles.files.filter(file => file.readOnly).map(file =>
         [file.id, { createdAt: file.createdAt, modifiedAt: file.modifiedAt, addedAt: file.addedAt, lastOpenedAt: file.lastOpenedAt }])),
       dockOrder: { mainOrderAppIds: dock.mainOrderAppIds, secondaryOrderItemIds: dock.secondaryOrderItemIds },
@@ -3556,7 +3698,14 @@
         resizable={interactive && hasWindowResize && !window[expandedProperty] && windowInteractionsAvailable()}
         onresize={(edge, coordinates) => windowCommand('window.resize', window.id, { edge, ...coordinates })}
       >
-        {#if window.utilityKind === 'application-about'}
+        {#if hasAppleMenu && window.utilityKind === 'system-about'}
+          <GoldenGateAboutThisMac {profile} windowId={window.id} execute={commands.execute} />
+        {:else if hasAppleMenu && window.utilityKind === 'system-force-quit'}
+          <GoldenGateForceQuit {profile} windowId={window.id} runningApps={runningAppIds.map(id => applications[id])}
+            selectedAppId={window.forceQuitSelectedAppId} execute={commands.execute} available={() => Boolean(getSystemPanel(window.id))} />
+        {:else if hasAppleMenu && window.appId === 'systeminformation' && !window.utilityKind}
+          <GoldenGateSystemInformation {profile} windowId={window.id} runningApps={runningAppIds.map(id => applications[id])} execute={commands.execute} />
+        {:else if window.utilityKind === 'application-about'}
           <GoldenGateAboutApp application={applications[window.appId]} {profile} windowId={window.id} execute={commands.execute} />
         {:else if window.utilityKind === 'application-settings'}
           <GoldenGateNotesSettings preferences={notesState.preferences} windowId={window.id} execute={commands.execute} />

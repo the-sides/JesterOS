@@ -323,6 +323,10 @@ export function createMenuBarCommands(ctx) {
     // Closing clears the search UI, not the query that produced this leased action.
     const helpProjection = menuId === 'help' && state.helpSearch ? snapshot(state) : null;
     const originalRequest = helpResult || helpProjection ? JSON.stringify(item.request) : null;
+    // Apple actions lease the modifier variant chosen at activation. Releasing
+    // Option during native return-focus must not replace that accepted intent.
+    // Live ownership, existence and enablement are still checked below.
+    const activationRequest = menuId === 'apple' && profile.capabilities.includes('shell.apple-menu') ? item.request : null;
     const invoke = async () => {
       if (wasOpen && (!hasReturnFocus || !await ctx.restoreFocus(returnFocus))) return unavailable();
       if (version !== lifecycleVersion) return unavailable();
@@ -336,7 +340,7 @@ export function createMenuBarCommands(ctx) {
       if (originalRequest !== null && JSON.stringify(currentItem.request) !== originalRequest) return missing();
       if (helpResult && !helpMenuResults(menus(), appId, helpResult.label).some(entry =>
         entry.resultId === helpResult.resultId && entry.enabled)) return missing();
-      const downstream = await ctx.invoke(currentItem.request);
+      const downstream = await ctx.invoke(activationRequest ?? currentItem.request);
       if (downstream.status !== 'applied') return downstream;
       return applied(menuId === 'window' ? { menuId, itemId, windowId: currentItem.request.target?.windowId ?? downstream.target?.windowId }
         : menuId === 'application' ? {} : { menuId, itemId });

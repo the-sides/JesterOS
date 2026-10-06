@@ -17,7 +17,9 @@ function scene(profile = getOSProfile('macos-golden-gate-27.0.1')) {
   };
   const sessionCommands = createFictionalSessionCommands({ profile, session, available: () => available,
     settle: async () => {}, captureDesktop: () => {}, restoreDesktop: async () => true,
-    ensureDesktop: async () => true, discardDesktop: async () => {}, getSurfaceView: () => null,
+    ensureDesktop: async () => true, discardDesktop: async () => {}, getSurfaceView: () => ({
+      controlIds: () => ['logout-cancel', 'logout-confirm'], focus: () => true,
+    }),
   });
   const commands = createFictionalPowerCommands({ profile, power, session, available: () => available,
     settle: async () => {}, getView: () => mounted ? facade : null, captureReturn: () => {}, restoreReturn: async () => {},
@@ -123,11 +125,11 @@ test('off, booting, sleep and pending confirmations reject incompatible transiti
   for (const name of ['wake', 'restart', 'shutdown', 'sleep', 'screenSaver.start', 'start']) await unchanged(s, name);
 });
 
-test('Guest-ending and invalid unsigned desktops cannot enter a conflicting power presentation', async () => {
+test('pending logout and invalid unsigned desktops cannot enter a conflicting power presentation', async () => {
   const s = scene(); await s.sessionRun('login.open'); await s.sessionRun('user.select', { userId: 'guest' });
-  await s.sessionRun('login.submit', {}, { acknowledgeGuest: true }); await s.sessionRun('guest.end');
+  await s.sessionRun('login.submit', {}, { acknowledgeGuest: true }); await s.sessionRun('logout');
   for (const name of ['sleep', 'screenSaver.start', 'restart', 'shutdown']) await unchanged(s, name);
-  await s.sessionRun('guest.respond', {}, { accept: false }); s.session.users[2].signedIn = false;
+  await s.sessionRun('logout.respond', {}, { accept: false }); s.session.users[2].signedIn = false;
   for (const name of ['sleep', 'screenSaver.start', 'restart', 'shutdown']) await unchanged(s, name);
 });
 
@@ -175,5 +177,30 @@ test('historical/uninstalled/missing-capability profiles reject every power path
       ['shutdown', {}, {}], ['respond', {}, { accept: true }], ['start', {}, {}], ['advance', {}, { seconds: 1 }], ['focus', { controlId: 'surface' }, {}]]) {
       await unchanged(s, name, target, payload, 'unsupported_profile');
     }
+  }
+});
+
+for (const action of ['restart', 'shutdown']) {
+  test(`${action} explicit confirmation bypass reaches the same unauthenticated boundary without a stale decision`, async () => {
+    const s = scene();
+    await s.sessionRun('login.open'); await s.sessionRun('user.select', { userId: 'local-casey' });
+    await s.sessionRun('login.submit', {}, { passcode: 'scene' });
+    await s.sessionRun('login.open'); await s.sessionRun('user.select', { userId: 'guest' });
+    await s.sessionRun('login.submit', {}, { acknowledgeGuest: true });
+    const result = await s.run(action, {}, { confirm: false });
+    expect(result.target).toEqual({ confirmationRequired: false, action });
+    expect(s.power.phase).toBe(action === 'restart' ? 'booting' : 'off');
+    expect(s.power.pending).toBeNull(); expect(s.session.phase).toBe('login');
+    expect(s.session.users.every(user => !user.signedIn && !user.locked)).toBe(true);
+    await unchanged(s, 'respond', {}, { accept: true });
+  });
+}
+
+test('malformed confirmation bypass cannot sign out a user or initiate a power transition', async () => {
+  const s = scene();
+  for (const action of ['restart', 'shutdown']) {
+    await unchanged(s, action, {}, { confirm: 'false' }, 'invalid_arguments');
+    await unchanged(s, action, {}, { confirm: false, userId: 'local-casey' }, 'invalid_arguments');
+    await unchanged(s, action, { action }, { confirm: false }, 'invalid_arguments');
   }
 });

@@ -187,11 +187,11 @@
   function activate(event, item) {
     event.stopPropagation();
     event.preventDefault();
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || !item.enabled || !mounted()) return;
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || (event.altKey && menu.menuId !== 'apple') || !item.enabled || !mounted()) return;
     request(item.children ? 'submenu' : 'execute', { itemId: item.id });
   }
   function keydown(event) {
-    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) {
+    if (event.isComposing || event.ctrlKey || event.metaKey || (event.altKey && menu.menuId !== 'apple')) {
       if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
       event.stopPropagation();
       return;

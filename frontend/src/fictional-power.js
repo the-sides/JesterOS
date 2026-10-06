@@ -18,7 +18,7 @@ const controlsFor = power => power.pending ? ['cancel', 'confirm', 'surface']
 
 export function createFictionalPowerCommands(ctx) {
   const { profile, power, session } = ctx;
-  const awake = () => power.phase === 'awake' && power.pending === null && !session.guestConfirmation;
+  const awake = () => power.phase === 'awake' && power.pending === null && !session.logoutPending;
   const activeUser = () => session.users.find(user => user.id === session.activeUserId);
   const canObscure = () => awake() && (session.phase === 'login' || (activeUser()?.signedIn
     && ((session.phase === 'desktop' && !activeUser().locked) || (session.phase === 'locked' && activeUser().locked))));
@@ -46,11 +46,25 @@ export function createFictionalPowerCommands(ctx) {
     await focusSurface('wake');
     return applied({ phase: nextPhase });
   }
+  async function acceptPower(pending) {
+    if (!ctx.available() || power.pending !== pending) return unavailable();
+    // The host really discards Guest and signs users out; no fallback boot.
+    await ctx.signOutForBoot();
+    power.pending = null;
+    phase(pending.action === 'restart' ? 'booting' : 'off');
+    await focusSurface(pending.action === 'restart' ? 'surface' : 'start');
+    return applied({ accepted: true, phase: power.phase });
+  }
   async function confirm(action, target, payload) {
-    if (!empty(target, payload)) return invalid();
+    if (!fields(target, []) || !(fields(payload, []) || fields(payload, ['confirm'])
+      && typeof payload.confirm === 'boolean')) return invalid();
     if (!canConfirm()) return unavailable();
     ctx.captureReturn();
     power.pending = { action }; power.focusedControl = null;
+    if (payload.confirm === false) {
+      const result = await acceptPower(power.pending);
+      return result.status === 'applied' ? applied({ confirmationRequired: false, action }) : result;
+    }
     await focusSurface('cancel');
     return applied({ confirmationRequired: true, action });
   }
@@ -69,19 +83,11 @@ export function createFictionalPowerCommands(ctx) {
     'power.respond': async (target, payload) => {
       if (!fields(target, []) || !fields(payload, ['accept']) || typeof payload.accept !== 'boolean') return invalid();
       const pending = power.pending;
-      if (power.phase !== 'awake' || !pending || !['restart', 'shutdown'].includes(pending.action) || session.guestConfirmation) return unavailable();
+      if (power.phase !== 'awake' || !pending || !['restart', 'shutdown'].includes(pending.action) || session.logoutPending) return unavailable();
       if (!payload.accept) {
         power.pending = null; power.focusedControl = null;
         await ctx.settle(); await ctx.restoreReturn();
-      } else {
-        // Let the actual host discard Guest and retain the original local roots.
-        // An accepted decision is never a fallback simulation of that callback.
-        if (!ctx.available() || power.pending !== pending) return unavailable();
-        await ctx.signOutForBoot();
-        power.pending = null;
-        phase(pending.action === 'restart' ? 'booting' : 'off');
-        await focusSurface(pending.action === 'restart' ? 'surface' : 'start');
-      }
+      } else return acceptPower(pending);
       return applied({ accepted: payload.accept, phase: power.phase });
     },
     'power.start': async (target, payload) => {
