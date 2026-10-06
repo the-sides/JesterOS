@@ -14,7 +14,7 @@
   let locationView = $state(null), locationGeometry = $state(null);
   const location = $derived(helpMenuLocation(menus, menuState));
   const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
-  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : zone === 'wifi' ? menu.kind === 'wifi' : menu.kind !== 'users' && menu.kind !== 'wifi'));
+  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : zone === 'wifi' ? menu.kind === 'wifi' : zone === 'battery' ? menu.kind === 'battery' && menu.showInMenuBar : !['users', 'wifi', 'battery'].includes(menu.kind)));
   const openMenu = $derived(foreground ? rendered.find(menu => menu.menuId === menuState.menuId) : undefined);
   const panes = $derived.by(() => {
     if (!openMenu) return [];
@@ -84,6 +84,7 @@
     const menu = rendered.find(menu => menu.menuId === menuId);
     const node = invokers[menuId];
     if (!menu?.enabled || !visible(node)) return false;
+    if (menu.kind === 'battery' && !ownsClip(node)) return false;
     const rect = node.getBoundingClientRect(), clip = clipOf(node);
     return rect.right > clip.left && rect.left < clip.right && rect.bottom > clip.top && rect.top < clip.bottom;
   }
@@ -306,13 +307,13 @@
 </script>
 
 <div class="golden-shared-menu-bar" class:users={zone === 'users'} bind:this={root} data-menu-bar={zone}
-  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : 'Application menu bar'}>
+  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : zone === 'battery' ? 'Battery status menu' : 'Application menu bar'}>
   {#each rendered as menu (menu.menuId)}
-    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'}
+    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'} class:battery={menu.kind === 'battery'}
       bind:this={invokers[menu.menuId]} type="button" role="menuitem" data-menu-invoker={menu.menuId}
       disabled={!menu.enabled || !foreground} aria-disabled={!menu.enabled || !foreground}
       class:located={location?.menuId === menu.menuId}
-      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.label}
+      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.kind === 'battery' ? `Battery: ${menu.percent} percent, ${menu.statusLabel}${menu.criticalBattery ? ', Critically Low Battery' : menu.lowBattery ? ', Low Battery' : ''}` : menu.label}
       aria-haspopup="menu" aria-expanded={Boolean(openMenu?.menuId === menu.menuId)} aria-controls={`golden-menu-${menu.menuId}-0`}
       onpointerdown={invokerPointer} onpointerenter={() => hover(menu)} onclick={event => toggle(event, menu)}
       onkeydown={event => invokerKey(event, menu)} oncontextmenu={suppressContext}>
@@ -324,6 +325,18 @@
           <path opacity={menu.status === 'connected' && menu.strength >= 2 ? 1 : .3} fill="currentColor" d="M4.2 9.6a13 13 0 0 1 15.6 0l-2.3 2.7a9.4 9.4 0 0 0-11 0Z"/>
           <path opacity={menu.status === 'connected' ? 1 : .3} fill="currentColor" d="M8.7 14.8a5.7 5.7 0 0 1 6.6 0L12 18Z"/>
           {#if menu.status === 'off'}<path d="m3 1 18 18" stroke="currentColor" stroke-width="2" />{/if}
+        </svg>
+      {:else if menu.kind === 'battery'}
+        {#if menu.showPercentage}<span class="battery-percentage">{menu.percent}%</span>{/if}
+        <svg class="battery-symbol" class:low={menu.lowBattery} viewBox="0 0 32 16" aria-hidden="true">
+          <rect x="1" y="3" width="26" height="10" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+          <rect x="3" y="5" width={22 * menu.percent / 100} height="6" rx="1" fill="currentColor" />
+          <path d="M29 6v4" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          {#if menu.charging}
+            <path class="power-mark" d="m16 1-5 8h4l-1 6 7-9h-5l2-5Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round" />
+          {:else if menu.powerSource === 'adapter'}
+            <path class="power-mark" d="M12 3v4m6-4v4m-7 0h8v2a4 4 0 0 1-8 0Zm4 6v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          {/if}
         </svg>
       {:else}
         <span class="invoker-label">{menu.label}</span>
@@ -357,4 +370,13 @@
   @media (max-width: 520px) { .invoker.application { max-width: 105px; } }
   @media (max-width: 520px) { .golden-shared-menu-bar { gap: 6px; } .invoker { margin: 0; padding: 0 1px; } }
   .invoker.wifi { flex-shrink: 0; }
+  .invoker.battery { flex:0 0 auto; max-width:none; margin:0; padding:0; gap:4px; }
+  .invoker .battery-symbol { width:30px; height:16px; color:white; }
+  .battery-symbol.low { color:#ff5b59; }
+  .power-mark { fill:#637153; paint-order:stroke; }
+  .battery-percentage { font-size:11px; font-variant-numeric:tabular-nums; }
+  @media (max-width:380px) {
+    .golden-shared-menu-bar { gap:2px; }
+    .users .invoker { max-width:40px; }
+  }
 </style>

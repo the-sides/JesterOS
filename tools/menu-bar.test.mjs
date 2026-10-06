@@ -6,6 +6,8 @@ import { goldenGateProfile } from '../frontend/src/golden-gate-profile.js';
 import { appleMenuItems } from '../frontend/src/apple-menu.js';
 import { fictionalSessionDefaults, signOutFictionalSessions } from '../frontend/src/fictional-session.js';
 import { fictionalPowerDefaults, createFictionalPowerCommands } from '../frontend/src/fictional-power.js';
+import { batteryDefaults, setBatteryLowPower } from '../frontend/src/battery-model.js';
+import { createBatteryCommands } from '../frontend/src/battery-commands.js';
 
 const leaf = (id, command = 'window.focus') => ({ id, label: id, enabled: true,
   request: { command, target: command.startsWith('session.') || command.startsWith('power.') ? {} : { windowId: id }, payload: {} } });
@@ -83,6 +85,54 @@ async function unchanged(scene, command, target = {}, payload = {}) {
   const before = structuredClone(scene.state), result = await scene.run(command, target, payload);
   expect(result.status).toBe('rejected'); expect(scene.state).toEqual(before); return result;
 }
+
+test('Battery keep-open mode retains the popup and original editor return across a following leaf', async () => {
+  const battery = batteryDefaults(goldenGateProfile);
+  const s = consumer([provider('battery', [
+    { id: 'low-power-mode', label: 'Low Power Mode', enabled: true, checked: false, keepOpen: true,
+      request: { command: 'battery.lowPower.set', target: {}, payload: { mode: 'always' } } },
+    leaf('settings'),
+  ])], goldenGateProfile.id, { invoke: request => request.command === 'battery.lowPower.set'
+    ? setBatteryLowPower(battery, request.payload.mode, goldenGateProfile) : { status: 'applied', target: {} } });
+  const original = s.focus(), document = structuredClone(s.editor);
+  await s.request('open', 'battery');
+  await s.request('execute', 'battery', { itemId: 'low-power-mode' });
+  expect(battery.lowPowerMode).toBe('always');
+  expect(s.state.menuId).toBe('battery');
+  expect(s.state.levels).toEqual([{ parentId: null, itemId: 'low-power-mode', scrollTop: 0 }]);
+  expect(s.focus()).toEqual({ kind: 'row', menuId: 'battery', level: 0, itemId: 'low-power-mode' });
+  expect(s.captures()).toBe(1);
+  expect(s.editor).toEqual(document);
+  await s.request('execute', 'battery', { itemId: 'settings' });
+  expect(s.state.menuId).toBe(null);
+  expect(s.focus()).toBe(original);
+  expect(s.editor).toEqual(document);
+});
+
+test('Battery conditional keep-open row disappears into a reachable focused Settings leaf', async () => {
+  const battery = batteryDefaults(goldenGateProfile);
+  const batteryCommands = createBatteryCommands({ profile: goldenGateProfile, presentation: { options: null },
+    getState: () => battery, getRunningAppIds: () => [], available: () => true, canBegin: () => true, canCommit: () => true });
+  battery.showEnergyMode = 'when-low-power'; battery.lowPowerMode = 'always';
+  const s = consumer([], goldenGateProfile.id, {
+    projectMenus: () => [batteryCommands.menuProvider(true)],
+    invoke: request => batteryCommands.handlers[request.command]?.(request.target ?? {}, request.payload ?? {})
+      ?? { status: 'applied', target: {} },
+  });
+  const original = s.focus(), document = structuredClone(s.editor);
+  await s.request('open', 'battery');
+  expect((await s.request('execute', 'battery', { itemId: 'low-power-mode' })).status).toBe('applied');
+  expect(battery.lowPowerMode).toBe('never');
+  expect(s.state.menuId).toBe('battery');
+  expect(s.state.levels[0].itemId).toBe('battery-settings');
+  expect(s.focus()).toEqual({ kind: 'row', menuId: 'battery', level: 0, itemId: 'battery-settings' });
+  expect(s.captures()).toBe(1);
+  expect(s.editor).toEqual(document);
+  await s.request('execute', 'battery', { itemId: 'battery-settings' });
+  expect(s.state.menuId).toBe(null);
+  expect(s.focus()).toBe(original);
+  expect(s.editor).toEqual(document);
+});
 
 test('provider switching shares one popup and original editor return without recapturing menu focus', async () => {
   const s = consumer([provider('apple', [leaf('lock', 'session.lock')]), provider('application', [leaf('hide')], { appId: 'notes' }), provider('window', [leaf('close')])]);

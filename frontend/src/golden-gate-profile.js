@@ -15,7 +15,7 @@ export const goldenGateProfile = {
     'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management',
     'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.menu-bar', 'shell.application-menu', 'shell.appearance',
     'shell.file-workflows', 'shell.edit-workflows', 'shell.view-workflows', 'shell.window-extensions',
-    'shell.help-workflows', 'shell.services-workflows', 'shell.apple-menu', 'status.wifi',
+    'shell.help-workflows', 'shell.services-workflows', 'shell.apple-menu', 'status.wifi', 'status.battery',
     'scene.profile-selection', 'scene.seed', 'scene.saved-session', 'session.fictional', 'session.power', 'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {
@@ -32,7 +32,7 @@ export const goldenGateProfile = {
     reminders: launchOnly('reminders', 'Reminders', 'main'),
     notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 720,
       minimumSize: { width: 960, height: 420 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
-    settings: { ...launchOnly('settings', 'System Settings', 'main'), coverage: 'about-display-storage-wifi-dock-appearance' },
+    settings: { ...launchOnly('settings', 'System Settings', 'main'), coverage: 'about-display-storage-wifi-battery-menu-bar-dock-appearance' },
     music: launchOnly('music', 'Music', 'recent'),
     activitymonitor: launchOnly('activitymonitor', 'Activity Monitor'),
     airport: launchOnly('airport', 'AirPort Utility'),

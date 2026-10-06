@@ -10,7 +10,7 @@ The mounted desktop exposes `globalThis.jesteros` with:
 - `inspect()`: a detached snapshot of supported command names and current window/application state. Changing this snapshot does not change the scene.
 - `describe()`: detached, JSON-serializable version-1 catalog for the active profile. Includes supported profile IDs, capability, request/success-result JSON Schemas, runtime requirements, data/presentation effects, completion semantics and current target identities. Read `describe().commands[name]` for a Golden Gate command; querying never activates a window or changes the scene.
 
-The default Golden Gate27.0.1 exposes323 commands; preserved Mojave178/Sonoma163/High Sierra170/Windows190 remain selectable. New feature work is latest macOS only. The stable public object follows native remounts; during transition dispatch/discovery reject unavailable and inspect reports profile:null/transitioning:true. Immutable profile identity/coverage and native adapters are not a theme selector. Rust transport/controller remain deferred.
+The default Golden Gate27.0.1 exposes333 commands; preserved Mojave178/Sonoma163/High Sierra170/Windows190 remain selectable. New feature work is latest macOS only. The stable public object follows native remounts; during transition dispatch/discovery reject unavailable and inspect reports profile:null/transitioning:true. Immutable profile identity/coverage and native adapters are not a theme selector. Rust transport/controller remain deferred.
 
 Requests contain `command`, optional `requestId`, `target`, and `payload`. Command targets/payloads are plain JSON objects; omitted target/payload become empty objects. Explicit null, arrays, unrecognized request fields, unknown commands, and invalid command arguments are rejected. A supplied requestId must be a nonempty string and is echoed in results.
 
@@ -857,7 +857,7 @@ Current macOS27 uses compact About → More Info → System Settings → General
 
 | Command | Target | Payload | Applied target / behavior |
 | --- | --- | --- | --- |
-| `system.settings.open` | `{}` | `{pane:'about'|'displays'|'storage'|'wifi'}` | `{appId:'settings',windowId,pane}`. Open/reuse the ordinary managed Settings owner and focus its real panel. |
+| `system.settings.open` | `{}` | `{pane:'about'|'displays'|'storage'|'wifi'|'battery'|'menu-bar'}` | `{appId:'settings',windowId,pane}`. Open/reuse the ordinary managed Settings owner and focus its real panel. |
 | `system.machine.rename` | `{windowId}` | `{name}` | `{windowId,computerName}`. Exact ordinary About field; commit literal valid name within the shared complete-seed4 Mi UTF-16 budget and synchronize that real control. |
 | `system.machine.select` | `{windowId}` | `{start,end,direction?}` | `{windowId,start,end,direction}`. UTF-16 selection bounds0..256 within the committed name; focus/select/read back the exact native field. Dirty drafts reject, not borrowing another editor. |
 | `system.about.version.set` | `{windowId}` | `{expanded:boolean}` | `{windowId,expanded}`. Exact About/version control reveals the installed version and explicitly fictional build. |
@@ -866,7 +866,7 @@ Current macOS27 uses compact About → More Info → System Settings → General
 
 All require `shell.apple-menu`, a live local desktop and no private utility preparation/blocking presentation. `targets.system` publishes the fictional immutable machine/display/coverage fixture, committed computerName, live storage summary, real panel/control IDs and owned build/volume flags. Concurrent Apple mutation rejects while a candidate window is prepared; overlapping preparations cannot replace its private rollback owner. This fixes an actually reproduced native More Info failure rolling back a separately accepted rename.
 
-Native Name commits on change/Enter; Escape reverts a draft. Name belongs to each retained root under the existing independent-user simulation policy, not host-global native Sharing configuration. Complete V1 now requires computerName. Settings panes are about/displays/storage/wifi/appearance/dock; exact owned flags, native scroll keys, and `settings-computer-name` caret/focus round-trip. Uncommitted or stale field drafts never enter saved state; Guest is never serialized. Coverage follows files.sceneTime through the inclusive UTC expiry date; no host date or online warranty lookup. Get Support/Service Options/Getting Started open actual original Help articles. System Report shares committed name and display data.
+Native Name commits on change/Enter; Escape reverts a draft. Name belongs to each retained root under the existing independent-user simulation policy, not host-global native Sharing configuration. Complete V1 now requires computerName. Settings panes are about/displays/storage/wifi/battery/menu-bar/appearance/dock; exact owned flags, native scroll keys, and `settings-computer-name` caret/focus round-trip. Uncommitted or stale field drafts never enter saved state; Guest is never serialized. Coverage follows files.sceneTime through the inclusive UTC expiry date; no host date or online warranty lookup. Get Support/Service Options/Getting Started open actual original Help articles. System Report shares committed name and display data.
 
 Storage uses256,000,000,000 fictional capacity bytes plus fixed18 GB System Data/6 GB Applications allocation. Documents/Trash count actual writable virtual payloads using existing Finder UTF-8/decoded-PDF sizes, including descendants of trashed folders. Trash remains used until permanent deletion. Readonly records/folders do not fabricate payload. All Volumes exposes precise bytes; display inventory is readonly13.6-inch2560×1664/60 Hz/P3. Full category management/recommendations follow in APPLE-03; full display configuration stays PREF-10 and diagnostic tree INFO-01.
 
@@ -947,14 +947,14 @@ Sources: [current27 logout and reopen checkbox](https://support.apple.com/guide/
 
 ### Fictional Wi-Fi menu and native Join — STATUS-01
 
-Fourteen additions bring discovery to323. All names are Golden Gate-only. The four `status.menu.*` commands use the existing **Host** menu-bar owner and exact `menuId:'wifi'`; ten `wifi.*` commands are **Root**-owned under `status.wifi`. Targets/payloads are closed; results below are the Applied target, not a substitute for actual native completion.
+Fourteen STATUS-01 additions brought discovery to323. All names are Golden Gate-only. The four `status.menu.*` commands use the existing **Host** menu-bar owner; current `menuId` admits `'wifi'|'battery'` after STATUS-02 below. Ten `wifi.*` commands are **Root**-owned under `status.wifi`. Targets/payloads are closed; results below are the Applied target, not a substitute for actual native completion.
 
 | Command | Target | Payload | Applied target / behavior |
 | --- | --- | --- | --- |
-| `status.menu.open` | `{menuId:'wifi'}` | `{position?:'first'|'last',itemId?}` | `{menuId}`; owned actual invoker/popup/focus. |
-| `status.menu.close` | `{menuId:'wifi'}` | `{restoreFocus?:boolean}` | `{menuId}`; current matching owner only. |
-| `status.menu.select` | `{menuId:'wifi',itemId}` | `{observe?:boolean}` | `{menuId,itemId}`; actual row reveal/focus. |
-| `status.menu.execute` | `{menuId:'wifi',itemId}` | `{}` | `{menuId,itemId}`; canonical live row action. |
+| `status.menu.open` | `{menuId:'wifi'|'battery'}` | `{position?:'first'|'last',itemId?}` | `{menuId}`; owned actual invoker/popup/focus. |
+| `status.menu.close` | `{menuId:'wifi'|'battery'}` | `{restoreFocus?:boolean}` | `{menuId}`; current matching owner only. |
+| `status.menu.select` | `{menuId:'wifi'|'battery',itemId}` | `{observe?:boolean}` | `{menuId,itemId}`; actual row reveal/focus. |
+| `status.menu.execute` | `{menuId:'wifi'|'battery',itemId}` | `{}` | `{menuId,itemId}`; canonical live row action. |
 | `wifi.power.set` | `{}` | `{powered:boolean}` | `{powered,connectedNetworkId}`; off disconnects, on does not reconnect. |
 | `wifi.connect` | `{networkId}` | `{}` | `{networkId,connected,confirmationRequired,joinId}`; open/known joins immediately, unknown protected prepares real sheet. Nullable networkId/joinId are explicit. |
 | `wifi.disconnect` | `{networkId}` | `{}` | `{powered,connectedNetworkId}`; exact current ID only, known retained. |
@@ -966,7 +966,7 @@ Fourteen additions bring discovery to323. All names are Golden Gate-only. The fo
 | `wifi.join.select` | `{joinId,control:'network-name'|'password'}` | `{start,end,direction?:'none'|'forward'|'backward'}` | `{joinId,control,start,end,direction}`; actual current private field range. |
 | `wifi.join.scroll` | `{joinId}` | `{top,observe?:boolean}` | `{joinId,top}`; actual clamped body offset. |
 
-Existing `menu.navigate`/`menu.scroll` admit wifi and use the same owner. Current27 menu has the power switch, Known Networks, expanded Other Networks, connected-left-icon disconnect, Other… and **Wi-Fi Settings…**, not retired Network Preferences. `system.settings.open {pane:'wifi'}` opens the real ordinary pane; existing `system.panel.focus/scroll` address it. Native pane IDs include wifi-power, network:ID and other-network.
+Existing `menu.navigate`/`menu.scroll` admit wifi and battery through the same owner. Current27 Wi-Fi menu has the power switch, Known Networks, expanded Other Networks, connected-left-icon disconnect, Other… and **Wi-Fi Settings…**, not retired Network Preferences. `system.settings.open {pane:'wifi'}` opens the real ordinary pane; existing `system.panel.focus/scroll` address it. Native pane IDs include wifi-power, network:ID and other-network.
 
 Required closed `system.wifi:{powered:boolean,connectedNetworkId:id|null,networks:[{id,name,security,password,known,available,hidden,strength}]}` is canonical saved/seed data. Up to128 unique IDs/names; literal single-line names1..256 UTF-16 units; fictional password0..63, empty only for open; unavailable strength0/available1..3. Connected requires powered/known/available. Complete old V1 missing wifi rejects without defaults/aliases. Existing4 Mi whole-root budget precedes mutation. Fictional default protected passwords are `scene`; no adapter/scan/internet or real credentials.
 
@@ -975,6 +975,35 @@ Required closed `system.wifi:{powered:boolean,connectedNetworkId:id|null,network
 Proof:464 tests/5973 assertions/41 files;606 warning-free modules;323 strict request/result pairs,101 applied pairs/177 records. Native source/production open/protected/hidden/security=None, wrong-password retention, exact Notes caret4–17 backward, connected-icon disconnect, real Settings synchronization, independent locals/Guest/cold restore, excluded private drafts, stale-root IDs, complete old-shape rejection and4 Mi boundary pass.128 literal SSIDs scroll4007 and all Join controls reveal at320×240/DPR1.25; production actions y195–221. Final index-BMtCIDgD.js Light/Dark/narrow inspected, zero errors/failed/external requests;60 historical calls preserve state and178/163/170/190 catalogs. Intermediate partial-HMR development errors remain separately recorded. Owned slots cleared/tabs closed.
 
 Sources: [current27 Wi-Fi menu](https://support.apple.com/en-mo/guide/mac-help/mchlfad426fa/27/mac/27), [Wi-Fi connection](https://support.apple.com/guide/mac-help/connect-your-mac-to-the-internet-using-wi-fi-mchlp1180/27/mac/27), [hidden network](https://support.apple.com/en-mo/guide/mac-help/mchl339ee00e/27/mac/27). Per-root scope/no automatic reconnect/bounded security are disclosed simulation policies; advanced Network preferences remain their separately queued feature.
+
+### Fictional Battery and immediate native Options — STATUS-02
+
+Ten additions bring current discovery to333. All `battery.*` commands are Golden Gate-only under `status.battery`; the existing four Host `status.menu.*` commands and `menu.navigate/scroll` now admit `menuId:'battery'`. Its real indicator, summary, Low Power checkbox, conditional Charge to Full Now, readonly significant-energy rows and Battery Settings footer share one original menu owner.
+
+| Command | Target | Payload | Applied target / behavior |
+| --- | --- | --- | --- |
+| `battery.status.set` | `{}` | `{percent,powerSource:'battery'|'adapter',charging,minutesToFull:null|integer}` | Same four fields. Authored status event; source/full clears charge override. No automatic drain/progress. |
+| `battery.energy.set` | `{appId}` | `{impact:integer0..100}` | `{appId,impact}`. Update/insert a distinct registered fixture; projection uses actual running apps, including hidden/minimized. |
+| `battery.lowPower.set` | `{}` | `{mode:'never'|'always'|'battery'|'adapter'}` | `{mode,active}`. Source-aware authored policy; native popup is keep-open. |
+| `battery.menu.configure` | `{}` | Nonempty closed subset `{showInMenuBar?,showPercentage?,showEnergyMode?:'always'|'when-low-power'|'never'}` | All three preferences. Hiding an open Battery popup restores its original editor-return token. |
+| `battery.chargeToFull` | `{}` | `{}` | `{charging:true,chargeToFull:true}`. Adapter/limit<100/not-full/no-current-override only; later authored full/unplug clears it. |
+| `battery.options.open` | `{windowId}` | `{}` | `{windowId,optionsId}`. Original ordinary Menu Bar Settings window and actual owned Battery Options button only. |
+| `battery.options.configure` | `{windowId,optionsId}` | Nonempty closed subset `{showPercentage?,showEnergyMode?}` | `{windowId,optionsId,showPercentage,showEnergyMode}`. Immediate canonical commit through actual controls; whole-root budget before mutation. |
+| `battery.options.close` | `{windowId,optionsId}` | `{}` | Same target. Done/Escape dismiss; committed preferences stay. |
+| `battery.options.focus` | `{windowId,optionsId,control:'show-percentage'|'show-energy-mode'|'done'}` | `{observe?:boolean}` | Same target. Synchronous real reveal/focus/readback, or exact current-focus observation. |
+| `battery.options.scroll` | `{windowId,optionsId}` | `{top,observe?:boolean}` | `{windowId,optionsId,top}`. Actual clamped body scroll, or matching native observation. |
+
+Canonical required closed `system.battery:{percent,powerSource,charging,minutesToFull,chargeLimit,chargeToFull,showInMenuBar,showPercentage,showEnergyMode,lowPowerMode,energyApps:[{appId,impact}]}` is shared seed/saved data. Percent0..100; nullable minutes1..2880; limit80..100; max128 distinct safe registered app IDs/impact0..100. Battery source/full cannot charge or retain estimate/override; charging requires adapter and percent below effective limit. Estimate only when charging to effective100. Descriptor-first validation rejects accessors/coercion/extra/inherited fields and old incomplete V1. Complete-root4 Mi text accounting includes actual startup Recent Applications/Dock history.
+
+`targets.battery` publishes canonical summary/preferences, readonly significant-energy running rows, authored fixtures, original Root/window Options lease, actual control IDs/focus/body scroll and explicit simulation boundaries. Significant impact>=20, low<=20/critical<=10 only on battery are simulator policies, not host measurements. No fake Activity Monitor action, unsupported M2 High Power control, timers/drain or host Battery API.
+
+Current27 **Battery Settings…** replaces Energy Saver. `system.settings.open {pane:'battery'|'menu-bar'}` and existing `system.panel.focus/scroll` address real ordinary panes. Battery controls include low-power-mode and conditional charge-to-full; Menu Bar controls are battery-visible and battery-options. Percentage is in **Menu Bar → Battery Options**, not a retired popup Show Percentage item. Native Tab/reverse Tab, Space, select, fast Tab→Enter and Escape use real owned controls outside an inert desktop. A conditional mode row disappearing refocuses the surviving Battery Settings leaf. Rejected changes preserve state/focus and reconcile actual fields.
+
+Both retained locals independently persist authored charge/source/prefs/energy and the actual pane/native scroll. Another local cannot borrow a private lease; the original retained local resumes its own sheet. Accepted restart/disposal retires it. Explicit cold restore excludes private Options/focus/scroll; Guest resets/discards and never saves. Advanced Battery/history and other Menu Bar settings remain separately queued rather than advertised no-ops.
+
+Proof:480 tests/7211 assertions/42 files,615 modules without Svelte warnings,333 strict schema pairs;236 applied pairs/268 source/production records validate. Real native status/low/estimate/override, keep-open and disappearing-row surviving focus, original Notes caret4–17 backward on hide, immediate Options/fast select→Tab→Enter/Space/Escape, Settings synchronization, both independent cold local models/Guest/private exclusion, foreign leases/old V1 and exact full-root growth barriers pass.66 current live energy rows scroll inside320×240; actual clipped-select focus reveals at320×180 with Done pinned.64 historical calls preserve170/178/163/190 catalogs/state. Final index-5b3vm4Ax.js Light/Dark/narrow inspected; clean production zero errors/failed/external requests. Source instrumentation errors/mixed-tab localhost history separately recorded; owned slots cleared/tabs closed.
+
+Sources: [current27 Battery menu](https://support.apple.com/guide/mac-help/what-is-the-battery-status-menu-mchl173fcc57/27/mac/27), [charge and percentage](https://support.apple.com/guide/mac-help/monitor-your-macs-battery-mchlp1115/27/mac/27), [Menu Bar](https://support.apple.com/guide/mac-help/change-menu-bar-settings-mchlad96d366/27/mac/27), [Battery settings](https://support.apple.com/guide/mac-help/change-battery-settings-mchlfc3b7879/27/mac/27).
 
 ## Working notes
 

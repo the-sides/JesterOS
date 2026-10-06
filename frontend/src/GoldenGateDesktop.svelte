@@ -43,9 +43,10 @@
     registerView,
     onlayout,
   } = $props();
-  const primaryMenus = $derived(menuBarMenus.filter(menu => menu.menuId !== 'users' && menu.menuId !== 'wifi'));
+  const primaryMenus = $derived(menuBarMenus.filter(menu => !['users', 'wifi', 'battery'].includes(menu.menuId)));
   const userMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'users'));
   const wifiMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'wifi'));
+  const batteryMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'battery' && menu.showInMenuBar));
 
   const applications = $derived(profile.applications);
   const desktopFiles = $derived(desktopItems);
@@ -511,7 +512,8 @@
         <GoldenGateMenuBar {profile} menus={userMenus} state={menuBarState} execute={executeSession}
           registerView={registerSessionView} {foreground} zone="users" />
       {/if}
-      <span class="golden-gate-battery" aria-label={`Battery: ${profile.defaults.batteryPercent} percent`}><svg viewBox="0 0 28 14" aria-hidden="true"><rect x="1" y="2.5" width="23" height="9" rx="2" fill="none" stroke="currentColor"/><path fill="currentColor" d="M3 4.5h17v5H3zm22 0h2v5h-2z"/></svg></span>
+      <GoldenGateMenuBar {profile} menus={batteryMenus} state={menuBarState} execute={executeSession}
+        registerView={registerSessionView} {foreground} zone="battery" />
       <GoldenGateMenuBar {profile} menus={wifiMenus} state={menuBarState} execute={executeSession}
         registerView={registerSessionView} {foreground} zone="wifi" />
       <span class="golden-gate-spotlight" aria-label="Spotlight"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg></span>
@@ -590,4 +592,12 @@
   @media (max-width: 760px) { .wrapped-grid:not(.custom-view) > :global(button.desktop-stack) { width: 86px; } }
   @media (max-width: 760px) { .wrapped-grid:not(.custom-view) .golden-gate-file { width: 86px; } .wrapped-grid { left: 9px; } }
   @media (max-width: 760px) { .mac-desktop-rename { font-size: 11px; } }
+  .golden-gate-status-items { flex-shrink:0; }
+  @media (max-width:520px) {
+    .golden-gate-menu-bar { padding:0 6px; gap:6px; }
+    .golden-gate-menu-headings { margin-right:0; }
+    .golden-gate-status-items { gap:6px; }
+    .golden-gate-control-center { display:none; }
+    .golden-gate-status-items time { font-size:10px; }
+  }
 </style>

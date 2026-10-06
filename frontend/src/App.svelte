@@ -62,6 +62,10 @@
   import { createWifiCommands } from './wifi-commands.js';
   import GoldenGateWifiSettings from './GoldenGateWifiSettings.svelte';
   import GoldenGateWifiJoin from './GoldenGateWifiJoin.svelte';
+  import { createBatteryCommands } from './battery-commands.js';
+  import GoldenGateBatterySettings from './GoldenGateBatterySettings.svelte';
+  import GoldenGateBatteryMenuSettings from './GoldenGateBatteryMenuSettings.svelte';
+  import GoldenGateBatteryOptions from './GoldenGateBatteryOptions.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -110,6 +114,7 @@
   const expandedProperty = adapter.expandedProperty;
   const hasMenuBar = profile.capabilities.includes('shell.menu-bar');
   const hasWifi = profile.capabilities.includes('status.wifi');
+  const hasBattery = profile.capabilities.includes('status.battery');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
@@ -351,6 +356,8 @@
   const systemState = $state(hasAppleMenu ? initialData.system : undefined);
   const wifiPresentation = $state({ otherNetworks: false, join: null });
   let wifiJoinView = $state(null), wifiController;
+  const batteryPresentation = $state({ options: null });
+  let batteryOptionsView = $state(null);
   let storageConfirmation = $state(null);
   let storageConfirmationLease = null;
   let nextStorageConfirmation = 1;
@@ -1023,12 +1030,44 @@
     });
     Object.assign(handlers, wifiController.handlers);
   }
+  const batteryController = hasBattery ? createBatteryCommands({
+      profile, presentation: batteryPresentation, getState: () => systemState.battery,
+      getRunningAppIds: () => runningAppIds, getView: () => batteryOptionsView,
+      available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join
+        && !utilityPreparation && !servicePreparation && !servicePending && !switching.switcher
+        && !presentation.pairing && !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
+      canBegin: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
+        && !servicePending && !switching.switcher && !presentation.pairing,
+      canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
+      getOwner: windowId => {
+        const entry = getSystemPanel(windowId);
+        if (entry?.window.appId !== 'settings' || entry.window.utilityKind || entry.window.settingsPane !== 'menu-bar'
+          || activeWindowId !== windowId || activeAppId !== 'settings') return null;
+        const node = entry.element.querySelector('[data-application-settings-control="battery-options"]');
+        if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return null;
+        const rect = node.getBoundingClientRect(), hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return hit && (hit === node || node.contains(hit)) ? entry.window : null;
+      },
+      ownerCurrent: owner => Boolean(owner && windows.find(window => window.id === owner.id) === owner
+        && owner.appId === 'settings' && !owner.utilityKind && owner.settingsPane === 'menu-bar'
+        && !owner.minimized && windowPresented(owner) && !isAppHidden('settings')
+        && activeWindowId === owner.id && activeAppId === 'settings'),
+      capture: captureSessionDesktop, restore: restoreSessionDesktop,
+      settle: async () => { await tick(); await tick(); },
+      getMenuReturnFocus: () => menuBarState?.menuId === 'battery' ? getMenuReturnFocus?.() : undefined,
+      retireBatteryMenu: async original => {
+        if (menuBarState?.menuId !== 'battery') return;
+        dismissMenuBar?.(); await tick(); await tick();
+        if (original) await restoreSessionDesktop(original);
+      },
+  }) : null;
+  if (batteryController) Object.assign(handlers, batteryController.handlers);
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
     profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
     getRunningAppIds: () => runningAppIds,
     openAbout: () => openWindowPanel('finder', 'system-about', 'About This Mac'),
     openSettings: async pane => {
-      const title = { about: 'About', displays: 'Displays', storage: 'Storage', wifi: 'Wi-Fi' }[pane];
+      const title = { about: 'About', displays: 'Displays', storage: 'Storage', wifi: 'Wi-Fi', battery: 'Battery', 'menu-bar': 'Menu Bar' }[pane];
       const result = await openWindowPanel('settings', undefined, title, pane);
       return result.status === 'applied' ? { status: 'applied', target: { ...result.target, pane } } : result;
     },
@@ -1116,6 +1155,7 @@
       ...(hasAppleMenu ? { system: systemState } : {}),
       ...(hasAppleMenu ? { storageManagement: { inventory: storageManagement, confirmation: storageConfirmation, error: storageMaintenanceError } } : {}),
       ...(hasWifi ? { wifi: wifiController.targets() } : {}),
+      ...(hasBattery ? { battery: batteryController.targets() } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1128,6 +1168,7 @@
     settleCommands, sceneCatalog, () => ({
       profiles: listOSProfiles().map(({ id, name, family, version }) => ({ profileId: id, name, family, version })),
       ...(hasWifi ? { wifi: wifiController.targets() } : {}),
+      ...(hasBattery ? { battery: batteryController.targets() } : {}),
       ...(hasAppearance ? { appearance: appearanceTargets(profile, appearanceState) } : {
         appearance: { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent,
           scope: 'full', highlight: null, customHighlight: false,
@@ -1352,11 +1393,11 @@
     return !disposed && (foreground || starting || !initialized) && (adapter.windowInteractionsAvailable?.(nativeState) ?? true);
   }
   function sceneInteractionsAvailable() {
-    return sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join;
+    return sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options;
   }
   function fileWorkflowsAvailable() {
     return sceneCoreAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view
-      && !dashboardOpen && !switching.switcher && !presentation.pairing;
+      && !dashboardOpen && !switching.switcher && !presentation.pairing && !wifiPresentation.join && !batteryPresentation.options;
   }
   function windowInteractionsAvailable() {
     return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view && !dashboardOpen;
@@ -2513,7 +2554,7 @@
       panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
         || window.appId === 'systeminformation' && !window.utilityKind
         || window.appId === 'settings' && !window.utilityKind
-          && ['about', 'displays', 'storage', 'wifi'].includes(window.settingsPane)).map(window => {
+          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar'].includes(window.settingsPane)).map(window => {
         const entry = getSystemPanel(window.id), element = managedWindowElement(window.id)?.querySelector('[data-system-panel]');
         const controlIds = systemPanelControls(entry);
         return { windowId: window.id, appId: window.appId,
@@ -2729,7 +2770,7 @@
     return windowPresented(window);
   }
   function windowInteractive(window) {
-    return foreground && !fileDialogState.current && !wifiPresentation.join && !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
+    return foreground && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
       && fullScreenStage.mode !== 'pairing' && windowPresented(window);
   }
   function measureStageArea() {
@@ -2966,6 +3007,16 @@
   function canLeaveScene() {
     if (disposed || !initialized || utilityPreparation || servicePreparation || servicePending
       || presentation.pairing || fileDialogState.current || pendingQuitAppIds.length) return false;
+    if (hasBattery) {
+      const percentage = sceneRoot.querySelector('[data-battery-control="show-percentage"]');
+      const energyMode = sceneRoot.querySelector('[data-battery-control="show-energy-mode"]');
+      const lowPower = sceneRoot.querySelector('[data-application-settings-control="low-power-mode"]');
+      const visible = sceneRoot.querySelector('[data-application-settings-control="battery-visible"]');
+      if (percentage && percentage.checked !== systemState.battery.showPercentage
+        || energyMode && energyMode.value !== systemState.battery.showEnergyMode
+        || lowPower && lowPower.value !== systemState.battery.lowPowerMode
+        || visible && visible.checked !== systemState.battery.showInMenuBar) return false;
+    }
     for (const node of sceneRoot.querySelectorAll('[data-system-computer-name], [data-notes-control="title"], [data-notes-control="body"], [data-service-field]')) {
       if (node.disabled || node.readOnly) continue;
       if (node.hasAttribute('data-system-computer-name')) {
@@ -2990,6 +3041,7 @@
     if (forceQuitConfirmation) cancelForceQuitConfirmation(forceQuitConfirmation.windowId);
     storageConfirmation = null;
     wifiController?.clear();
+    batteryController?.clear();
     if (!reopenWindows) {
       // Close real native views using their existing lifecycle; never replace
       // the document/files/communications models with startup seed data.
@@ -3302,6 +3354,8 @@
       ] },
       ...commandMenus.filter(menu => menu.menuId === 'help'),
       ...(hasWifi ? [wifiController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
+        && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
+      ...(hasBattery ? [batteryController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
     ];
   }
@@ -3695,6 +3749,7 @@
       helpViewer?.dispose();
       services?.dispose(); serviceSources?.dispose();
       wifiController?.clear();
+      batteryController?.clear();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -4134,6 +4189,12 @@
             execute={commands.execute} available={() => Boolean(getSystemPanel(window.id))} />
         {:else if hasAppleMenu && window.utilityKind === 'system-coverage'}
           <GoldenGateSystemCoverage {profile} windowId={window.id} sceneTime={macFiles.sceneTime} execute={commands.execute} />
+        {:else if hasBattery && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'battery'}
+          <GoldenGateBatterySettings {profile} {window} battery={systemState.battery} summary={batteryController.summary()}
+            execute={commands.execute} registerView={registerApplicationView} />
+        {:else if hasBattery && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'menu-bar'}
+          <GoldenGateBatteryMenuSettings {profile} {window} battery={systemState.battery} summary={batteryController.summary()}
+            execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasWifi && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'wifi'}
           <GoldenGateWifiSettings {profile} {window} wifi={systemState.wifi}
             execute={commands.execute} registerView={registerApplicationView} />
@@ -4257,7 +4318,7 @@
 {/snippet}
 
 <div class="scene-root" data-session-scene data-profile-id={profile.id} bind:this={sceneRoot}>
-<div class="desktop-interaction-root" inert={Boolean(wifiPresentation.join)}>
+<div class="desktop-interaction-root" inert={Boolean(wifiPresentation.join || batteryPresentation.options)}>
 <Desktop
   {profile}
   {session}
@@ -4378,8 +4439,14 @@
 </Desktop>
 </div>
 {#if hasWifi && wifiPresentation.join}
-  <div class="wifi-join-backdrop">
+  <div class="status-sheet-backdrop">
     <GoldenGateWifiJoin pending={wifiPresentation.join} execute={commands.execute} {foreground} bind:this={wifiJoinView} />
+  </div>
+{/if}
+{#if hasBattery && batteryPresentation.options}
+  <div class="status-sheet-backdrop">
+    <GoldenGateBatteryOptions pending={batteryPresentation.options} battery={systemState.battery}
+      execute={commands.execute} {foreground} bind:this={batteryOptionsView} />
   </div>
 {/if}
 </div>
@@ -4387,7 +4454,7 @@
 <style>
   .scene-root { position: absolute; inset: 0; }
   .desktop-interaction-root { height:100%; }
-  .wifi-join-backdrop { position:absolute; inset:0; z-index:30000; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:8px; background:#0003; overflow:hidden; }
+  .status-sheet-backdrop { position:absolute; inset:0; z-index:30000; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:8px; background:#0003; overflow:hidden; }
   .help-placement { position:absolute; left:50%; transform:translateX(-50%); width:min(700px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:11500; display:flex; justify-content:center; }
   .service-lookup-placement { position:absolute; top:4px; left:50%; transform:translateX(-50%); width:min(390px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:12000; display:flex; }
   .file-dialog-backdrop { position: absolute; inset: 0; z-index: 20000; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 8px; background: #0002; overflow: hidden; }

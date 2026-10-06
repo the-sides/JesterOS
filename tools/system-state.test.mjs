@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { systemDefaults, recordSystemRecent, clearSystemRecents, validateSystemState, systemStorageSummary } from '../frontend/src/system-state.js';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { setWifiPower, connectWifiNetwork, disconnectWifiNetwork } from '../frontend/src/wifi-model.js';
+import { setBatteryStatus, setBatteryEnergy, configureBatteryMenu, setBatteryLowPower, chargeBatteryToFull } from '../frontend/src/battery-model.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 
@@ -60,7 +61,7 @@ test('unrecognized applications, duplicate/overflow history and non-data propert
     expect(validateSystemState(state, profile).ok).toBe(false);
   }
   let reads = 0;
-  const actor = { computerName: valid.computerName, reopenWindows: valid.reopenWindows, storage: valid.storage, wifi: valid.wifi, servers: valid.servers,
+  const actor = { ...systemDefaults(profile),
     recentItems: { applications: ['notes'], servers: [] } };
   Object.defineProperty(actor.recentItems, 'documents', { enumerable: true, get() { reads++; return []; } });
   expect(validateSystemState(actor, profile).ok).toBe(false);
@@ -77,7 +78,7 @@ test('a saved computer name retains literal Unicode without accepting empty, mul
     expect(validateSystemState(candidate, profile).ok).toBe(false);
   }
   let reads = 0;
-  const candidate = { reopenWindows: state.reopenWindows, recentItems: state.recentItems, servers: state.servers, storage: state.storage, wifi: state.wifi };
+  const candidate = systemDefaults(profile); delete candidate.computerName;
   Object.defineProperty(candidate, 'computerName', { enumerable: true, get() { reads++; return 'Borrowed name'; } });
   expect(validateSystemState(candidate, profile).ok).toBe(false);
   expect(reads).toBe(0);
@@ -214,4 +215,50 @@ test('saved accounts require complete Wi-Fi and reject inconsistent or accessor 
   expect(validateSystemState(candidate, profile).ok).toBe(false);
   expect(reads).toBe(0);
   expect(state).toEqual(before);
+});
+
+test('account Battery transitions preserve independent retained roots and survive saved round trips', () => {
+  const alex = systemDefaults(profile), casey = systemDefaults(profile), other = structuredClone(casey);
+  alex.battery.chargeLimit = 80;
+  expect(setBatteryStatus(alex.battery, { percent: 80, powerSource: 'adapter', charging: false, minutesToFull: null }, profile).status).toBe('applied');
+  expect(chargeBatteryToFull(alex.battery, profile).status).toBe('applied');
+  expect(setBatteryLowPower(alex.battery, 'adapter', profile).status).toBe('applied');
+  expect(configureBatteryMenu(alex.battery, { showPercentage: true, showEnergyMode: 'when-low-power' }, profile).status).toBe('applied');
+  expect(setBatteryEnergy(alex.battery, 'notes', 80, profile).status).toBe('applied');
+  expect(validateSystemState(alex, profile)).toEqual({ ok: true });
+  const saved = JSON.parse(JSON.stringify(alex));
+  expect(validateSystemState(saved, profile)).toEqual({ ok: true });
+  expect(saved.battery).toEqual(alex.battery);
+  expect(casey).toEqual(other);
+  expect(saved.battery).not.toBe(alex.battery);
+  expect(saved.battery.energyApps[0]).not.toBe(alex.battery.energyApps[0]);
+});
+
+test('old incomplete saved Battery and inconsistent Battery records reject without upgrades or getter reads', () => {
+  const state = systemDefaults(profile);
+  for (const mutate of [
+    value => { delete value.battery; },
+    value => { value.battery = null; },
+    value => { delete value.battery.minutesToFull; },
+    value => { value.battery.charging = true; },
+    value => { value.battery.energyApps.push({ ...value.battery.energyApps[0] }); },
+    value => { value.battery.energyApps[0].appId = 'foreign-profile-app'; },
+    value => { value.battery.showPercentage = 'true'; },
+    value => { value.battery.oldPercent = 87; },
+  ]) {
+    const candidate = structuredClone(state); mutate(candidate);
+    const before = structuredClone(candidate);
+    expect(validateSystemState(candidate, profile).ok).toBe(false);
+    expect(candidate).toEqual(before);
+  }
+  let reads = 0;
+  for (const mutate of [
+    value => Object.defineProperty(value, 'battery', { enumerable: true, get() { reads++; return state.battery; } }),
+    value => Object.defineProperty(value.battery, 'percent', { enumerable: true, get() { reads++; return 50; } }),
+    value => Object.defineProperty(value.battery.energyApps, '0', { enumerable: true, get() { reads++; return state.battery.energyApps[0]; } }),
+  ]) {
+    const candidate = structuredClone(state); mutate(candidate);
+    expect(validateSystemState(candidate, profile).ok).toBe(false);
+  }
+  expect(reads).toBe(0);
 });

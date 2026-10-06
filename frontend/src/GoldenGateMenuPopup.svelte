@@ -1,6 +1,7 @@
 <script>
   import { tick } from 'svelte';
   import { menuBarRequest } from './menu-bar.js';
+  import GoldenGateIcon from './GoldenGateIcon.svelte';
 
   let { menu, menus, state: menuState, level, items, geometry = null, execute, available, onLayout } = $props();
   let panel = $state(null);
@@ -215,7 +216,7 @@
 {#snippet lock()}
   <svg class="lock-icon" viewBox="0 0 12 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 6V4a3 3 0 0 1 6 0v2"/><rect x="1.5" y="6" width="9" height="6.5" rx="1.5"/><path d="M6 8.5v2"/></svg>
 {/snippet}
-<div class="menu-popup" class:wifi-popup={menu.kind === 'wifi'} bind:this={panel} id={`golden-menu-${menu.menuId}-${level}`}
+<div class="menu-popup" class:wifi-popup={menu.kind === 'wifi'} class:battery-popup={menu.kind === 'battery'} bind:this={panel} id={`golden-menu-${menu.menuId}-${level}`}
   data-menu-popup={level} data-menu-provider={menu.menuId}
   role="menu" aria-label={level === 0 ? `${menu.label} menu` : `${menu.label} submenu`}
   aria-hidden={geometry?.covered ? 'true' : undefined} inert={geometry?.covered ?? false} tabindex="-1"
@@ -233,7 +234,19 @@
   {/if}
   {#each items as item (item.id)}
     {#if item.separatorBefore}<div class="separator" role="separator"></div>{/if}
-    {#if item.heading}
+    {#if item.type === 'battery-status'}
+      <div class="battery-summary" data-battery-status>
+        <div class="battery-title"><strong>{item.label}</strong><strong class="battery-level">{item.percent}%</strong></div>
+        <p>{item.statusLabel}{#if item.charging && item.minutesToFull !== null && (menu.chargeToFull || menu.chargeLimit === 100)}<span> · {item.minutesToFull} min until full</span>{/if}</p>
+        <p class="power-source">Power Source: {item.powerSourceLabel}</p>
+        {#if item.criticalBattery || item.lowBattery}<p class="low-status">{item.criticalBattery ? 'Critically Low Battery' : 'Low Battery'}</p>{/if}
+      </div>
+    {:else if item.type === 'battery-energy'}
+      <div class="battery-energy" data-battery-energy={item.appId ?? item.id.slice(7)}>
+        <span class="energy-icon"><GoldenGateIcon name={item.icon} /></span>
+        <span class="energy-name">{item.name ?? item.label}</span>
+      </div>
+    {:else if item.heading}
       <div class="help-heading">{item.label}</div>
     {:else if item.separator}
       <div class="separator" role="separator"></div>
@@ -256,9 +269,9 @@
         data-menu-item-id={item.id} disabled={!item.enabled} tabindex={item.enabled && selection?.itemId === item.id ? 0 : -1}
         class:selected={selection?.itemId === item.id} class:command-unavailable={item.helpResult?.enabled === false}
         class:wifi-power={item.type === 'wifi-power'} class:wifi-network={item.type === 'wifi-network'}
-        class:wifi-disclosure={item.type === 'wifi-disclosure'} title={item.label}
+        class:battery-mode={item.type === 'battery-mode'} class:wifi-disclosure={item.type === 'wifi-disclosure'} title={item.label}
         onpointerenter={() => select(item)} onfocus={() => select(item, true)} onclick={event => activate(event, item)}>
-        {#if item.type === 'wifi-power'}
+        {#if item.type === 'wifi-power' || item.type === 'battery-mode'}
           <span class="power-label">{item.label}</span><span class="wifi-switch" class:on={item.checked} aria-hidden="true"><i></i></span>
         {:else if item.type === 'wifi-network'}
           {@render signal(item.strength)}<span class="label">{item.name ?? item.label}</span>
@@ -311,4 +324,17 @@
   .connected { color:var(--appearance-accent,#0878ef); }
   .selected .connected { color:inherit; }
   .disclosure-arrow { font-size:20px; line-height:18px; }
+  .battery-popup { width:300px; padding:8px; }
+  .battery-summary { padding:6px 9px 9px; }
+  .battery-title { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:14px; }
+  .battery-level { font-variant-numeric:tabular-nums; }
+  .battery-summary p { margin:3px 0 0; font-size:11px; line-height:16px; overflow-wrap:anywhere; }
+  .power-source { opacity:.7; }
+  .low-status { color:#c83e3b; font-weight:600; }
+  button.battery-mode { grid-template-columns:minmax(0,1fr) auto; min-height:34px; }
+  .battery-popup .help-heading { padding-top:8px; font-weight:600; }
+  .battery-energy { display:flex; align-items:center; gap:8px; padding:4px 9px; min-width:0; }
+  .energy-icon { width:22px; height:22px; flex-shrink:0; }
+  .energy-icon :global(svg) { width:100%; height:100%; display:block; }
+  .energy-name { min-width:0; overflow-wrap:anywhere; white-space:normal; font-size:12px; line-height:17px; }
 </style>
