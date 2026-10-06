@@ -221,7 +221,7 @@
 {#snippet lock()}
   <svg class="lock-icon" viewBox="0 0 12 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 6V4a3 3 0 0 1 6 0v2"/><rect x="1.5" y="6" width="9" height="6.5" rx="1.5"/><path d="M6 8.5v2"/></svg>
 {/snippet}
-<div class="menu-popup" class:wifi-popup={menu.kind === 'wifi'} class:battery-popup={menu.kind === 'battery'} class:sound-popup={menu.kind === 'sound'} bind:this={panel} id={`golden-menu-${menu.menuId}-${level}`}
+<div class="menu-popup" class:wifi-popup={menu.kind === 'wifi'} class:battery-popup={menu.kind === 'battery'} class:sound-popup={menu.kind === 'sound'} class:bluetooth-popup={menu.kind === 'bluetooth'} bind:this={panel} id={`golden-menu-${menu.menuId}-${level}`}
   data-menu-popup={level} data-menu-provider={menu.menuId}
   role="menu" aria-label={level === 0 ? `${menu.label} menu` : `${menu.label} submenu`}
   aria-hidden={geometry?.covered ? 'true' : undefined} inert={geometry?.covered ?? false} tabindex="-1"
@@ -278,14 +278,15 @@
     {:else}
       <button type="button" role={item.type === 'wifi-disclosure' ? 'menuitem' : item.radio ? 'menuitemradio' : item.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
         aria-checked={item.type !== 'wifi-disclosure' && (item.radio || item.checked !== undefined) ? Boolean(item.checked) : undefined}
+        aria-label={item.type === 'bluetooth-device' ? `${item.connected ? 'Disconnect' : 'Connect'} ${item.name ?? item.label}` : undefined}
         aria-disabled={!item.enabled || item.helpResult?.enabled === false} aria-haspopup={item.children ? 'menu' : undefined}
         aria-expanded={item.type === 'wifi-disclosure' ? Boolean(item.checked) : item.children ? menuState.levels[level + 1]?.parentId === item.id : undefined}
         data-menu-item-id={item.id} disabled={!item.enabled} tabindex={item.enabled && selection?.itemId === item.id ? 0 : -1}
         class:selected={selection?.itemId === item.id} class:command-unavailable={item.helpResult?.enabled === false}
         class:wifi-power={item.type === 'wifi-power'} class:wifi-network={item.type === 'wifi-network'}
-        class:battery-mode={item.type === 'battery-mode'} class:wifi-disclosure={item.type === 'wifi-disclosure'} title={item.label}
+        class:battery-mode={item.type === 'battery-mode'} class:bluetooth-power={item.type === 'bluetooth-power'} class:wifi-disclosure={item.type === 'wifi-disclosure'} title={item.label}
         onpointerenter={() => select(item)} onfocus={() => select(item, true)} onclick={event => activate(event, item)}>
-        {#if item.type === 'wifi-power' || item.type === 'battery-mode'}
+        {#if item.type === 'wifi-power' || item.type === 'battery-mode' || item.type === 'bluetooth-power'}
           <span class="power-label">{item.label}</span><span class="wifi-switch" class:on={item.checked} aria-hidden="true"><i></i></span>
         {:else if item.type === 'wifi-network'}
           {@render signal(item.strength)}<span class="label">{item.name ?? item.label}</span>
@@ -295,7 +296,7 @@
         {:else}
           <span class="check" aria-hidden="true">{item.checked ? item.radio ? '●' : '✓' : ''}</span>
           <span class="label">{item.label}</span>
-          <span class="shortcut">{item.shortcut ?? ''}</span>
+          <span class="shortcut">{item.type === 'bluetooth-device' ? !item.enabled ? 'Unavailable' : item.batteryPercent === null ? '' : `${item.batteryPercent}%` : item.shortcut ?? ''}</span>
           <span class="arrow" aria-hidden="true">{item.children ? '›' : ''}</span>
         {/if}
       </button>
@@ -353,6 +354,9 @@
   .energy-name { min-width:0; overflow-wrap:anywhere; white-space:normal; font-size:12px; line-height:17px; }
   .sound-popup { width:300px; padding:8px; }
   .sound-popup .help-heading { padding-top:8px; font-weight:650; }
+  .bluetooth-popup { width:300px; padding:8px; }
+  .bluetooth-popup .help-heading { padding-top:8px; font-weight:650; }
+  button.bluetooth-power { grid-template-columns:minmax(0,1fr) auto; min-height:34px; font-size:14px; font-weight:650; }
   .sound-volume { display:block; padding:5px 9px 8px; border-radius:10px; }
   .sound-volume-label { display:flex; justify-content:space-between; gap:8px; font-size:12px; }
   .sound-volume-label output { font-variant-numeric:tabular-nums; opacity:.7; }

@@ -20,7 +20,7 @@ export function createAppleCommands(ctx) {
   const handlers = {
     'system.about.open': (target, payload) => empty(target, payload) ? ctx.openAbout() : invalid(),
     'system.settings.open': (target, payload) => fields(target, []) && fields(payload, ['pane'])
-      && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound'].includes(payload.pane) ? ctx.openSettings(payload.pane) : invalid(),
+      && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth'].includes(payload.pane) ? ctx.openSettings(payload.pane) : invalid(),
     'system.machine.rename': (target, payload) => {
       if (!fields(target, ['windowId']) || !identity(target.windowId) || !fields(payload, ['name']) || !validComputerName(payload.name)) return invalid();
       const entry = ctx.getPanel(target.windowId);

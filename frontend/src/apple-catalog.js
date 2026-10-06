@@ -9,14 +9,14 @@ const define = (name, target, payload, requires, presentation, result) => {
   return entry;
 };
 const interactive = 'Interactive retained local desktop; no blocking local file sheet or global session/power presentation.';
-const panel = 'Exact existing connected, visible, interactive native system utility, represented About/Displays/Storage/Wi-Fi/Battery/Menu Bar Settings page, or System Information summary panel.';
+const panel = 'Exact existing connected, visible, interactive native system utility, represented About/Displays/Storage/Wi-Fi/Battery/Menu Bar/Date & Time/Sound/Bluetooth Settings page, or System Information summary panel.';
 const opened = object({ appId: identity, windowId: identity });
 export const appleCatalog = Object.fromEntries([
   define('system.about.open', empty, empty, [interactive],
     ['Open/reuse the bounded About This Mac utility with installed profile/version and explicit fictional machine identity; focus its real panel. No historical tabbed About interface or host hardware inference.'], opened),
-  define('system.settings.open', empty, object({ pane: choice('about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound') }), [interactive],
-    ['Open/reuse real System Settings About, read-only fictional Displays, actual virtual-payload Storage, shared fictional Wi-Fi/Battery/Sound, Battery/Clock/Sound Menu Bar controls, or shared-clock Date & Time; focus its native panel. Sound input levels/routes are fictional; master/mute/app gain drives real local Music/QuickTime audio. Other Settings interiors are not synthesized.'],
-    object({ appId: { const: 'settings' }, windowId: identity, pane: choice('about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound') })),
+  define('system.settings.open', empty, object({ pane: choice('about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth') }), [interactive],
+    ['Open/reuse real System Settings About, read-only fictional Displays, actual virtual-payload Storage, shared fictional Wi-Fi/Battery/Sound/Bluetooth, immediate Menu Bar controls, or shared-clock Date & Time; focus its native panel. Sound levels/routes and Bluetooth devices/pairing are fictional; master/mute/app gain drives real local Music/QuickTime audio. Other Settings interiors are not synthesized.'],
+    object({ appId: { const: 'settings' }, windowId: identity, pane: choice('about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth') })),
   define('system.machine.rename', object({ windowId: identity }), object({ name: computerNameSchema }), [interactive, panel, 'Exact About Settings computer-name control. Shared complete-seed 4 Mi UTF-16 text budget; name is at most256 UTF-16 units.'],
     ['Commit the literal single-line fictional computer name and synchronize that actual field. Preserve identity/hardware/files/other accounts; invalid input never changes the canonical name. Uncommitted native drafts are not saved.'],
     object({ windowId: identity, computerName: computerNameSchema })),

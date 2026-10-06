@@ -43,12 +43,13 @@
     registerView,
     onlayout,
   } = $props();
-  const primaryMenus = $derived(menuBarMenus.filter(menu => !['users', 'wifi', 'battery', 'clock', 'sound'].includes(menu.menuId)));
+  const primaryMenus = $derived(menuBarMenus.filter(menu => !['users', 'wifi', 'battery', 'clock', 'sound', 'bluetooth'].includes(menu.menuId)));
   const userMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'users'));
   const wifiMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'wifi'));
   const batteryMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'battery' && menu.showInMenuBar));
   const clockMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'clock'));
   const soundMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'sound' && menu.showInMenuBar));
+  const bluetoothMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'bluetooth' && menu.showInMenuBar));
 
   const applications = $derived(profile.applications);
   const desktopFiles = $derived(desktopItems);
@@ -518,6 +519,8 @@
         registerView={registerSessionView} {foreground} zone="battery" />
       <GoldenGateMenuBar {profile} menus={soundMenus} state={menuBarState} execute={executeSession}
         registerView={registerSessionView} {foreground} zone="sound" />
+      <GoldenGateMenuBar {profile} menus={bluetoothMenus} state={menuBarState} execute={executeSession}
+        registerView={registerSessionView} {foreground} zone="bluetooth" />
       <GoldenGateMenuBar {profile} menus={wifiMenus} state={menuBarState} execute={executeSession}
         registerView={registerSessionView} {foreground} zone="wifi" />
       <span class="golden-gate-spotlight" aria-label="Spotlight"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg></span>

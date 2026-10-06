@@ -52,6 +52,7 @@ export function soundDefaults() {
     { id: 'builtin-output', name: 'MacBook Air Speakers', kind: 'built-in', available: true, adjustable: true, volume: 50, muted: false },
     { id: 'headphones', name: 'Studio Headphones', kind: 'headphones', available: true, adjustable: true, volume: 35, muted: false },
     { id: 'studio-display', name: 'Studio Display', kind: 'display', available: true, adjustable: false, volume: 100, muted: false },
+    { id: 'bt-headphones', name: 'Trail Headphones', kind: 'headphones', available: false, adjustable: true, volume: 35, muted: false },
   ], inputs: [
     { id: 'builtin-input', name: 'MacBook Air Microphone', kind: 'built-in', available: true, adjustable: true, gain: 50, level: 35 },
     { id: 'studio-mic', name: 'Studio Microphone', kind: 'usb', available: true, adjustable: true, gain: 70, level: 45 },

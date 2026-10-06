@@ -1,8 +1,8 @@
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
-  let { profile, window, battery, summary, clock, clockSummary, sound = null, execute, registerView } = $props();
+  let { profile, window, battery, summary, clock, clockSummary, sound = null, bluetooth = null, execute, registerView } = $props();
   let panel = $state(null);
-  let visibleInput = $state(null), soundVisibleInput = $state(null), soundWhenSelect = $state(null);
+  let visibleInput = $state(null), soundVisibleInput = $state(null), soundWhenSelect = $state(null), bluetoothVisibleInput = $state(null);
   let ownerWindow = null, ownerRoot = null, ownerFrame = null, disposed = false, writtenScroll = null;
   function current() {
     return Boolean(!disposed && panel?.isConnected && window === ownerWindow && window.appId === 'settings'
@@ -87,6 +87,9 @@
       if (soundWhenSelect.value !== sound.showWhen) soundWhenSelect.value = sound.showWhen;
       if (soundWhenSelect.disabled !== !sound.showInMenuBar) soundWhenSelect.disabled = !sound.showInMenuBar;
     }
+    if (bluetoothVisibleInput?.isConnected && bluetooth && bluetoothVisibleInput.checked !== bluetooth.showInMenuBar) {
+      bluetoothVisibleInput.checked = bluetooth.showInMenuBar;
+    }
     return true;
   }
   async function request(event, command, target = {}, payload = {}) {
@@ -101,6 +104,14 @@
   }
   function setSoundWhen(event) {
     return request(event, 'sound.menu.configure', {}, { showWhen: event.currentTarget.value });
+  }
+  function setBluetoothVisible(event) {
+    return request(event, 'bluetooth.menu.configure', {}, { showInMenuBar: event.currentTarget.checked });
+  }
+  function bluetoothKey(event) {
+    if (event.key !== 'Enter' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing || event.repeat) return;
+    event.preventDefault();
+    if (owned(event.currentTarget)) return request(event, 'bluetooth.menu.configure', {}, { showInMenuBar: !bluetooth.showInMenuBar });
   }
   function scrollTop() { return current() ? panel.scrollTop : null; }
   function scroll({ top, left = 0, observe = false }) {
@@ -156,11 +167,19 @@
             disabled={!sound.showInMenuBar} onchange={setSoundWhen}><option value="always">Always</option><option value="when-active">Only When Active</option></select></label>
         </div>
       {/if}
+      {#if bluetooth}
+        <div class="bluetooth-row">
+          <label class="visibility"><input bind:this={bluetoothVisibleInput} type="checkbox" aria-label="Show Bluetooth in Menu Bar"
+            data-application-settings-control="bluetooth-show-in-menu-bar" checked={bluetooth.showInMenuBar}
+            onchange={setBluetoothVisible} onkeydown={bluetoothKey} /><span>Bluetooth</span></label>
+        </div>
+      {/if}
     </article>
     <p class="description">Choose whether Battery appears in the menu bar. Battery Options controls Show Percentage and when the Low Power Mode control appears in the Battery menu.</p>
     <p class="description">Clock Options controls the clock’s date, day of the week, digital or analog style, AM/PM, and seconds. Choose the 24-hour format and time zone in Date &amp; Time.</p>
     {#if sound}<p class="description">Sound appears Always or Only When Active while a bundled Music or QuickTime audio player is playing. Uncheck Sound to hide it from the menu bar.</p>{/if}
-    <p class="boundary">This pane implements the fictional Battery and Clock{sound ? ', and shared Sound' : ''} menu bar controls. Preferences apply immediately to this desktop; no host battery, clock, or system settings are accessed. The clock shares one authored virtual instant with dated records.</p>
+    {#if bluetooth}<p class="description">Show Bluetooth in the menu bar. This preference applies immediately; hiding the menu does not turn Bluetooth off.</p>{/if}
+    <p class="boundary">This pane implements the fictional Battery and Clock{sound ? ', shared Sound' : ''}{bluetooth ? ', and Bluetooth' : ''} menu bar controls. Preferences apply immediately to this desktop; no host battery, clock, Bluetooth, or system settings are accessed. The clock shares one authored virtual instant with dated records.</p>
   </div>
 </section>
 
@@ -170,7 +189,7 @@
   .crumb { margin:0 0 2px; opacity:.6; font-size:11px; } h1 { margin:0 0 18px; font-size:25px; letter-spacing:-.5px; font-weight:680; }
   h2 { font-size:13px; margin:20px 4px 7px; font-weight:650; }
   .card { padding:6px 16px; border:1px solid var(--appearance-soft-border,#dcd8d3); border-radius:12px; background:var(--appearance-surface,#fff); }
-  .battery-row,.clock-row,.sound-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:10px 0; } .clock-row,.sound-row { border-top:1px solid var(--appearance-soft-border,#dcd8d3); } .clock-description { min-width:0; } .clock-description strong { font-weight:600; } .clock-description small { display:block; margin-top:2px; font-size:11px; opacity:.65; overflow-wrap:anywhere; }
+  .battery-row,.clock-row,.sound-row,.bluetooth-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:10px 0; } .clock-row,.sound-row,.bluetooth-row { border-top:1px solid var(--appearance-soft-border,#dcd8d3); } .clock-description { min-width:0; } .clock-description strong { font-weight:600; } .clock-description small { display:block; margin-top:2px; font-size:11px; opacity:.65; overflow-wrap:anywhere; }
   .visibility { display:flex; align-items:center; gap:8px; font-weight:600; } input { width:15px; height:15px; margin:0; accent-color:var(--appearance-accent,#0878ef); }
   button { min-height:28px; max-width:100%; padding:4px 12px; border:1px solid var(--appearance-soft-border,#dcd8d3); border-radius:7px; background:var(--appearance-panel,#f2f2f3); color:inherit; font:inherit; cursor:default; }
   .sound-when { max-width:100%; min-width:0; } select { box-sizing:border-box; max-width:100%; min-width:0; min-height:28px; padding:4px 8px; border:1px solid var(--appearance-soft-border,#dcd8d3); border-radius:6px; background:var(--appearance-panel,#f2f2f3); color:inherit; font:inherit; } select:disabled { opacity:.5; }

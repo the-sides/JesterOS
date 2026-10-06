@@ -37,6 +37,7 @@ import { batteryCatalog } from './battery-catalog.js';
 import { clockCatalog } from './clock-catalog.js';
 import { soundCatalog } from './sound-catalog.js';
 import { soundMediaCatalog } from './sound-media-catalog.js';
+import { bluetoothCatalog } from './bluetooth-catalog.js';
 
 const MAC_PROFILES = [MOJAVE_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -91,6 +92,7 @@ export const commandCatalog = {
   ...clockCatalog,
   ...soundCatalog,
   ...soundMediaCatalog,
+  ...bluetoothCatalog,
   ...Object.fromEntries([defineCommand(['macos-golden-gate-27.0.1'], 'notes.document.create', 'shell.file-workflows', empty, empty,
     ['Interactive local Golden scene and available workspace; no blocking File sheet.', 'Complete record, clock, identity and whole-seed content capacity before opening.'],
     ['Create exactly one new local plain-text note and activate its ordinary Notes document window, reopening remembered geometry only when required. Utilities are not document substitutes. Focus the actual new title field.'],

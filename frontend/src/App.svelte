@@ -74,6 +74,9 @@
   import { createSoundMediaCommands } from './sound-media-commands.js';
   import GoldenGateSoundSettings from './GoldenGateSoundSettings.svelte';
   import GoldenGateAudioPlayer from './GoldenGateAudioPlayer.svelte';
+  import { createBluetoothCommands } from './bluetooth-commands.js';
+  import GoldenGateBluetoothSettings from './GoldenGateBluetoothSettings.svelte';
+  import GoldenGateBluetoothPair from './GoldenGateBluetoothPair.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -125,6 +128,7 @@
   const hasBattery = profile.capabilities.includes('status.battery');
   const hasClock = profile.capabilities.includes('status.clock');
   const hasSound = profile.capabilities.includes('status.sound');
+  const hasBluetooth = profile.capabilities.includes('status.bluetooth');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
@@ -372,6 +376,8 @@
   let clockOptionsView = $state(null), clockTimeView = $state(null);
   const soundPresentation = $state({ inputsExpanded: false });
   let soundMediaRevision = $state(0);
+  const bluetoothPresentation = $state({ pair: null });
+  let bluetoothPairView = $state(null);
   let storageConfirmation = $state(null);
   let storageConfirmationLease = null;
   let nextStorageConfirmation = 1;
@@ -1040,7 +1046,7 @@
   if (hasWifi) {
     wifiController = createWifiCommands({
       profile, presentation: wifiPresentation, getState: () => systemState.wifi, getView: () => wifiJoinView,
-      available: () => sceneCoreAvailable() && !fileDialogState.current && !clockPresentation.options && !clockPresentation.editor && !utilityPreparation && !servicePreparation
+      available: () => sceneCoreAvailable() && !fileDialogState.current && !clockPresentation.options && !clockPresentation.editor && !bluetoothPresentation.pair && !utilityPreparation && !servicePreparation
         && !servicePending && !switching.switcher && !presentation.pairing && !spaceState.overview
         && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
       canBegin: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
@@ -1056,7 +1062,7 @@
   const batteryController = hasBattery ? createBatteryCommands({
       profile, presentation: batteryPresentation, getState: () => systemState.battery,
       getRunningAppIds: () => runningAppIds, getView: () => batteryOptionsView,
-      available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !clockPresentation.options && !clockPresentation.editor
+      available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !clockPresentation.options && !clockPresentation.editor && !bluetoothPresentation.pair
         && !utilityPreparation && !servicePreparation && !servicePending && !switching.switcher
         && !presentation.pairing && !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
       canBegin: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
@@ -1089,7 +1095,7 @@
     profile, presentation: clockPresentation, getState: () => systemState.clock,
     getSceneTime: () => macFiles.sceneTime, setTime: setClockSceneTime,
     getView: kind => kind === 'options' ? clockOptionsView : clockTimeView,
-    available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options
+    available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !bluetoothPresentation.pair
       && !utilityPreparation && !servicePreparation && !servicePending && !switching.switcher
       && !presentation.pairing && !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
     canBegin: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
@@ -1123,7 +1129,7 @@
       const original = menuBarState?.menuId === 'sound' ? getMenuReturnFocus?.() : undefined;
       soundMediaRevision++;
       if (menuBarState?.menuId === 'sound' && systemState.sound.showWhen === 'when-active'
-        && !soundMediaController.targets().players.some(player => player.paused === false)) void retireSoundMenu(original);
+        && !soundMediaController.targets().players.some(player => player.paused === false)) void retireStatusMenu('sound', original);
     },
   }) : null;
   if (soundMediaController) Object.assign(handlers, soundMediaController.handlers);
@@ -1131,7 +1137,7 @@
     profile, presentation: soundPresentation, getState: () => systemState.sound,
     getMedia: () => { soundMediaRevision; return soundMediaController.targets().players; },
     notifyMedia: () => soundMediaController.syncSound(),
-    available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options
+    available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !bluetoothPresentation.pair
       && !clockPresentation.options && !clockPresentation.editor && !utilityPreparation && !servicePreparation
       && !servicePending && !switching.switcher && !presentation.pairing && !spaceState.overview
       && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
@@ -1139,15 +1145,32 @@
       && !servicePending && !switching.switcher && !presentation.pairing,
     canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
     getMenuReturnFocus: () => menuBarState?.menuId === 'sound' ? getMenuReturnFocus?.() : undefined,
-    retireSoundMenu, setSettingsTab: setSoundSettingsTab,
+    retireSoundMenu: original => retireStatusMenu('sound', original), setSettingsTab: setSoundSettingsTab,
   }) : null;
   if (soundController) Object.assign(handlers, soundController.handlers);
+  const bluetoothController = hasBluetooth ? createBluetoothCommands({
+    profile, presentation: bluetoothPresentation, getState: () => systemState.bluetooth,
+    getSound: () => systemState.sound, getView: () => bluetoothPairView,
+    available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options
+      && !clockPresentation.options && !clockPresentation.editor && !utilityPreparation && !servicePreparation
+      && !servicePending && !switching.switcher && !presentation.pairing && !spaceState.overview
+      && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows,
+    canBegin: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
+      && !servicePending && !switching.switcher && !presentation.pairing,
+    canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
+    capture: () => menuBarState?.menuId ? getMenuReturnFocus?.() ?? captureSessionDesktop() : captureSessionDesktop(),
+    restore: snapshot => !disposed && foreground ? restoreSessionDesktop(snapshot) : false,
+    settle: async () => { await tick(); await tick(); },
+    notifySound: () => soundMediaController.syncSound(),
+    retireMenu: original => retireStatusMenu('bluetooth', original),
+  }) : null;
+  if (bluetoothController) Object.assign(handlers, bluetoothController.handlers);
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
     profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
     getRunningAppIds: () => runningAppIds,
     openAbout: () => openWindowPanel('finder', 'system-about', 'About This Mac'),
     openSettings: async pane => {
-      const title = { about: 'About', displays: 'Displays', storage: 'Storage', wifi: 'Wi-Fi', battery: 'Battery', 'menu-bar': 'Menu Bar', sound: 'Sound' }[pane];
+      const title = { about: 'About', displays: 'Displays', storage: 'Storage', wifi: 'Wi-Fi', battery: 'Battery', 'menu-bar': 'Menu Bar', sound: 'Sound', bluetooth: 'Bluetooth' }[pane];
       const result = await openWindowPanel('settings', undefined, title, pane);
       return result.status === 'applied' ? { status: 'applied', target: { ...result.target, pane } } : result;
     },
@@ -1238,6 +1261,7 @@
       ...(hasBattery ? { battery: batteryController.targets() } : {}),
       ...(hasClock ? { clock: clockController.targets() } : {}),
       ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
+      ...(hasBluetooth ? { bluetooth: bluetoothController.targets() } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1253,6 +1277,7 @@
       ...(hasBattery ? { battery: batteryController.targets() } : {}),
       ...(hasClock ? { clock: clockController.targets() } : {}),
       ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
+      ...(hasBluetooth ? { bluetooth: bluetoothController.targets() } : {}),
       ...(hasAppearance ? { appearance: appearanceTargets(profile, appearanceState) } : {
         appearance: { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent,
           scope: 'full', highlight: null, customHighlight: false,
@@ -1481,11 +1506,11 @@
       const original = menuBarState?.menuId === 'sound' ? getMenuReturnFocus?.() : undefined;
       soundMediaViews.delete(windowId); soundMediaRevision++;
       if (menuBarState?.menuId === 'sound' && systemState.sound.showWhen === 'when-active'
-        && !soundMediaController.targets().players.some(player => player.paused === false)) void retireSoundMenu(original);
+        && !soundMediaController.targets().players.some(player => player.paused === false)) void retireStatusMenu('sound', original);
     };
   }
-  async function retireSoundMenu(original) {
-    if (menuBarState?.menuId !== 'sound') return;
+  async function retireStatusMenu(menuId, original) {
+    if (menuBarState?.menuId !== menuId) return;
     const ownerWindowId = activeWindowId, ownerAppId = activeAppId;
     dismissMenuBar?.(); await tick(); await tick();
     if (original && !disposed && foreground && !menuBarState?.menuId
@@ -1508,11 +1533,11 @@
     return !disposed && (foreground || starting || !initialized) && (adapter.windowInteractionsAvailable?.(nativeState) ?? true);
   }
   function sceneInteractionsAvailable() {
-    return sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !clockPresentation.options && !clockPresentation.editor;
+    return sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !clockPresentation.options && !clockPresentation.editor && !bluetoothPresentation.pair;
   }
   function fileWorkflowsAvailable() {
     return sceneCoreAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view
-      && !dashboardOpen && !switching.switcher && !presentation.pairing && !wifiPresentation.join && !batteryPresentation.options && !clockPresentation.options && !clockPresentation.editor;
+      && !dashboardOpen && !switching.switcher && !presentation.pairing && !wifiPresentation.join && !batteryPresentation.options && !clockPresentation.options && !clockPresentation.editor && !bluetoothPresentation.pair;
   }
   function windowInteractionsAvailable() {
     return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view && !dashboardOpen;
@@ -1842,7 +1867,7 @@
     node = find(getWindowPanel(entry.window.id));
     if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return false;
     const native = applicationViews.get(entry.window.id);
-    if (control !== 'panel' && entry.window.appId === 'settings' && ['sound', 'menu-bar'].includes(entry.window.settingsPane)
+    if (control !== 'panel' && entry.window.appId === 'settings' && ['sound', 'menu-bar', 'bluetooth'].includes(entry.window.settingsPane)
       && native?.focus) return native.focus(control);
     node.focus();
     await tick();
@@ -2671,7 +2696,7 @@
       panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
         || window.appId === 'systeminformation' && !window.utilityKind
         || window.appId === 'settings' && !window.utilityKind
-          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound'].includes(window.settingsPane)).map(window => {
+          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth'].includes(window.settingsPane)).map(window => {
         const entry = getSystemPanel(window.id), element = managedWindowElement(window.id)?.querySelector('[data-system-panel]');
         const controlIds = systemPanelControls(entry);
         return { windowId: window.id, appId: window.appId,
@@ -2898,7 +2923,7 @@
     return windowPresented(window);
   }
   function windowInteractive(window) {
-    return foreground && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !clockPresentation.options && !clockPresentation.editor && !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
+    return foreground && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !clockPresentation.options && !clockPresentation.editor && !bluetoothPresentation.pair && !spaceState.overview && !launchpadState.view && !dashboardOpen && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
       && fullScreenStage.mode !== 'pairing' && windowPresented(window);
   }
   function measureStageArea() {
@@ -3134,7 +3159,7 @@
   // rejected/pending native edit or export must be resolved before sign-out.
   function canLeaveScene() {
     if (disposed || !initialized || utilityPreparation || servicePreparation || servicePending
-      || presentation.pairing || fileDialogState.current || pendingQuitAppIds.length) return false;
+      || presentation.pairing || bluetoothPresentation.pair || fileDialogState.current || pendingQuitAppIds.length) return false;
     if (hasBattery) {
       const percentage = sceneRoot.querySelector('[data-battery-control="show-percentage"]');
       const energyMode = sceneRoot.querySelector('[data-battery-control="show-energy-mode"]');
@@ -3177,6 +3202,12 @@
         if (window && !node.disabled && Number(node.value) !== systemState.sound.appVolumes[window.appId]) return false;
       }
     }
+    if (hasBluetooth) {
+      const power = sceneRoot.querySelector('[data-application-settings-control="bluetooth-power"]');
+      const visible = sceneRoot.querySelector('[data-application-settings-control="bluetooth-show-in-menu-bar"]');
+      if (power && power.checked !== systemState.bluetooth.powered
+        || visible && visible.checked !== systemState.bluetooth.showInMenuBar) return false;
+    }
     for (const node of sceneRoot.querySelectorAll('[data-system-computer-name], [data-notes-control="title"], [data-notes-control="body"], [data-service-field]')) {
       if (node.disabled || node.readOnly) continue;
       if (node.hasAttribute('data-system-computer-name')) {
@@ -3205,6 +3236,7 @@
     clockController?.clear();
     soundController?.clear();
     soundMediaController?.clear();
+    bluetoothController?.clear();
     if (!reopenWindows) {
       // Close real native views using their existing lifecycle; never replace
       // the document/files/communications models with startup seed data.
@@ -3523,6 +3555,8 @@
       ...(hasClock ? [clockController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
       ...(hasSound ? [soundController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
+        && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
+      ...(hasBluetooth ? [bluetoothController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
     ];
   }
@@ -3921,6 +3955,7 @@
       clockController?.clear();
       soundController?.clear();
       soundMediaController?.clear();
+      bluetoothController?.clear();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -4368,12 +4403,16 @@
           <GoldenGateMenuBarSettings {profile} {window} battery={systemState.battery} summary={batteryController.summary()}
             clock={systemState.clock} clockSummary={clockController.summary()}
             {...(hasSound ? { sound: soundController.summary() } : {})}
+            {...(hasBluetooth ? { bluetooth: bluetoothController.summary() } : {})}
             execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasClock && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'date-time'}
           <GoldenGateDateTimeSettings {profile} {window} clock={systemState.clock} summary={clockController.summary()}
             execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasSound && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'sound'}
           <GoldenGateSoundSettings {profile} {window} sound={soundController.summary()}
+            execute={commands.execute} registerView={registerApplicationView} />
+        {:else if hasBluetooth && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'bluetooth'}
+          <GoldenGateBluetoothSettings {profile} {window} bluetooth={bluetoothController.summary()}
             execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasSound && !window.utilityKind && ['music', 'quicktime'].includes(window.appId)}
           <GoldenGateAudioPlayer {profile} {window} sound={soundController.summary()} {foreground} {preview}
@@ -4504,7 +4543,7 @@
 {/snippet}
 
 <div class="scene-root" data-session-scene data-profile-id={profile.id} bind:this={sceneRoot}>
-<div class="desktop-interaction-root" inert={Boolean(wifiPresentation.join || batteryPresentation.options || clockPresentation.options || clockPresentation.editor)}>
+<div class="desktop-interaction-root" inert={Boolean(wifiPresentation.join || batteryPresentation.options || clockPresentation.options || clockPresentation.editor || bluetoothPresentation.pair)}>
 <Desktop
   {profile}
   {session}
@@ -4627,6 +4666,11 @@
 {#if hasWifi && wifiPresentation.join}
   <div class="status-sheet-backdrop">
     <GoldenGateWifiJoin pending={wifiPresentation.join} execute={commands.execute} {foreground} bind:this={wifiJoinView} />
+  </div>
+{/if}
+{#if hasBluetooth && bluetoothPresentation.pair}
+  <div class="status-sheet-backdrop">
+    <GoldenGateBluetoothPair pending={bluetoothPresentation.pair} execute={commands.execute} {foreground} bind:this={bluetoothPairView} />
   </div>
 {/if}
 {#if hasBattery && batteryPresentation.options}
