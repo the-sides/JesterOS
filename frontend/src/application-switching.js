@@ -53,8 +53,9 @@ function liveSwitcherItems(state, profile, runningAppIds, windows, pendingQuitAp
   });
 }
 
-export function applicationSwitchingDefaults() {
-  return { activationAppIds: [], activationWindowIds: [], creationWindowIds: [], hiddenAppIds: [], switcher: null, appMenu: null };
+export function applicationSwitchingDefaults(profile) {
+  return { activationAppIds: [], activationWindowIds: [], creationWindowIds: [], hiddenAppIds: [], switcher: null,
+    ...(!profile.capabilities.includes('shell.menu-bar') ? { appMenu: null } : {}) };
 }
 
 export function recordApplicationActivation(state, appId, windowId = null, created = false) {
@@ -142,12 +143,13 @@ export function reconcileApplicationSwitching(state, profile, runningAppIds, win
 function presentationSnapshot(state) {
   return {
     switcher: state.switcher ? { ...state.switcher, itemIds: [...state.switcher.itemIds], scroll: { ...state.switcher.scroll } } : null,
-    appMenu: state.appMenu ? { ...state.appMenu } : null,
+    ...(Object.hasOwn(state, 'appMenu') ? { appMenu: state.appMenu ? { ...state.appMenu } : null } : {}),
   };
 }
 
 export function createApplicationSwitchingCommands(switching, ctx) {
   const profile = ctx.profile;
+  const legacyMenu = !profile.capabilities.includes('shell.menu-bar');
   const view = () => ctx.getView();
   const liveItems = () => applicationSwitcherItems(switching, profile, ctx.getRunningAppIds(), ctx.getWindows(), ctx.getPendingQuitAppIds());
   const available = () => ctx.available() && view();
@@ -171,7 +173,7 @@ export function createApplicationSwitchingCommands(switching, ctx) {
     && view().appMenuAnchor(switching.appMenu.appId) && view().appMenuBounds() && finiteOffset(view().appMenuScrollPosition());
   async function restorePresentation(previous, competing) {
     switching.switcher = previous.switcher;
-    switching.appMenu = previous.appMenu;
+    if (legacyMenu) switching.appMenu = previous.appMenu;
     reconcileApplicationSwitching(switching, profile, ctx.getRunningAppIds(), ctx.getWindows(), ctx.getPendingQuitAppIds());
     if (competing !== undefined) await ctx.restorePresentations(competing);
     if (!ctx.available()) return;
@@ -241,7 +243,7 @@ export function createApplicationSwitchingCommands(switching, ctx) {
       const previous = presentationSnapshot(switching);
       ctx.captureFocus();
       const competing = ctx.clearPresentations();
-      switching.appMenu = null;
+      if (legacyMenu) switching.appMenu = null;
       switching.switcher = { kind: switcherKind(profile), itemIds: items.map(item => item.itemId), selectedItemId: items[selected].itemId,
         commitOnRelease: payload.commitOnRelease ?? null, scroll: { top: 0, left: 0 } };
       const current = switching.switcher;
@@ -290,7 +292,7 @@ export function createApplicationSwitchingCommands(switching, ctx) {
       if (error) return error;
       const previous = presentationSnapshot(switching);
       switching.switcher = null;
-      switching.appMenu = null;
+      if (legacyMenu) switching.appMenu = null;
       const result = profile.family === 'macos' ? await ctx.activateApp(item.appId)
         : await ctx.invoke('window.focus', { windowId: item.windowId }, {});
       if (result.status !== 'applied') {
@@ -329,7 +331,7 @@ export function createApplicationSwitchingCommands(switching, ctx) {
       const windowId = eligible[index < 0 ? (step < 0 ? eligible.length - 1 : 0) : (index + step + eligible.length) % eligible.length];
       const previous = presentationSnapshot(switching), competing = ctx.clearPresentations();
       switching.switcher = null;
-      switching.appMenu = null;
+      if (legacyMenu) switching.appMenu = null;
       const result = await ctx.invoke('window.focus', { windowId }, {});
       if (result.status !== 'applied') {
         await restorePresentation(previous, competing);
@@ -373,6 +375,7 @@ export function createApplicationSwitchingCommands(switching, ctx) {
       await ctx.visibilityChanged({ kind: 'all' });
       return applied({ hiddenAppIds: [] });
     },
+    ...(legacyMenu ? {
     'app.menu.open': async (target, payload) => {
       if (!fields(target, ['appId'], []) || (Object.hasOwn(target, 'appId') && !identity(target.appId))
         || !fields(payload, ['position', 'itemId'], []) || (Object.hasOwn(payload, 'position') && !['first', 'last'].includes(payload.position))
@@ -467,6 +470,7 @@ export function createApplicationSwitchingCommands(switching, ctx) {
       if (current.scrollTop !== top) current.scrollTop = top;
       return applied({ top });
     },
+    } : {}),
   };
   return Object.fromEntries(Object.entries(commands).filter(([name]) => name.startsWith('app.')
     ? profile.family === 'macos' && profile.capabilities.includes('app.visibility')

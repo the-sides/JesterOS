@@ -17,6 +17,7 @@ import { fictionalSessionCatalog } from './fictional-session-catalog.js';
 import { fictionalPowerCatalog } from './fictional-power-catalog.js';
 import { sceneSeedCatalog } from './scene-seed-catalog.js';
 import { savedSessionCatalog } from './saved-session-catalog.js';
+import { menuBarCatalog } from './menu-bar-catalog.js';
 
 const MAC_PROFILES = [MOJAVE_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -52,6 +53,7 @@ export const commandCatalog = {
   ...appearanceCatalog,
   ...sceneSeedCatalog,
   ...savedSessionCatalog,
+  ...menuBarCatalog,
   ...Object.fromEntries([
   defineShared('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
     ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],
@@ -122,7 +124,7 @@ export const commandCatalog = {
     ['Focus semantic control; null only records focus outside desktop controls without moving it.']),
   define('desktop.scroll', 'shell.window-menu', object({ region: { const: 'window-menu' } }), object({ top: offset }),
     ['Window popup is open; mounted desktop view and visible native menu bar.'],
-    ['Set popup scroll; retain its actual clamped pixel offset.']),
+    ['Set actual Window root-popup scroll; Golden Gate retains its clamped level0 offset independently from child panels.']),
   define('menu.open', 'shell.window-menu', menuTarget, {
     ...object({ position: choice('first', 'last'), itemId: identity }, NONE),
     not: match({ position: true, itemId: true }),
@@ -135,7 +137,7 @@ export const commandCatalog = {
     ['Select and focus semantic menu item.']),
   define('menu.execute', 'shell.window-menu', menuItemTarget, empty,
     ['Visible native menu bar and currently enabled item; menu need not be open; shared window-operation requirements apply.'],
-    ['Run shared close/minimize/zoom/focus operation; dismiss popup; focus Window button.']),
+    ['Run shared close/minimize/zoom/focus or supported child operation and dismiss popup. Golden Gate restores original focus before open-menu dispatch and keeps canonical action focus; historical and closed-popup Window execution focus the Window button.']),
   define('notes.create', 'notes.plain-text', empty, optionalFocus, [requestedFocus],
     ['Switch to Notes folder, clear search, select new record; optional title focus.'],
     ['Create session-local active plain-text record.'], NONE, object({ noteId: identity })),

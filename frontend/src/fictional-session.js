@@ -2,7 +2,7 @@ import { isRecord, rejected } from './feature-commands.js';
 
 export function fictionalSessionDefaults(profile) {
   return { phase: 'desktop', activeUserId: 'local-alex', selectedUserId: 'local-alex', loginView: 'credential',
-    loginError: null, focusedControl: null, fastUserSwitching: false, menu: null, guestConfirmation: false,
+    loginError: null, focusedControl: null, fastUserSwitching: false, guestConfirmation: false,
     users: [
       { id: 'local-alex', name: profile.defaults.accountName ?? 'Alex Morgan', kind: 'local', signedIn: true, locked: false },
       { id: 'local-casey', name: 'Casey Rivera', kind: 'local', signedIn: false, locked: false },
@@ -51,7 +51,7 @@ export function createFictionalSessionCommands(ctx) {
     if (session.guestConfirmation) return unavailable();
     capture(); user(session.activeUserId).locked = true;
     session.phase = 'login'; session.selectedUserId = null; session.loginView = 'users';
-    session.menu = null; session.loginError = null; session.focusedControl = null;
+    session.loginError = null; session.focusedControl = null;
     await surfaceFocus(`user:${session.users[0].id}`);
     return applied({ phase: 'login' });
   }
@@ -69,7 +69,7 @@ export function createFictionalSessionCommands(ctx) {
       if (!desktop()) return unavailable();
       capture(); user(session.activeUserId).locked = true;
       session.phase = 'locked'; session.selectedUserId = session.activeUserId; session.loginView = 'credential';
-      session.menu = null; session.loginError = null; session.focusedControl = null;
+      session.loginError = null; session.focusedControl = null;
       await surfaceFocus(user(session.activeUserId).kind === 'guest' ? 'guest-acknowledge' : 'password');
       return applied({ phase: 'locked', userId: session.activeUserId });
     },
@@ -97,7 +97,7 @@ export function createFictionalSessionCommands(ctx) {
         return unavailable();
       }
       selected.signedIn = true; selected.locked = false;
-      session.activeUserId = selected.id; session.phase = 'desktop'; session.menu = null;
+      session.activeUserId = selected.id; session.phase = 'desktop';
       session.loginError = null; session.focusedControl = null;
       await ctx.settle(); await ctx.restoreDesktop(selected.id);
       return applied({ userId: selected.id, accepted: true });
@@ -109,58 +109,6 @@ export function createFictionalSessionCommands(ctx) {
       await surfaceFocus(`user:${session.users[0].id}`);
       return applied({ phase: 'login' });
     },
-    'session.menu.open': async (target, payload) => {
-      if (!fields(target, ['menuId']) || !['apple', 'users'].includes(target.menuId) || !fields(payload, [])) return invalid();
-      const { menuId } = target;
-      if (menuId === 'users' && !session.fastUserSwitching) return rejected('disabled', 'The optional fast user switching menu is off.');
-      if (!desktop()) return unavailable();
-      const view = ctx.getMenuView(menuId);
-      if (!view || !await view.focus('invoker')) return unavailable();
-      ctx.captureMenuFocus(menuId);
-      const before = session.menu;
-      session.menu = { menuId, focusedItemId: null };
-      await ctx.settle();
-      const first = view.itemIds()[0];
-      if (!first || !await view.focus(first)) { session.menu = before; await ctx.settle(); await ctx.restoreMenuFocus(menuId); return unavailable(); }
-      session.menu.focusedItemId = first;
-      return applied({ menuId });
-    },
-    'session.menu.close': async (target, payload) => {
-      if (!empty(target, payload)) return invalid();
-      if (!desktop()) return unavailable();
-      const menuId = session.menu?.menuId ?? null;
-      session.menu = null;
-      await ctx.settle(); if (menuId) await ctx.restoreMenuFocus(menuId);
-      return applied({ menuId });
-    },
-    'session.menu.focus': async (target, payload) => {
-      if (!fields(target, ['menuId', 'itemId']) || typeof target.itemId !== 'string' || !fields(payload, [])) return invalid();
-      const view = ctx.getMenuView(target.menuId);
-      if (!desktop() || session.menu?.menuId !== target.menuId || !view?.itemIds().includes(target.itemId)) return unavailable();
-      if (!await view.focus(target.itemId)) return unavailable();
-      session.menu.focusedItemId = target.itemId;
-      return applied({ menuId: target.menuId, itemId: target.itemId });
-    },
-    'session.menu.select': async (target, payload) => {
-      if (!fields(target, ['menuId', 'itemId']) || typeof target.itemId !== 'string' || !fields(payload, [])) return invalid();
-      if (!desktop() || session.menu?.menuId !== target.menuId) return unavailable();
-      const item = sessionMenuItems(profile, session, target.menuId).find(item => item.id === target.itemId);
-      if (!item) return invalid();
-      if (!item.enabled) return rejected('disabled', 'This native session leaf is unavailable in the bounded simulation.');
-      if (item.powerCommand && typeof ctx.invokePower !== 'function') return unavailable();
-      const closed = await handlers['session.menu.close']({}, {});
-      if (closed.status !== 'applied') return closed;
-      let result;
-      if (item.powerCommand) result = await ctx.invokePower(item.powerCommand);
-      else if (item.id === 'lock') result = await handlers['session.lock']({}, {});
-      else if (item.id === 'login') result = await showLogin({}, {});
-      else if (item.id === 'guest-end') result = await handlers['session.guest.end']({}, {});
-      else {
-        result = await showLogin({}, {});
-        if (result.status === 'applied') result = await chooseUser({ userId: item.id.slice(5) }, {});
-      }
-      return result.status === 'applied' ? applied({ menuId: target.menuId, itemId: target.itemId }) : result;
-    },
     'session.focus': async (target, payload) => {
       if (!fields(target, ['controlId']) || typeof target.controlId !== 'string' || !fields(payload, [])) return invalid();
       const view = ctx.getSurfaceView();
@@ -171,13 +119,12 @@ export function createFictionalSessionCommands(ctx) {
     'session.fastUserSwitching.set': async (target, payload) => {
       if (!fields(target, []) || !fields(payload, ['enabled']) || typeof payload.enabled !== 'boolean') return invalid();
       session.fastUserSwitching = payload.enabled;
-      if (!payload.enabled && session.menu?.menuId === 'users') await handlers['session.menu.close']({}, {});
       return applied({ enabled: payload.enabled });
     },
     'session.guest.end': async (target, payload) => {
       if (!empty(target, payload)) return invalid();
       if (!desktop() || session.activeUserId !== 'guest') return unavailable();
-      capture(); session.menu = null; session.guestConfirmation = true; session.focusedControl = null;
+      capture(); session.guestConfirmation = true; session.focusedControl = null;
       await surfaceFocus('guest-end-cancel');
       return applied({ confirmationRequired: true });
     },
@@ -202,12 +149,11 @@ export function createFictionalSessionCommands(ctx) {
       : ctx.available() ? handler(target, payload) : unavailable()]));
 }
 
-export function sessionTargets(session, surface, menu) {
+export function sessionTargets(session, surface) {
   return { phase: session.phase, desktopAvailable: session.phase === 'desktop' && !session.guestConfirmation,
     activeUserId: session.activeUserId, selectedUserId: session.selectedUserId,
     users: session.users.map(user => ({ ...user })),
     controls: surface?.controlIds() ?? [], bounds: surface?.bounds() ?? null,
-    menu: session.menu ? { ...session.menu, itemIds: menu?.itemIds() ?? [], bounds: menu?.bounds() ?? null } : null,
     fictionalPasscode: 'scene', guestEphemeral: true, fileVault: 'fictional off; no host security state',
     shortcuts: { lock: 'Control+Command+Q', alias: 'Control+Shift+F7', nativeDelivery: 'Only key events delivered to this page; no host keyboard or lock API.' },
     boundaries: { hostAuthentication: false, hostAccounts: false, savedSessions: false, userCreation: false,
@@ -219,5 +165,5 @@ export function signOutFictionalSessions(session) {
   for (const user of session.users) { user.signedIn = false; user.locked = false; }
   session.activeUserId = session.users.find(user => user.kind === 'local').id;
   session.selectedUserId = null; session.phase = 'login'; session.loginView = 'users';
-  session.loginError = null; session.focusedControl = null; session.menu = null; session.guestConfirmation = false;
+  session.loginError = null; session.focusedControl = null; session.guestConfirmation = false;
 }

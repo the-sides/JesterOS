@@ -24,6 +24,7 @@ function applied(target) {
 export function createDesktopCommands(viewState, {
   getView,
   windowMenuAvailable,
+  includeWindowMenu = true,
   getFiles,
   getItems,
   openedFile,
@@ -63,6 +64,7 @@ export function createDesktopCommands(viewState, {
   }
 
   async function closeMenu(view, restoreFocus) {
+    if (!includeWindowMenu) return;
     viewState.windowMenuOpen = false;
     viewState.windowMenuItem = null;
     viewState.windowMenuScrollTop = 0;
@@ -102,6 +104,7 @@ export function createDesktopCommands(viewState, {
       await closeMenu(view, false);
       return applied({});
     },
+    ...(includeWindowMenu ? {
     'menu.open': async (target, payload) => {
       if (!menuTarget(target)
         || !fields(payload, ['position', 'itemId'])
@@ -190,6 +193,7 @@ export function createDesktopCommands(viewState, {
       await closeMenu(view, true);
       return applied({ menuId: 'window', itemId: target.itemId, windowId });
     },
+    } : {}),
     'desktop.focusControl': async (target, payload) => {
       let valid = false;
       let exists = true;
@@ -211,6 +215,7 @@ export function createDesktopCommands(viewState, {
       if (target.control === 'window-menu' && viewState.windowMenuOpen) viewState.windowMenuItem = null;
       return applied({ ...target });
     },
+    ...(includeWindowMenu ? {
     'desktop.scroll': async (target, payload) => {
       if (!fields(target, ['region']) || target.region !== 'window-menu'
         || !fields(payload, ['top']) || typeof payload.top !== 'number'
@@ -222,5 +227,6 @@ export function createDesktopCommands(viewState, {
       viewState.windowMenuScrollTop = await view.scrollWindowMenu(payload.top);
       return applied({ region: 'window-menu' });
     },
+    } : {}),
   };
 }

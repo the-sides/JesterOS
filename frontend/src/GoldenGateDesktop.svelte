@@ -10,13 +10,15 @@
   import MacDockContextMenu from './MacDockContextMenu.svelte';
   import { createMacDockView } from './mac-dock-view.js';
   import MacDock from './MacDock.svelte';
-  import MacSessionControl from './MacSessionControl.svelte';
+  import GoldenGateMenuBar from './GoldenGateMenuBar.svelte';
 
   let {
     profile,
     session,
     executeSession,
     registerSessionView,
+    menuBarState,
+    menuBarMenus = [],
     foreground = true,
     children,
     desktopItems,
@@ -33,7 +35,6 @@
     activeWindowId = null,
     activeApp = profile.applications.finder,
     viewState,
-    switchingState,
     fullScreenStage = { mode: 'normal', topRevealed: false, launcherRevealed: false },
     missionControlOpen = false,
     onfullscreenreveal,
@@ -41,6 +42,9 @@
     registerView,
     onlayout,
   } = $props();
+  const primaryMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'apple' || menu.menuId === 'application'));
+  const windowMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'window'));
+  const userMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'users'));
 
   const applications = $derived(profile.applications);
   const desktopFiles = $derived(desktopItems);
@@ -82,10 +86,6 @@
     foreground; viewState.dock.preferences.autoHide;
     tick().then(() => { if (foreground && workspace?.isConnected && dock?.isConnected) { filesHeight = measureWorkspace().height; layoutWidth = measureWorkspace().width; onlayout?.(); } });
   });
-  let windowMenuContainer;
-  let windowMenuButton;
-  let windowMenuPanel = $state(null);
-  let windowMenuLeft = $state(0);
   const activeWindow = $derived(windows.find((window) => window.id === activeWindowId));
   let renameBounds = $state(null);
   const interactions = createDesktopItemInteractions({
@@ -340,38 +340,11 @@
     return info.size !== null && info.size !== undefined ? `${info.size.toLocaleString()} bytes` : info.kind;
   }
 
-  function enabledMenuItemIds() {
-    return [
-      ...(activeWindow ? activeWindow.fullScreen ? ['close'] : ['close', 'minimize', 'zoom'] : []),
-      ...windows.map((window) => `window:${window.id}`),
-    ];
-  }
-
-  // Window commands can remove or disable the currently focused menu item.
-  $effect(() => {
-    const items = enabledMenuItemIds();
-    if (foreground && viewState.windowMenuOpen && viewState.windowMenuItem !== null
-      && !items.includes(viewState.windowMenuItem)) {
-      request('menu.select', { menuId: 'window', itemId: items[0] ?? null });
-    }
-  });
-
-  function prepareWindowMenu() {
-    windowMenuLeft = windowMenuButton.getBoundingClientRect().left;
-  }
-
-  async function focusMenuItem(itemId) {
-    await tick();
-    if (!foreground || !viewState.windowMenuOpen || windowMenuPanel?.closest('[inert]') || getComputedStyle(windowMenuPanel).visibility === 'hidden') return;
-    const item = [...(windowMenuPanel?.querySelectorAll('[data-menu-item-id]') ?? [])]
-      .find((element) => element.dataset.menuItemId === itemId && !element.disabled);
-    item?.focus();
-  }
 
   function focusControl(target) {
     if (!foreground) return;
     let element;
-    if (target.control === 'window-menu') element = windowMenuButton;
+    if (target.control === 'window-menu') element = workspace?.parentElement?.querySelector('[data-menu-invoker="window"]');
     else if (target.control === 'file') {
       element = desktopButtons()
         .find((file) => file.dataset.fileId === target.fileId);
@@ -379,15 +352,6 @@
     if (element?.isConnected && !element.closest('[inert]') && getComputedStyle(element).visibility !== 'hidden') element.focus();
   }
 
-  function windowMenuScrollTop() {
-    return windowMenuPanel?.scrollTop ?? 0;
-  }
-
-  async function scrollWindowMenu(top) {
-    await tick();
-    if (windowMenuPanel) windowMenuPanel.scrollTop = top;
-    return windowMenuScrollTop();
-  }
 
   function measureWorkspace() {
     const width = workspace.clientWidth;
@@ -400,12 +364,7 @@
   onMount(() => {
     const unregisterView = registerView({
       ...dockView,
-      prepareWindowMenu,
-      enabledMenuItemIds,
-      focusMenuItem,
       focusControl,
-      windowMenuScrollTop,
-      scrollWindowMenu,
       measureWorkspace,
       itemRects,
       focusItem,
@@ -435,24 +394,20 @@
       }
     }
     function dismissOutside(event) {
-      if (!foreground || event.target?.closest?.('[data-session-control], [data-session-control-root], [data-session-menu], [data-session-surface]')) return;
+      if (!foreground || event.target?.closest?.('[data-menu-bar], [data-menu-popup], [data-session-surface]')) return;
       if (event.target?.closest?.('[data-split-view-picker], [data-window-green-menu]')) return;
       dockView.dismissOutside(event);
       if (viewState.context && !event.target?.closest?.('[data-desktop-context-menu]')) {
         request('desktop.context.close', {}, { restoreFocus: false });
       }
-      if (viewState.windowMenuOpen && !windowMenuContainer.contains(event.target)) {
-        request('menu.close', { menuId: 'window' }, { restoreFocus: false });
-      }
     }
     function observeFocus(event) {
-      if (!foreground || event.target?.closest?.('[data-session-control], [data-session-control-root], [data-session-menu], [data-session-surface]')) return;
+      if (!foreground || event.target?.closest?.('[data-menu-bar], [data-menu-popup], [data-session-surface]')) return;
       dismissOutside(event);
       const target = event.target;
       if (target?.closest?.('[data-desktop-context-menu], [data-dock-context-menu], [data-dock-stack], [data-shell-switcher], [data-application-menu], [data-application-menu-button], [data-split-view-picker], [data-window-green-menu], [data-split-view-divider]')) return;
       if (!dock.contains(target) && viewState.dock.focusedItemId) request('dock.focus', { itemId: null }, { observe: true });
-      if (!windowMenuContainer.contains(target)
-        && !dock.contains(target)
+      if (!dock.contains(target)
         && !(target instanceof Element && (target.matches('[data-desktop-rename]')
           || target.closest('[data-file-id], [data-stack-id]')?.closest('.golden-gate-files')))) {
         request('desktop.focusControl', { control: null });
@@ -516,7 +471,7 @@
   function stacksShortcut(event) {
     if (event.defaultPrevented || event.isComposing || event.repeat || !event.ctrlKey || !event.metaKey
       || event.altKey || event.shiftKey || (event.key !== '0' && event.code !== 'Digit0')
-      || !viewState.stacks || !itemsAvailable() || viewState.context || viewState.windowMenuOpen || viewState.rename) return;
+      || !viewState.stacks || !itemsAvailable() || viewState.context || menuBarState?.menuId || viewState.rename) return;
     const target = event.target;
     if (!(target instanceof Element) || target.closest('[data-window-id], input, textarea, select, [contenteditable], [data-desktop-context-menu]')) return;
     if (target !== workspace && target !== filesPanel && !target.closest('.golden-gate-files > button[data-file-id], .golden-gate-files > button[data-stack-id]')) return;
@@ -533,87 +488,32 @@
     stacksShortcut(event);
     if (event.defaultPrevented) return;
     lifecycleKeydown(event);
-    if (event.key === 'Escape' && viewState.windowMenuOpen) {
-      event.preventDefault();
-      request('menu.close', { menuId: 'window' });
-      return;
-    }
     if (event.target === workspace || event.target === document.body
       || event.target === document.documentElement) desktopKeydown(event);
   }
 
-  function menuButtonKeydown(event) {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      request('menu.open', { menuId: 'window' }, { position: event.key === 'ArrowUp' ? 'last' : 'first' });
-    }
-  }
-
-  function menuKeydown(event) {
-    const items = enabledMenuItemIds();
-    if (!items.length) return;
-    const index = items.indexOf(viewState.windowMenuItem);
-    let next;
-    if (event.key === 'ArrowDown') next = (index + 1) % items.length;
-    else if (event.key === 'ArrowUp') next = (index - 1 + items.length) % items.length;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = items.length - 1;
-    else return;
-    event.preventDefault();
-    request('menu.select', { menuId: 'window', itemId: items[next] });
-  }
-
-  function observeMenuItem(itemId) {
-    request('menu.select', { menuId: 'window', itemId });
-  }
-
-  function executeMenuItem(itemId) {
-    request('menu.execute', { menuId: 'window', itemId });
-  }
-
-  function observeMenuScroll(event) {
-    if (viewState.windowMenuOpen && event.currentTarget.scrollTop !== viewState.windowMenuScrollTop) {
-      request('desktop.scroll', { region: 'window-menu' }, { top: event.currentTarget.scrollTop });
-    }
-  }
 </script>
 
 <svelte:window onkeydown={escapeKey} />
 <div class="golden-gate-desktop" data-os-profile={profile.id} data-os-family={profile.family} style:background-image={`url("${profile.assets.wallpaper}")`}>
   <header class="golden-gate-menu-bar" aria-label="Desktop menu bar" inert={missionControlOpen || (fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed)} style:visibility={missionControlOpen || (fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed) ? 'hidden' : undefined} style:z-index={fullScreenStage.mode !== 'normal' ? 10000 : undefined}>
     <div class="golden-gate-menu-headings">
-      {#if session}
-        <MacSessionControl {profile} {session} execute={executeSession} registerView={registerSessionView} menuId="apple" {foreground} />
-      {:else}
-      <span class="golden-gate-apple" aria-label="Apple menu"><svg viewBox="0 0 20 24" aria-hidden="true"><path fill="currentColor" d="M13.1 4.1c1-1.1 1.6-2.6 1.4-4.1-1.4.1-3 .9-4 2-1 1.1-1.7 2.6-1.5 4 1.6.1 3.1-.8 4.1-1.9ZM17 12.7c0-2.7 2.2-4 2.3-4.1-1.3-1.9-3.4-2.1-4.1-2.1-1.8-.2-3.5 1.1-4.4 1.1s-2.3-1.1-3.8-1.1C5 6.6 3 7.9 2 9.8c-2.1 3.8-.5 9.3 1.5 12.1 1 1.4 2.1 2.8 3.6 2.7 1.5-.1 2-1 3.8-1s2.3 1 3.9 1c1.6 0 2.6-1.4 3.5-2.8 1.1-1.6 1.6-3.1 1.6-3.2-.1 0-3-1.1-2.9-5.9Z"/></svg></span>
-      {/if}
-      <button type="button" class="golden-gate-window-menu-button golden-gate-app-menu"
-        data-application-menu-button data-app-id={activeApp.id} aria-haspopup="menu" aria-expanded={Boolean(switchingState.appMenu)}
-        onclick={() => request(switchingState.appMenu ? 'app.menu.close' : 'app.menu.open', switchingState.appMenu ? {} : { appId: activeApp.id })}>{activeApp.name}</button>
+      <GoldenGateMenuBar {profile} menus={primaryMenus} state={menuBarState} execute={executeSession}
+        registerView={registerSessionView} {foreground} />
       <span class="golden-gate-static-menu">File</span><span class="golden-gate-static-menu">Edit</span>
       {#if activeApp.id === 'notes'}<span class="golden-gate-static-menu">Format</span>{/if}
       {#if activeApp.id === 'safari'}<span class="golden-gate-static-menu">View</span><span class="golden-gate-optional-menu">History</span><span class="golden-gate-optional-menu">Bookmarks</span>{:else}<span class="golden-gate-static-menu">View</span>{/if}
       {#if activeApp.id === 'messages'}<span class="golden-gate-optional-menu">Conversation</span>{/if}
       {#if activeApp.id === 'finder'}<span class="golden-gate-optional-menu">Go</span>{/if}
-      <div class="golden-gate-window-menu-container" bind:this={windowMenuContainer}>
-        <button type="button" class="golden-gate-window-menu-button" id="golden-gate-window-menu-button" bind:this={windowMenuButton} aria-haspopup="menu" aria-expanded={viewState.windowMenuOpen} aria-controls={viewState.windowMenuOpen ? 'golden-gate-window-menu' : undefined} onfocus={() => request('desktop.focusControl', { control: 'window-menu' })} onclick={() => request(viewState.windowMenuOpen ? 'menu.close' : 'menu.open', { menuId: 'window' })} onkeydown={menuButtonKeydown}>Window</button>
-        {#if viewState.windowMenuOpen}
-          <div class="golden-gate-window-menu" id="golden-gate-window-menu" bind:this={windowMenuPanel} role="menu" tabindex="-1" aria-labelledby="golden-gate-window-menu-button" style:left={`clamp(4px, ${windowMenuLeft}px, calc(100vw - min(264px, calc(100vw - 8px)) - 4px))`} onkeydown={menuKeydown} onscroll={observeMenuScroll}>
-            <button type="button" role="menuitem" data-menu-item-id="close" disabled={!activeWindow} onfocus={() => observeMenuItem('close')} onclick={() => executeMenuItem('close')}>Close</button>
-            <button type="button" role="menuitem" data-menu-item-id="minimize" disabled={!activeWindow || activeWindow.fullScreen} onfocus={() => observeMenuItem('minimize')} onclick={() => executeMenuItem('minimize')}>Minimize</button>
-            <button type="button" role="menuitem" data-menu-item-id="zoom" disabled={!activeWindow || activeWindow.fullScreen} onfocus={() => observeMenuItem('zoom')} onclick={() => executeMenuItem('zoom')}>Zoom</button>
-            {#if windows.length}<div class="golden-gate-menu-separator" role="separator"></div>
-              {#each windows as window (window.id)}
-                <button type="button" role="menuitem" data-menu-item-id={`window:${window.id}`} aria-label={`${window.title}${window.minimized ? ', minimized' : ''}`} onfocus={() => observeMenuItem(`window:${window.id}`)} onclick={() => executeMenuItem(`window:${window.id}`)}><span class="golden-gate-menu-check" aria-hidden="true">{window.id === activeWindowId ? '✓' : ''}</span><span class="golden-gate-menu-title">{window.title}</span>{#if window.minimized}<span class="golden-gate-shortcut">Minimized</span>{/if}</button>
-              {/each}
-            {/if}
-          </div>
-        {/if}
-      </div>
+      <GoldenGateMenuBar {profile} menus={windowMenus} state={menuBarState} execute={executeSession}
+        registerView={registerSessionView} {foreground} />
       <span class="golden-gate-optional-menu">Help</span>
     </div>
     <div class="golden-gate-status-items">
-      {#if session?.fastUserSwitching}<MacSessionControl {profile} {session} execute={executeSession} registerView={registerSessionView} menuId="users" {foreground} />{/if}
+      {#if session?.fastUserSwitching}
+        <GoldenGateMenuBar {profile} menus={userMenus} state={menuBarState} execute={executeSession}
+          registerView={registerSessionView} {foreground} zone="users" />
+      {/if}
       <span class="golden-gate-battery" aria-label={`Battery: ${profile.defaults.batteryPercent} percent`}><svg viewBox="0 0 28 14" aria-hidden="true"><rect x="1" y="2.5" width="23" height="9" rx="2" fill="none" stroke="currentColor"/><path fill="currentColor" d="M3 4.5h17v5H3zm22 0h2v5h-2z"/></svg></span>
       <span class="golden-gate-wifi" aria-label="Wi-Fi connected"><svg viewBox="0 0 24 18" aria-hidden="true"><path fill="currentColor" d="M0 4.5a20 20 0 0 1 24 0l-2.2 2.7a16.5 16.5 0 0 0-19.6 0Zm4.2 5.1a13 13 0 0 1 15.6 0l-2.3 2.7a9.4 9.4 0 0 0-11 0Zm4.5 5.2a5.7 5.7 0 0 1 6.6 0L12 18Z"/></svg></span>
       <span class="golden-gate-spotlight" aria-label="Spotlight"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg></span>

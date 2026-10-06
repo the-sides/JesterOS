@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
-import { fictionalSessionDefaults, sessionMenuItems, createFictionalSessionCommands, signOutFictionalSessions } from '../frontend/src/fictional-session.js';
+import { fictionalSessionDefaults, createFictionalSessionCommands, signOutFictionalSessions } from '../frontend/src/fictional-session.js';
 
 function scene(profileId = 'macos-golden-gate-27.0.1') {
   const profile = getOSProfile(profileId), session = fictionalSessionDefaults(profile);
@@ -8,8 +8,6 @@ function scene(profileId = 'macos-golden-gate-27.0.1') {
   const commands = createFictionalSessionCommands({ profile, session, available: () => available,
     settle: async () => {}, captureDesktop: () => {}, restoreDesktop: async () => true,
     ensureDesktop: async () => ready, discardDesktop: async () => {},
-    captureMenuFocus: () => {}, restoreMenuFocus: async () => true,
-    getMenuView: () => ({ itemIds: () => sessionMenuItems(profile, session, session.menu?.menuId).filter(item => item.enabled).map(item => item.id), focus: () => true }),
     getSurfaceView: () => ({ controlIds: () => ['password', 'sign-in', 'back'], focus: () => true }),
   });
   return { session, run: (name, target = {}, payload = {}) => commands[`session.${name}`](target, payload),
@@ -59,13 +57,7 @@ test('Guest logout after startup works when no local user remains signed in', as
   expect(s.session.activeUserId).toBe('local-alex'); expect(s.session.users.every(user => !user.signedIn)).toBe(true);
 });
 
-test('native menus enforce profile and optional fast-switch boundaries without state writes', async () => {
-  const mac = scene(); expect((await unchanged(mac, 'menu.open', { menuId: 'users' }, {})).error.code).toBe('disabled');
-  await mac.run('fastUserSwitching.set', {}, { enabled: true }); await mac.run('menu.open', { menuId: 'users' });
-  const items = sessionMenuItems(getOSProfile('macos-golden-gate-27.0.1'), mac.session, 'users');
-  expect(items.find(item => item.id === 'user:local-alex').checked).toBe(true); expect(items.find(item => item.id === 'user:local-casey').checked).toBe(false);
-  await unchanged(mac, 'menu.select', { menuId: 'users', itemId: 'guest-end' }, {});
-  await mac.run('menu.select', { menuId: 'users', itemId: 'user:local-casey' }); expect(mac.session.phase).toBe('login'); expect(mac.session.users[1].signedIn).toBe(false);
+test('historical profiles reject fictional session actions without changing state', async () => {
   const legacy = scene('macos-mojave-10.14');
   expect((await unchanged(legacy, 'lock', {}, {})).error.code).toBe('unsupported_profile');
 });

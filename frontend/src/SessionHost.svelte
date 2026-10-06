@@ -5,10 +5,11 @@
   import MacPowerSurface from './MacPowerSurface.svelte';
   import { createFeatureCommands, rejected } from './feature-commands.js';
   import { commandCatalog } from './command-catalog.js';
-  import { fictionalSessionDefaults, createFictionalSessionCommands, sessionTargets, signOutFictionalSessions } from './fictional-session.js';
+  import { fictionalSessionDefaults, createFictionalSessionCommands, sessionTargets, sessionMenuItems, signOutFictionalSessions } from './fictional-session.js';
   import { fictionalPowerDefaults, createFictionalPowerCommands, powerTargets } from './fictional-power.js';
   import { createSceneSeedCommands } from './scene-seed.js';
   import { createSavedSessionCommands, clearSavedSession, savedSessionStorageKey } from './saved-session.js';
+  import { menuBarDefaults, createMenuBarCommands, menuBarTargets } from './menu-bar.js';
 
   let { profile: profileInput, adapter: adapterInput, seed: seedInput, seedSource = 'default', savedSession: savedSessionInput,
     resetScene, restoreScene, registerCommands, selectProfile } = $props();
@@ -19,9 +20,13 @@
   if (savedSession) signOutFictionalSessions(initialSession);
   let session = $state(initialSession);
   let power = $state(fictionalPowerDefaults(profile));
+  let menuBar = $state(menuBarDefaults());
+  let sceneRevision = $state(0);
+  let menuLifecycle = null;
+  const menuDefinitions = $derived.by(sharedMenuDefinitions);
   let retainedIds = $state(savedSession?.locals.map(local => local.userId) ?? ['local-alex']);
   let disposed = false;
-  const controllers = new Map(), scenes = new Map(), menuViews = new Map(), desktopReturns = new Map(), menuReturns = new Map();
+  const controllers = new Map(), scenes = new Map(), menuViews = new Map(), desktopReturns = new Map();
   let surfaceView = null, powerView = null, powerReturn = null;
   const powerAvailable = () => !disposed && power.phase === 'awake' && !power.pending;
   const interactive = () => powerAvailable() && session.phase === 'desktop' && !session.guestConfirmation;
@@ -32,17 +37,17 @@
     return () => { if (controllers.get(userId) === controller) controllers.delete(userId); };
   }
   function registerScene(userId, facade) {
-    scenes.set(userId, facade);
-    return () => { if (scenes.get(userId) === facade) scenes.delete(userId); };
+    scenes.set(userId, facade); sceneRevision++;
+    return () => { if (scenes.get(userId) === facade) { scenes.delete(userId); sceneRevision++; } };
   }
   function registerNativeView(userId, view) {
     if (view.kind === 'surface') {
       surfaceView = view;
       return () => { if (surfaceView === view) surfaceView = null; };
     }
-    const key = menuKey(userId, view.menuId);
-    menuViews.set(key, view);
-    return () => { if (menuViews.get(key) === view) menuViews.delete(key); };
+    const keys = view.menuIds.map(menuId => menuKey(userId, menuId));
+    for (const key of keys) menuViews.set(key, view);
+    return () => { for (const key of keys) if (menuViews.get(key) === view) menuViews.delete(key); };
   }
   function registerPowerView(view) {
     powerView = view;
@@ -57,13 +62,12 @@
   async function discardDesktop(userId) {
     retainedIds = retainedIds.filter(id => id !== userId);
     desktopReturns.delete(userId);
-    for (const key of menuReturns.keys()) if (key.startsWith(`${userId}/`)) menuReturns.delete(key);
     await settle();
   }
   function capturePowerReturn() {
     const userId = session.activeUserId;
     if (session.phase === 'desktop') {
-      const token = scenes.get(userId)?.capture();
+      const token = menuLifecycle?.getReturnFocus() ?? scenes.get(userId)?.capture();
       if (token) desktopReturns.set(userId, token);
       powerReturn = { userId, desktop: token };
     } else powerReturn = { surface: surfaceView?.capture() };
@@ -82,23 +86,63 @@
     await settle();
   }
   const operations = createFictionalSessionCommands({ profile, session, available: powerAvailable, settle,
-    captureDesktop: userId => { const scene = scenes.get(userId); if (scene) desktopReturns.set(userId, scene.capture()); },
+    captureDesktop: userId => {
+      const token = menuLifecycle?.getReturnFocus() ?? scenes.get(userId)?.capture();
+      if (token) desktopReturns.set(userId, token);
+    },
     restoreDesktop: async userId => { await settle(); return await scenes.get(userId)?.restore(desktopReturns.get(userId)) === true; },
     ensureDesktop, discardDesktop,
-    captureMenuFocus: menuId => { const scene = scenes.get(session.activeUserId); if (scene) menuReturns.set(menuKey(session.activeUserId, menuId), scene.capture()); },
-    restoreMenuFocus: async menuId => {
-      await settle();
-      const key = menuKey(session.activeUserId, menuId), token = menuReturns.get(key);
-      menuReturns.delete(key);
-      if (token && await scenes.get(session.activeUserId)?.restore(token)) return true;
-      return await menuViews.get(key)?.focus('invoker') === true;
-    },
-    getMenuView: menuId => menuViews.get(menuKey(session.activeUserId, menuId)), getSurfaceView: () => surfaceView,
-    invokePower: name => powerOperations[name]({}, {}),
+    getSurfaceView: () => surfaceView,
   });
   const powerOperations = createFictionalPowerCommands({ profile, power, session, available: () => !disposed,
     settle, getView: () => powerView, captureReturn: capturePowerReturn, restoreReturn: restorePowerReturn,
     lockSession: () => operations['session.lock']({}, {}), signOutForBoot });
+  function sharedMenuDefinitions() {
+    sceneRevision;
+    const local = scenes.get(session.activeUserId)?.menuProviders() ?? [];
+    const activeName = session.users.find(user => user.id === session.activeUserId)?.name ?? '';
+    const items = menuId => sessionMenuItems(profile, session, menuId).map(item => ({ ...item,
+      ...(item.id === 'lock' ? { shortcut: '⌃⌘Q' } : {}),
+      ...(menuId === 'users' && item.id.startsWith('user:') ? { radio: true } : {}),
+      request: item.powerCommand ? { command: item.powerCommand }
+        : item.id === 'lock' ? { command: 'session.lock' }
+        : item.id === 'login' ? { command: 'session.login.open' }
+        : item.id === 'guest-end' ? { command: 'session.guest.end' }
+        : { command: 'session.user.select', target: { userId: item.id.slice(5) } },
+    }));
+    return [
+      { menuId: 'apple', kind: 'apple', label: 'Apple menu', enabled: true, items: items('apple') },
+      ...local,
+      { menuId: 'users', kind: 'users', label: activeName, enabled: session.fastUserSwitching, items: items('users') },
+    ];
+  }
+  async function invokeMenuRequest(request) {
+    const { command, target = {}, payload = {} } = request;
+    if (command === 'session.user.select') {
+      const login = await operations['session.login.open']({}, {});
+      if (login.status !== 'applied') return login;
+    }
+    const operation = operations[command] ?? powerOperations[command];
+    return operation ? operation(target, payload)
+      : activeController()?.execute({ command, target, payload }) ?? rejected('unavailable', 'The retained desktop is being prepared.');
+  }
+  const menuOperations = createMenuBarCommands({
+    profile, state: menuBar, getMenus: () => menuDefinitions,
+    getView: menuId => menuViews.get(menuKey(session.activeUserId, menuId)),
+    available: () => interactive() && scenes.get(session.activeUserId)?.menusAvailable() === true,
+    settle, captureFocus: () => scenes.get(session.activeUserId)?.capture(),
+    restoreFocus: token => scenes.get(session.activeUserId)?.restore(token),
+    preparePresentation: () => scenes.get(session.activeUserId)?.prepareMenus(),
+    restorePresentation: token => scenes.get(session.activeUserId)?.restoreMenus(token),
+    invoke: invokeMenuRequest, registerLifecycle: lifecycle => { menuLifecycle = lifecycle; },
+  });
+  $effect(() => {
+    const id = menuBar.menuId;
+    if (!id) return;
+    const provider = menuDefinitions.find(menu => menu.menuId === id);
+    if (!interactive() || !provider?.enabled || scenes.get(session.activeUserId)?.menusAvailable() !== true
+      || (id === 'application' && provider.appId !== menuBar.appId)) menuLifecycle.clear();
+  });
   function clearStoredSession() {
     try {
       const result = clearSavedSession(globalThis.localStorage, profile);
@@ -112,7 +156,8 @@
     for (const userId of retainedIds.filter(id => id !== 'guest')) {
       const scene = scenes.get(userId);
       if (!scene || await scene.ready() !== true) throw new Error('A retained local desktop did not finish startup.');
-      locals.push({ userId, scene: await scene.persist(desktopReturns.get(userId)?.focus?.node) });
+      const focus = userId === session.activeUserId ? menuLifecycle?.getReturnFocus()?.focus : null;
+      locals.push({ userId, scene: await scene.persist(focus?.node ?? desktopReturns.get(userId)?.focus?.node) });
     }
     return { version: 1, profileId: profile.id, baseline: { source: seedSource, seed }, locals };
   }
@@ -123,21 +168,22 @@
   const seedOperations = createSceneSeedCommands({ profile, available: () => !disposed,
     beforeReset: clearStoredSession, replaceScene: (value, source) => resetScene(value, source) });
   const catalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) => descriptor.profiles.includes(profile.id)));
-  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, operations[name] ?? powerOperations[name] ?? seedOperations[name] ?? savedOperations[name] ?? ((target, payload) => {
+  const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, menuOperations[name] ?? operations[name] ?? powerOperations[name] ?? seedOperations[name] ?? savedOperations[name] ?? ((target, payload) => {
     if (disposed || (!interactive() && name !== 'scene.selectProfile')) return rejected('unavailable', 'Wake/start and sign in before interacting with the fictional desktop.');
     const controller = activeController();
     return controller ? controller.execute({ command: name, target, payload }) : rejected('unavailable', 'The retained desktop is being prepared.');
   })]));
   const commands = createFeatureCommands(handlers,
     () => ({ ...(activeController()?.inspect().state ?? { profile }), session: $state.snapshot(session), power: $state.snapshot(power),
+      menuBar: $state.snapshot(menuBar),
       sceneSeed: { source: seedSource, seed: structuredClone(seed) } }), settle,
     catalog, () => {
       const targets = activeController()?.describe().targets ?? {};
       if (!interactive() && targets.windows) targets.windows = targets.windows.map(window => ({ ...window,
         presentationInteractive: false, ...(session.phase !== 'desktop' || power.phase !== 'awake' ? { presentationVisible: false } : {}),
         ...(window.resize ? { resize: { ...window.resize, available: false } } : {}) }));
-      return { ...targets, session: { ...sessionTargets(session, surfaceView,
-        session.menu ? menuViews.get(menuKey(session.activeUserId, session.menu.menuId)) : null), desktopAvailable: interactive(),
+      return { ...targets, menuBar: menuBarTargets(menuBar, menuDefinitions,
+        menuId => menuViews.get(menuKey(session.activeUserId, menuId))), session: { ...sessionTargets(session, surfaceView), desktopAvailable: interactive(),
         boundaries: { ...sessionTargets(session).boundaries, savedSessions: true, guestSaved: false, credentialsSaved: false } },
         power: powerTargets(power, powerView),
         savedSession: { version: 1, storageKey: savedSessionStorageKey(profile), automaticSave: false, automaticRestore: false,
@@ -191,7 +237,7 @@
       event.preventDefault(); event.stopImmediatePropagation(); void execute({ command });
     }
     window.addEventListener('keydown', keyboard, true);
-    return () => { disposed = true; unregister(); window.removeEventListener('keydown', keyboard, true); };
+    return () => { disposed = true; menuLifecycle.clear(); unregister(); window.removeEventListener('keydown', keyboard, true); };
   });
 </script>
 
@@ -204,6 +250,8 @@
         registerSessionScene={facade => registerScene(userId, facade)}
         registerSessionView={view => registerNativeView(userId, view)}
         {session} executeSession={execute} user={session.users.find(user => user.id === userId)}
+        menuBarState={menuBar} menuBarMenus={menuDefinitions} dismissMenuBar={() => menuLifecycle.clear()}
+        getMenuReturnFocus={() => menuLifecycle.getReturnFocus()}
         foreground={userId === session.activeUserId && interactive()} appearanceOwner={userId === session.activeUserId}
         windowNamespace={userId === 'local-alex' ? '' : `${userId}--`} />
     </div>

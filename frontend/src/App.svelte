@@ -50,7 +50,7 @@
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
 
   let { profile: profileInput, adapter: adapterInput, seed: seedInput, savedScene: savedSceneInput, registerCommands, selectProfile,
-    registerSessionScene, registerSessionView, session, executeSession,
+    registerSessionScene, registerSessionView, session, executeSession, menuBarState, menuBarMenus = [], dismissMenuBar, getMenuReturnFocus,
     foreground = true, appearanceOwner = true, windowNamespace = '' } = $props();
   let sceneRoot;
   // One immutable profile per scene instance. A profile change mounts a fresh
@@ -64,7 +64,8 @@
   const { applications } = profile;
   const macDesktop = profile.family === 'macos';
   const expandedProperty = adapter.expandedProperty;
-  const hasWindowMenu = profile.capabilities.includes('shell.window-menu');
+  const hasMenuBar = profile.capabilities.includes('shell.menu-bar');
+  const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
   const hasDockContext = profile.capabilities.includes('shell.dock-context');
@@ -86,7 +87,7 @@
   let runningAppIds = $state(savedScene?.runningAppIds ?? (adapter.closeKeepsRunning ? [profile.defaults.desktopAppId] : []));
   let pendingQuitAppIds = $state([]);
   const quitInFlight = new Set();
-  let switching = $state({ ...applicationSwitchingDefaults(), ...savedScene?.switching });
+  let switching = $state({ ...applicationSwitchingDefaults(profile), ...savedScene?.switching });
   let closedWindows = $state(savedScene?.closedWindows ?? {});
   const pendingWindowViews = new Map(Object.entries(savedScene?.views ?? {}));
   let switcherControls = $state();
@@ -461,7 +462,8 @@
     invoke: (command, target, payload) => handlers[command](target, payload),
     dismissMenus: () => {
       desktopState.context = null; desktopState.rename = null;
-      desktopState.windowMenuOpen = false; desktopState.windowMenuItem = null;
+      dismissMenuBar?.();
+      if (hasWindowMenu) { desktopState.windowMenuOpen = false; desktopState.windowMenuItem = null; }
       desktopState.dock.context = null; desktopState.dock.appWindows = null;
       if (desktopState.stacks) desktopState.stacks.focusedStackId = null;
       clearNotesPresentation();
@@ -476,6 +478,7 @@
     bounds: () => switcherControls?.bounds() ?? null,
     scroll: (top, left) => switcherControls?.scroll(top, left) ?? null,
     scrollPosition: () => switcherControls?.scrollPosition() ?? null,
+    ...(!hasMenuBar ? {
     appMenuAnchor: applicationHeaderRect,
     appMenuFocus: itemId => applicationMenuControls?.focus(itemId) ?? false,
     appMenuFocusedItemId: () => document.activeElement?.closest('[data-application-menu]') ? document.activeElement.dataset.applicationMenuItem ?? null : null,
@@ -484,6 +487,7 @@
     appMenuScrollPosition: () => applicationMenuControls?.scrollPosition() ?? null,
     appMenuBounds: () => applicationMenuControls?.bounds() ?? null,
     appMenuReturnFocus: focusApplicationHeader,
+    } : {}),
   };
   Object.assign(handlers, createApplicationSwitchingCommands(switching, {
     profile, getWindows: () => windows, getRunningAppIds: () => runningAppIds,
@@ -506,7 +510,7 @@
     captureScene: captureSpacesScene, restoreScene: restoreSpacesScene,
     dismissPresentations: () => {
       if (stageDrag) stagePointerUp({ pointerId: stageDrag.pointerId, type: 'pointercancel' });
-      clearSwitchingPresentations(true); switching.switcher = null; switching.appMenu = null;
+      clearSwitchingPresentations(true); switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
       cancelPairingForActivation(null); presentation.greenMenu = null;
       presentation.revealed = { top: false, launcher: false };
     },
@@ -522,7 +526,7 @@
     captureFocus: captureNativeFocus, restoreFocus: restoreNativeFocus,
     dismissPresentations: () => {
       if (stageDrag) stagePointerUp({ pointerId: stageDrag.pointerId, type: 'pointercancel' });
-      clearSwitchingPresentations(); switching.switcher = null; switching.appMenu = null;
+      clearSwitchingPresentations(); switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
       cancelPairingForActivation(null); presentation.greenMenu = null;
       presentation.revealed = { top: false, launcher: false };
     },
@@ -545,7 +549,7 @@
     captureFocus: captureNativeFocus, restoreFocus: restoreNativeFocus,
     captureReturn: () => ({ spaceId: spaceState.activeSpaceId, windowId: activeWindowId, appId: activeAppId }),
     dismissPresentations: () => {
-      clearSwitchingPresentations(); switching.switcher = null; switching.appMenu = null;
+      clearSwitchingPresentations(); switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
       cancelPairingForActivation(null); presentation.greenMenu = null;
       presentation.revealed = { top: false, launcher: false };
     },
@@ -578,7 +582,7 @@
       clearPresentations: clearFullScreenPresentations, restorePresentations: restoreFullScreenPresentations,
       getStageView: () => ({ available: () => Boolean(desktopView && stageArea.width > 0 && stageArea.height > 0),
         canReveal: (edge, visible) => visible || (edge === 'top'
-          ? !presentation.greenMenu && !switching.appMenu && !desktopState.windowMenuOpen
+          ? !presentation.greenMenu && !switching.appMenu && !desktopState.windowMenuOpen && !menuBarState?.menuId
           : !desktopState.dock?.context && !desktopState.dock?.folderStack && !desktopState.dock?.appWindows
             && !desktopState.dock?.focusedItemId && !nativeState?.shell.panel
             && !document.activeElement?.closest('.dock, .sonoma-dock, .win11-taskbar')) }),
@@ -593,6 +597,7 @@
     }, expandedProperty),
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
+      includeWindowMenu: !hasMenuBar,
       windowMenuAvailable: () => !spaceState.overview && !launchpadState.view && !dashboardOpen && (fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed),
       getFiles: () => macDesktop ? (liveGoldenFiles ?? macFiles.files.filter(file => !isTrashed(macFiles, file)))
         .map(file => ({ ...file, appId: file.appId ?? (file.kind === 'folder' ? 'finder' : 'preview') })) : getDesktopItems(),
@@ -628,9 +633,10 @@
   for (const name of Object.keys(handlers)) {
     if (!Object.hasOwn(commandCatalog, name)) throw new Error(`Missing native command descriptor: ${name}`);
   }
-  const sceneCatalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) =>
+  const sceneCatalog = Object.fromEntries(Object.entries(commandCatalog).filter(([name, descriptor]) =>
     descriptor.profiles.includes(profile.id) && !descriptor.capability.startsWith('session.')
-    && !['scene.seed', 'scene.saved-session'].includes(descriptor.capability)));
+    && !['scene.seed', 'scene.saved-session', 'shell.menu-bar'].includes(descriptor.capability)
+    && !(hasMenuBar && (name.startsWith('menu.') || name.startsWith('app.menu.') || name === 'desktop.scroll'))));
   // Composite callbacks capture this binding, so they use the same sealed,
   // capability-guarded registry after native profile selection.
   handlers = Object.fromEntries(Object.entries(handlers).filter(([name]) => Object.hasOwn(sceneCatalog, name)));
@@ -716,8 +722,8 @@
         switcher: switching.switcher ? { ...switching.switcher, itemIds: [...switching.switcher.itemIds],
           scroll: { ...switching.switcher.scroll }, items: switcherItems.map(item => ({ ...item })),
           renderedItemIds: switcherControls?.itemIds() ?? [], bounds: switcherControls?.bounds() ?? null } : null,
-        applicationMenu: switching.appMenu ? { ...switching.appMenu, items: appMenuItems.map(item => ({ ...item })),
-          bounds: applicationMenuControls?.bounds() ?? null } : null,
+        ...(!hasMenuBar ? { applicationMenu: switching.appMenu ? { ...switching.appMenu, items: appMenuItems.map(item => ({ ...item })),
+          bounds: applicationMenuControls?.bounds() ?? null } : null } : {}),
         shortcuts: { switcher: macDesktop ? 'Command+Tab' : 'Alt+Tab', sticky: 'Control+Shift+F3',
           cycle: macDesktop ? 'Command+`' : 'Alt+Escape', cycleAlias: 'Control+Shift+F8',
           nativeDelivery: 'Host/browser may intercept reserved chords; aliases require delivered page events. Ctrl+Tab/Ctrl+Shift+Tab are never intercepted.' },
@@ -1124,7 +1130,8 @@
     if (dock.preferences.autoHide && !dock.hover && !dock.drag) dock.revealed = false;
   }
   function focusDesktop() {
-    switching.switcher = null; switching.appMenu = null;
+    dismissMenuBar?.();
+    switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
     unhideApplication(profile.defaults.desktopAppId);
     cancelPairingForActivation(null);
     spaceState.overview = null;
@@ -1218,11 +1225,11 @@
   function clearFullScreenPresentations() {
     captureSwitchingFocus();
     const snapshot = { base: clearSwitchingPresentations(),
-      switching: $state.snapshot({ switcher: switching.switcher, appMenu: switching.appMenu,
+      switching: $state.snapshot({ switcher: switching.switcher, ...(!hasMenuBar ? { appMenu: switching.appMenu } : {}),
         activationAppIds: switching.activationAppIds, activationWindowIds: switching.activationWindowIds }),
       windowIds: windows.map(window => window.id), activeWindowId, activeAppId,
       ...(hasSpaces ? { spaces: $state.snapshot(spaceState) } : {}) };
-    switching.switcher = null; switching.appMenu = null;
+    switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
     return snapshot;
   }
   let ownedWindowFocus = 0;
@@ -1284,7 +1291,7 @@
   }
   function stagePointerMove(event) {
     if (spaceState.overview || launchpadState.view || dashboardOpen || fullScreenStage.mode === 'normal' || switching.switcher || !sceneInteractionsAvailable()) return;
-    const topLocked = Boolean(presentation.greenMenu || switching.appMenu || desktopState.windowMenuOpen);
+    const topLocked = Boolean(presentation.greenMenu || switching.appMenu || desktopState.windowMenuOpen || menuBarState?.menuId);
     const topLimit = presentation.revealed.top ? stageArea.menuHeight + 50 : 2;
     revealFullScreen('top', topLocked || event.clientY <= topLimit);
     const footer = sceneRoot?.querySelector(macDesktop ? '.dock, .sonoma-dock, .golden-gate-dock' : '.win11-taskbar');
@@ -1352,6 +1359,8 @@
     return document.activeElement === workspace;
   }
   function captureNativeFocus() {
+    const original = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null;
+    if (original?.node?.isConnected && sceneRoot?.contains(original.node)) return original;
     const node = document.activeElement;
     if (!sceneRoot?.contains(node)) return null;
     const attributes = [...node.attributes].filter(attribute => attribute.name.startsWith('data-'));
@@ -1395,6 +1404,58 @@
       if (node.isConnected && sceneRoot.contains(node)) node.scrollTo({ top, left, behavior: 'instant' });
     await tick();
     return focused;
+  }
+  function sharedMenusAvailable() {
+    return sceneInteractionsAvailable() && !spaceState.overview && !launchpadState.view && !dashboardOpen
+      && !switching.switcher && !presentation.pairing && !desktopState.dock?.appWindows
+      && (fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed);
+  }
+  function sharedMenuProviders() {
+    const appId = activeAppId, app = applications[appId];
+    const active = windows.find(window => window.id === activeWindowId);
+    const ordinary = Boolean(active && !active.fullScreen && !active.minimized && !isAppHidden(active.appId));
+    const request = (command, window = active, payload = {}) => window
+      ? { command, target: { windowId: window.id }, payload } : undefined;
+    const applicationActions = {
+      hide: { command: 'app.setHidden', target: { appId }, payload: { hidden: true } },
+      'hide-others': { command: 'app.hideOthers', target: { appId } },
+      'show-all': { command: 'app.showAll' },
+      quit: { command: 'app.quit', target: { appId } },
+    };
+    return [
+      { menuId: 'application', kind: 'application', label: app?.name ?? '', appId,
+        enabled: Boolean(app && runningAppIds.includes(appId) && !pendingQuitAppIds.includes(appId)),
+        items: applicationMenuItems(switching, profile, appId, runningAppIds, pendingQuitAppIds)
+          .map(item => ({ ...item, request: applicationActions[item.id] })) },
+      { menuId: 'window', kind: 'window', label: 'Window', enabled: true, items: [
+        { id: 'close', label: 'Close', shortcut: '⌘W', enabled: Boolean(active), request: request('window.close') },
+        { id: 'minimize', label: 'Minimize', shortcut: '⌘M', enabled: ordinary,
+          request: request('window.setMinimized', active, { minimized: true }) },
+        { id: 'zoom', label: 'Zoom', enabled: ordinary,
+          request: request('window.setZoomed', active, { zoomed: !active?.zoomed }) },
+        { id: 'move-resize', label: 'Move & Resize', enabled: ordinary, children: [
+          { id: 'fill', label: 'Fill', shortcut: 'fn ⌃F', enabled: ordinary && !active?.zoomed,
+            request: request('window.setZoomed', active, { zoomed: true }) },
+          { id: 'restore', label: 'Return to Previous Size', shortcut: 'fn ⌃R', enabled: ordinary && Boolean(active?.zoomed),
+            request: request('window.setZoomed', active, { zoomed: false }) },
+        ] },
+        { id: 'full-screen-tile', label: 'Full Screen Tile', enabled: Boolean(active && !active.minimized), children: [
+          { id: 'entire-screen', label: 'Entire Screen', enabled: Boolean(active && !active.fullScreen && !active.minimized),
+            request: request('window.setFullScreen', active, { fullScreen: true }) },
+          { id: 'left-screen', label: 'Left of Screen', enabled: Boolean(active && !active.minimized),
+            request: request('window.splitView.begin', active, { side: 'left' }) },
+          { id: 'right-screen', label: 'Right of Screen', enabled: Boolean(active && !active.minimized),
+            request: request('window.splitView.begin', active, { side: 'right' }) },
+          { id: 'exit-full-screen', label: 'Exit Full Screen', enabled: Boolean(active?.fullScreen),
+            request: request('window.setFullScreen', active, { fullScreen: false }) },
+        ] },
+        ...(windows.length ? [{ id: 'separator-windows', label: '', enabled: false, separator: true }] : []),
+        ...windows.map(window => ({ id: `window:${window.id}`, label: window.title,
+          shortcut: window.minimized ? 'Minimized' : undefined, checked: window.id === activeWindowId, radio: true,
+          enabled: !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId),
+          request: request('window.focus', window) })),
+      ] },
+    ];
   }
   function captureSwitchingFocus() {
     switchingReturnFocus = captureNativeFocus();
@@ -1506,7 +1567,7 @@
     const foreground = switching.activationWindowIds.map(id => candidates.find(window => window.id === id)).find(Boolean)
       ?? candidates.at(-1);
     if (foreground) return focusFullScreenWindow(foreground.id);
-    switching.switcher = null; switching.appMenu = null;
+    switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
     activeWindowId = null; activeAppId = profile.defaults.desktopAppId;
     unhideApplication(activeAppId);
     recordApplicationActivation(switching, activeAppId);
@@ -1545,7 +1606,8 @@
     const destination = spaceItems[index + (event.key === 'ArrowLeft' ? -1 : 1)];
     if (destination && !event.repeat) commands.execute({ command: 'space.activate', target: { spaceId: destination.spaceId } });
   }
-  function clearSwitchingPresentations(keepDashboard = false) {
+  function clearSwitchingPresentations(keepDashboard = false, keepMenuBar = false) {
+    if (!keepMenuBar) dismissMenuBar?.();
     const snapshot = $state.snapshot({
       desktop: { context: desktopState.context, focusedControl: desktopState.focusedControl,
         ...(hasWindowMenu ? { windowMenuOpen: desktopState.windowMenuOpen, windowMenuItem: desktopState.windowMenuItem,
@@ -1605,7 +1667,7 @@
     else {
       activeAppId = appId; activeWindowId = null;
       recordApplicationActivation(switching, appId);
-      switching.switcher = null; switching.appMenu = null;
+      switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
       clearSwitchingPresentations();
     }
     if (presentation) switching.switcher = presentation;
@@ -1638,7 +1700,7 @@
   function switchingKeydown(event) {
     if (event.defaultPrevented || event.isComposing || !profile.capabilities.includes('shell.switcher') || !switchingView.available()) return;
     const state = switching.switcher;
-    if (macDesktop && event.target?.closest?.('[data-application-menu-button]')
+    if (macDesktop && !hasMenuBar && event.target?.closest?.('[data-application-menu-button]')
       && !event.metaKey && !event.ctrlKey && !event.altKey && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
       consumeSwitchingKey(event);
       commands.execute({ command: 'app.menu.open', target: { appId: activeAppId },
@@ -1725,6 +1787,8 @@
       persist: captureSavedScene,
       canSave: () => !disposed && !presentation.pairing && pendingQuitAppIds.length === 0,
       capture: captureSessionDesktop, restore: restoreSessionDesktop,
+      menuProviders: sharedMenuProviders, menusAvailable: sharedMenusAvailable,
+      prepareMenus: () => clearSwitchingPresentations(false, true), restoreMenus: restoreSwitchingPresentations,
       ready: async () => { await tick(); const result = await startup; return !disposed && initialized && result?.status === 'applied'; },
     });
     const stopScene = adapter.startScene?.(nativeState, commands.execute);
@@ -1773,7 +1837,7 @@
     if (presentation.greenMenu?.windowId !== id) presentation.greenMenu = null;
     cancelPairingForActivation(id);
     unhideApplication(window.appId);
-    switching.switcher = null; switching.appMenu = null;
+    switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
     window.minimized = false;
     spaceState.overview = null;
     launchpadState.view = null;
@@ -1806,7 +1870,7 @@
     const app = applications[appId];
     unhideApplication(appId);
     if (fresh || !windows.some(window => window.appId === appId && !window.utilityKind)) cancelPairingForActivation(null);
-    switching.switcher = null; switching.appMenu = null;
+    switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
     const existing = !fresh && windows.findLast(window => window.appId === appId && !window.utilityKind);
     if (existing) {
       if (title !== undefined) existing.title = title;
@@ -1935,7 +1999,7 @@
       if (disposed) return rejected('unavailable', 'The outgoing scene has been disposed.');
       runningAppIds = runningAppIds.filter(entry => entry !== appId);
       switching.hiddenAppIds = switching.hiddenAppIds.filter(id => id !== appId);
-      switching.appMenu = null;
+      if (!hasMenuBar) switching.appMenu = null;
       if (activeAppId === appId) {
         const remaining = windows.findLast(window => !window.minimized && !isAppHidden(window.appId));
         activeWindowId = remaining?.id ?? null;
@@ -2163,6 +2227,8 @@
   {session}
   {executeSession}
   {registerSessionView}
+  {menuBarState}
+  {menuBarMenus}
   foreground={foreground || !initialized}
   {windows}
   switchingState={switching}
@@ -2242,7 +2308,7 @@
     <ApplicationSwitcher {profile} state={switching.switcher} items={switcherItems} execute={commands.execute}
       onlayout={slots => { switcherPreviewSlots = slots; }} bind:this={switcherControls} />
   {/if}
-  {#if switching.appMenu && applicationMenuAnchor}
+  {#if !hasMenuBar && switching.appMenu && applicationMenuAnchor}
     <MacApplicationMenu {profile} app={applications[switching.appMenu.appId]} state={switching.appMenu}
       items={appMenuItems} anchor={applicationMenuAnchor} execute={commands.execute} bind:this={applicationMenuControls} />
   {/if}

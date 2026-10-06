@@ -1,0 +1,213 @@
+<script>
+  import { tick } from 'svelte';
+  import { menuBarRequest } from './menu-bar.js';
+
+  let { menu, menus, state: menuState, level, items, geometry = null, execute, available, onLayout } = $props();
+  let panel = $state(null);
+  let observing = 0;
+  const selection = $derived(menuState.levels[level]);
+  const canonicalScroll = $derived(menuState.levels[level]?.scrollTop ?? 0);
+  const parentRow = $derived(menuState.levels[level]?.parentId);
+  const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+
+  function request(action, args = {}) {
+    return execute(menuBarRequest(action, menu.menuId, menus, args));
+  }
+  function rectOf(node) {
+    const rect = node.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, left: rect.left, top: rect.top, right: rect.right,
+      bottom: rect.bottom, width: rect.width, height: rect.height };
+  }
+  function mounted() {
+    return Boolean(available(menu.menuId) && menuState.menuId === menu.menuId && selection && geometry
+      && !geometry.covered && panel?.isConnected && !panel.closest('[inert]')
+      && panel.getClientRects().length && getComputedStyle(panel).visibility === 'visible'
+      && panel.clientWidth > 0 && panel.clientHeight > 0);
+  }
+  function controls() {
+    return mounted() ? [...panel.querySelectorAll('[data-menu-item-id]')].filter(node => !node.disabled) : [];
+  }
+  function control(itemId) {
+    return controls().find(node => node.dataset.menuItemId === itemId);
+  }
+  function ownsClip(node) {
+    if (!mounted() || !node?.isConnected) return false;
+    const rect = node.getBoundingClientRect();
+    const clip = panel.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const left = Math.max(rect.left, clip.left + panel.clientLeft, viewport?.offsetLeft ?? 0);
+    const top = Math.max(rect.top, clip.top + panel.clientTop, viewport?.offsetTop ?? 0);
+    const right = Math.min(rect.right, clip.left + panel.clientLeft + panel.clientWidth,
+      (viewport?.offsetLeft ?? 0) + (viewport?.width ?? document.documentElement.clientWidth));
+    const bottom = Math.min(rect.bottom, clip.top + panel.clientTop + panel.clientHeight,
+      (viewport?.offsetTop ?? 0) + (viewport?.height ?? document.documentElement.clientHeight));
+    if (right <= left || bottom <= top) return false;
+    const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+    return Boolean(hit && (hit === node || node.contains(hit)));
+  }
+  async function stable() {
+    const root = panel;
+    let previous = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await tick();
+      await onLayout?.();
+      await tick();
+      if (!root?.isConnected || panel !== root || !geometry) return false;
+      const rect = root.getBoundingClientRect();
+      const current = [rect.left, rect.top, rect.width, rect.height, root.clientWidth, root.clientHeight];
+      if (previous && current.every((value, index) => value === previous[index])) return true;
+      previous = current;
+      await frame();
+    }
+    return false;
+  }
+  async function suppress(write) {
+    observing++;
+    try { return await write(); }
+    finally {
+      // Native scroll events are delivered after the assignment, not during it.
+      await frame();
+      observing--;
+    }
+  }
+
+  export function element() { return panel; }
+  export function itemIds() { return controls().map(node => node.dataset.menuItemId); }
+  export function focusedItem() {
+    if (!mounted()) return null;
+    const node = document.activeElement;
+    return controls().includes(node) && ownsClip(node) ? node.dataset.menuItemId : null;
+  }
+  export function bounds() {
+    return mounted() ? { level, popup: rectOf(panel),
+      controls: controls().map(node => ({ itemId: node.dataset.menuItemId, ...rectOf(node) })) } : null;
+  }
+  export function scrollTop() { return mounted() ? panel.scrollTop : null; }
+  export async function focus(itemId) {
+    if (!await stable() || !mounted()) return false;
+    const root = panel;
+    const node = itemId === null ? root : control(itemId);
+    if (!node || (itemId === null && controls().length)) return false;
+    return suppress(async () => {
+      if (node !== root) {
+        const rect = node.getBoundingClientRect();
+        const clip = root.getBoundingClientRect();
+        const top = clip.top + root.clientTop + 6;
+        const bottom = clip.top + root.clientTop + root.clientHeight - 6;
+        root.scrollTop += rect.top < top ? rect.top - top : rect.bottom > bottom ? rect.bottom - bottom : 0;
+      }
+      if (!await stable() || !mounted() || panel !== root || !node.isConnected
+        || (itemId !== null && control(itemId) !== node)) return false;
+      node.focus({ preventScroll: true });
+      await tick();
+      return panel === root && document.activeElement === node && ownsClip(node);
+    });
+  }
+  export async function scroll(top) {
+    if (!await stable() || !mounted() || !Number.isFinite(top) || top < 0) return null;
+    const root = panel;
+    return suppress(async () => {
+      root.scrollTo({ top, left: 0, behavior: 'instant' });
+      await tick();
+      await onLayout?.();
+      await tick();
+      return mounted() && panel === root ? root.scrollTop : null;
+    });
+  }
+
+  $effect(() => {
+    const root = panel;
+    const top = canonicalScroll;
+    const parentId = parentRow;
+    if (!root || parentId === undefined) return;
+    let cancelled = false;
+    suppress(async () => {
+      await tick();
+      if (!cancelled && root.isConnected && panel === root) root.scrollTo({ top, left: 0, behavior: 'instant' });
+    });
+    return () => { cancelled = true; };
+  });
+
+  function observeScroll() {
+    onLayout?.();
+    const top = scrollTop();
+    if (!observing && top !== null && top !== selection?.scrollTop) request('scroll', { top, level, observe: true });
+  }
+  function select(item, observe = false) {
+    if (!item.enabled || item.separator || !mounted() || (observe && observing)) return;
+    if (observe) {
+      if (selection?.itemId !== item.id) request('select', { itemId: item.id, observe: true });
+    } else if (item.children) {
+      if (menuState.levels[level + 1]?.parentId !== item.id) request('submenu', { itemId: item.id });
+    } else if (selection?.itemId !== item.id || menuState.levels.length > level + 1) {
+      request('select', { itemId: item.id });
+    }
+  }
+  function pointerdown(event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  function activate(event, item) {
+    event.stopPropagation();
+    event.preventDefault();
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || !item.enabled || !mounted()) return;
+    request(item.children ? 'submenu' : 'execute', { itemId: item.id });
+  }
+  function keydown(event) {
+    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) {
+      if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    const key = event.key === ' ' ? 'Space' : event.key;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Space', 'Escape', 'Tab'].includes(key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (mounted()) request('navigate', { key });
+  }
+  function suppressContext(event) { event.preventDefault(); event.stopPropagation(); }
+</script>
+
+<div class="menu-popup" bind:this={panel} id={`golden-menu-${menu.menuId}-${level}`}
+  data-menu-popup={level} data-menu-provider={menu.menuId}
+  role="menu" aria-label={level === 0 ? `${menu.label} menu` : `${menu.label} submenu`}
+  aria-hidden={geometry?.covered ? 'true' : undefined} inert={geometry?.covered ?? false} tabindex="-1"
+  style:left={`${geometry?.x ?? 4}px`} style:top={`${geometry?.y ?? 4}px`}
+  style:max-width={`${geometry?.width ?? Math.max(1, typeof window === 'undefined' ? 312 : window.innerWidth - 8)}px`}
+  style:min-width={`${Math.min(264, geometry?.width ?? 264)}px`}
+  style:max-height={`${geometry?.height ?? Math.max(1, typeof window === 'undefined' ? 232 : window.innerHeight - 8)}px`}
+  style:z-index={12000 + level} style:visibility={geometry ? 'visible' : 'hidden'}
+  onkeydown={keydown} onpointerdown={pointerdown} oncontextmenu={suppressContext} onscroll={observeScroll}>
+  {#each items as item (item.id)}
+    {#if item.separatorBefore}<div class="separator" role="separator"></div>{/if}
+    {#if item.separator}
+      <div class="separator" role="separator"></div>
+    {:else}
+      <button type="button" role={item.radio ? 'menuitemradio' : item.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+        aria-checked={item.radio || item.checked !== undefined ? Boolean(item.checked) : undefined}
+        aria-disabled={!item.enabled} aria-haspopup={item.children ? 'menu' : undefined}
+        aria-expanded={item.children ? menuState.levels[level + 1]?.parentId === item.id : undefined}
+        data-menu-item-id={item.id} disabled={!item.enabled} tabindex={item.enabled && selection?.itemId === item.id ? 0 : -1}
+        class:selected={selection?.itemId === item.id} title={item.label}
+        onpointerenter={() => select(item)} onfocus={() => select(item, true)} onclick={event => activate(event, item)}>
+        <span class="check" aria-hidden="true">{item.checked ? item.radio ? '●' : '✓' : ''}</span>
+        <span class="label">{item.label}</span>
+        <span class="shortcut">{item.shortcut ?? ''}</span>
+        <span class="arrow" aria-hidden="true">{item.children ? '›' : ''}</span>
+      </button>
+    {/if}
+  {/each}
+</div>
+
+<style>
+  .menu-popup { position: fixed; box-sizing: border-box; width: max-content; min-height: 28px; max-width: calc(100vw - 8px); max-height: calc(100svh - 8px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 6px; border: 1px solid var(--appearance-menu-border, #fff9); border-radius: 17px; color: var(--appearance-menu-ink, #232326); background: var(--appearance-menu-bg, rgb(245 240 234 / 85%)); box-shadow: inset 0 1px 1px #fffa, 0 0 0 1px #0002, 0 12px 30px #0004; backdrop-filter: blur(34px) saturate(1.45); font: 13px/20px var(--golden-gate-font, sans-serif); text-shadow: none; user-select: none; outline: none; }
+  button { display: grid; grid-template-columns: 14px minmax(0, 1fr) minmax(0, auto) 10px; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; min-height: 28px; gap: 6px; padding: 4px 9px; border: 0; border-radius: 10px; background: transparent; color: inherit; font: inherit; text-align: left; white-space: nowrap; cursor: default; outline: none; }
+  button.selected:not(:disabled) { background: var(--appearance-accent, #0878ef); color: var(--appearance-accent-ink, white); }
+  button:disabled { color: var(--appearance-menu-disabled, #8f8b87); }
+  .check { width: 14px; text-align: center; font-size: 12px; }
+  .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .shortcut { min-width: 0; max-width: 110px; overflow: hidden; text-overflow: ellipsis; text-align: right; font-size: 11px; opacity: .65; }
+  .arrow { width: 10px; font-size: 21px; line-height: 20px; text-align: right; }
+  .separator { height: 1px; margin: 5px 8px; background: var(--appearance-menu-separator, #0002); }
+  .menu-popup[inert] { pointer-events: none; }
+</style>

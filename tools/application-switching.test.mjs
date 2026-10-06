@@ -19,7 +19,7 @@ const leaf = (state, appId, running, id, pending = []) => applicationMenuItems(s
 // This consumer uses the existing window primitive, including its minimized restoration,
 // and changes actual stacking/MRU on each focus. No switcher view or fake DOM success is used.
 function cyclingConsumer(profile, managed, running, activeWindowId) {
-  const state = applicationSwitchingDefaults();
+  const state = applicationSwitchingDefaults(profile);
   let activeId = activeWindowId, activeAppId = managed.find(entry => entry.id === activeId)?.appId;
   for (const entry of managed) recordApplicationActivation(state, entry.appId, entry.id, true);
   const native = createWindowCommands(() => managed, {
@@ -46,7 +46,7 @@ function cyclingConsumer(profile, managed, running, activeWindowId) {
 }
 
 test('application MRU collapses same-app windows while window MRU retains exact documents and creation order', () => {
-  const state = applicationSwitchingDefaults(), managed = [window('safari-one', 'safari'), window('notes-one', 'notes'), window('safari-two', 'safari')];
+  const state = applicationSwitchingDefaults(mac), managed = [window('safari-one', 'safari'), window('notes-one', 'notes'), window('safari-two', 'safari')];
   recordApplicationActivation(state, 'safari', 'safari-one', true);
   recordApplicationActivation(state, 'notes', 'notes-one', true);
   recordApplicationActivation(state, 'safari', 'safari-two', true);
@@ -60,7 +60,7 @@ test('application MRU collapses same-app windows while window MRU retains exact 
 });
 
 test('Mac switching retains hidden, all-minimized and zero-window running apps without resurrecting closed or quitting apps', () => {
-  const state = applicationSwitchingDefaults(), managed = [window('safari-one', 'safari', true), window('safari-two', 'safari', true), window('notes-one', 'notes')];
+  const state = applicationSwitchingDefaults(mac), managed = [window('safari-one', 'safari', true), window('safari-two', 'safari', true), window('notes-one', 'notes')];
   state.hiddenAppIds = ['safari'];
   recordApplicationActivation(state, 'safari', 'safari-two', true);
   recordApplicationActivation(state, 'mail');
@@ -73,7 +73,7 @@ test('Mac switching retains hidden, all-minimized and zero-window running apps w
 });
 
 test('Windows switching exposes each actual window, including minimized documents, but never zero-window applications', () => {
-  const state = applicationSwitchingDefaults();
+  const state = applicationSwitchingDefaults(windowsProfile);
   const managed = [window('text-one', 'notepad'), window('text-two', 'notepad', true), window('browser-one', 'edge'), window('foreign', 'not-installed')];
   recordApplicationActivation(state, 'notepad', 'text-one', true);
   const items = applicationSwitcherItems(state, windowsProfile, ['notepad', 'edge', 'calculator', 'not-installed'], managed);
@@ -83,7 +83,7 @@ test('Windows switching exposes each actual window, including minimized document
 });
 
 test('an open switcher freezes order across MRU changes and appends newly running apps rather than reshuffling selection', () => {
-  const state = applicationSwitchingDefaults(), managed = [window('safari-one', 'safari'), window('notes-one', 'notes')];
+  const state = applicationSwitchingDefaults(mac), managed = [window('safari-one', 'safari'), window('notes-one', 'notes')];
   recordApplicationActivation(state, 'finder');
   recordApplicationActivation(state, 'safari', 'safari-one', true);
   recordApplicationActivation(state, 'notes', 'notes-one', true);
@@ -101,7 +101,7 @@ test('an open switcher freezes order across MRU changes and appends newly runnin
 });
 
 test('removing the selected item chooses the nearest surviving OLD position, not its shifted new index', () => {
-  const state = applicationSwitchingDefaults();
+  const state = applicationSwitchingDefaults(mac);
   open(state, 'applications', ['app:finder', 'app:mail', 'app:safari', 'app:notes', 'app:photos'], 'app:safari');
   reconcileApplicationSwitching(state, mac, ['finder', 'notes', 'photos'], []);
   expect(state.switcher.itemIds).toEqual(['app:finder', 'app:notes', 'app:photos']);
@@ -111,7 +111,7 @@ test('removing the selected item chooses the nearest surviving OLD position, not
 });
 
 test('selection stays on its live identity when preceding items disappear and the selected window is minimized', () => {
-  const state = applicationSwitchingDefaults(), managed = [window('a', 'edge'), window('b', 'notepad'), window('c', 'edge')];
+  const state = applicationSwitchingDefaults(windowsProfile), managed = [window('a', 'edge'), window('b', 'notepad'), window('c', 'edge')];
   open(state, 'windows', ['window:a', 'window:b', 'window:c'], 'window:c');
   managed.shift();
   managed[1].minimized = true;
@@ -122,7 +122,7 @@ test('selection stays on its live identity when preceding items disappear and th
 });
 
 test('a pending quit prunes its switcher entry, and cancellation appends eligibility without rewriting frozen survivors', () => {
-  const state = applicationSwitchingDefaults(), running = ['finder', 'safari', 'notes'];
+  const state = applicationSwitchingDefaults(mac), running = ['finder', 'safari', 'notes'];
   recordApplicationActivation(state, 'finder');
   recordApplicationActivation(state, 'safari');
   recordApplicationActivation(state, 'notes');
@@ -137,7 +137,7 @@ test('a pending quit prunes its switcher entry, and cancellation appends eligibi
 });
 
 test('closing a Mac last window retains the running app, but quitting discards its hidden state and old lifetime history', () => {
-  const state = applicationSwitchingDefaults(), managed = [window('safari-old', 'safari'), window('notes-one', 'notes')];
+  const state = applicationSwitchingDefaults(mac), managed = [window('safari-old', 'safari'), window('notes-one', 'notes')];
   recordApplicationActivation(state, 'safari', 'safari-old', true);
   recordApplicationActivation(state, 'notes', 'notes-one', true);
   state.hiddenAppIds = ['safari'];
@@ -158,7 +158,7 @@ test('closing a Mac last window retains the running app, but quitting discards i
 });
 
 test('Windows dismisses a switcher when its last window closes rather than leaving a zero-window app card', () => {
-  const state = applicationSwitchingDefaults();
+  const state = applicationSwitchingDefaults(windowsProfile);
   recordApplicationActivation(state, 'notepad', 'only-window', true);
   open(state, 'windows', ['window:only-window'], 'window:only-window');
   reconcileApplicationSwitching(state, windowsProfile, ['notepad'], []);
@@ -169,7 +169,7 @@ test('Windows dismisses a switcher when its last window closes rather than leavi
 });
 
 test('Finder can hide when another app can receive foreground, cannot quit, and unavailable app interiors stay disabled', () => {
-  const state = applicationSwitchingDefaults(), running = ['finder', 'safari'];
+  const state = applicationSwitchingDefaults(mac), running = ['finder', 'safari'];
   expect(leaf(state, 'finder', running, 'hide').enabled).toBe(true);
   expect(leaf(state, 'finder', running, 'quit').enabled).toBe(false);
   expect(leaf(state, 'safari', running, 'quit').enabled).toBe(true);
@@ -180,7 +180,7 @@ test('Finder can hide when another app can receive foreground, cannot quit, and 
 });
 
 test('menu eligibility reflects whole running/hidden batches and does not offer a partial Hide Others during quit', () => {
-  const state = applicationSwitchingDefaults(), running = ['finder', 'safari', 'notes'];
+  const state = applicationSwitchingDefaults(mac), running = ['finder', 'safari', 'notes'];
   state.hiddenAppIds = ['finder', 'notes'];
   expect(leaf(state, 'safari', running, 'hide-others').enabled).toBe(false);
   expect(leaf(state, 'safari', running, 'show-all').enabled).toBe(true);
@@ -191,7 +191,7 @@ test('menu eligibility reflects whole running/hidden batches and does not offer 
 });
 
 test('a disabled menu selection moves to the nearest available action, while hiding or quitting its owner dismisses it', () => {
-  const state = applicationSwitchingDefaults(), running = ['finder', 'safari', 'notes'];
+  const state = applicationSwitchingDefaults(mac), running = ['finder', 'safari', 'notes'];
   state.appMenu = { appId: 'safari', itemId: 'hide-others', scrollTop: 40 };
   state.hiddenAppIds = ['finder', 'notes'];
   reconcileApplicationSwitching(state, mac, running, []);
@@ -206,7 +206,7 @@ test('a disabled menu selection moves to the nearest available action, while hid
 });
 
 test('one running Finder has no fake enabled application-menu leaf, and a newly running app makes Hide reachable', () => {
-  const state = applicationSwitchingDefaults();
+  const state = applicationSwitchingDefaults(mac);
   state.appMenu = { appId: 'finder', itemId: 'hide', scrollTop: 0 };
   reconcileApplicationSwitching(state, mac, ['finder'], []);
   expect(state.appMenu.itemId).toBeNull();
@@ -254,7 +254,7 @@ test('Windows cycles all eligible creation-order windows instead of alternating 
 });
 
 test('visibility batch rejection leaves every hidden group, retained document and geometry unchanged', async () => {
-  const state = applicationSwitchingDefaults(), managed = [window('safari', 'safari'), window('notes', 'notes', true)];
+  const state = applicationSwitchingDefaults(mac), managed = [window('safari', 'safari'), window('notes', 'notes', true)];
   const running = ['finder', 'safari', 'notes'];
   state.hiddenAppIds = ['finder'];
   const beforeWindows = structuredClone(managed);
@@ -281,7 +281,7 @@ test('visibility batch rejection leaves every hidden group, retained document an
 });
 
 test('last-running-app hide rejects before discarding its native menu or changing visibility', async () => {
-  const state = applicationSwitchingDefaults();
+  const state = applicationSwitchingDefaults(mac);
   state.appMenu = { appId: 'finder', itemId: null, scrollTop: 0 };
   const commands = createApplicationSwitchingCommands(state, {
     profile: mac, getRunningAppIds: () => ['finder'], getPendingQuitAppIds: () => [], available: () => true,
