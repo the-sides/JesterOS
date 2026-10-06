@@ -10,11 +10,13 @@ import { macDockFoldersCatalog } from './mac-dock-folders-catalog.js';
 import { applicationSwitchingCatalog } from './application-switching-catalog.js';
 import { fullScreenCatalog } from './full-screen-catalog.js';
 import { spacesCatalog } from './spaces-catalog.js';
+import { launchpadCatalog } from './launchpad-catalog.js';
 
 const MAC_PROFILES = [DEFAULT_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
 const ALL_PROFILES = [...MAC_PROFILES, ...WINDOWS_PROFILES];
 const windowTarget = object({ windowId: identity });
+const nullableWindowId = { oneOf: [identity, { type: 'null' }] };
 const noteTarget = object({ noteId: identity });
 const menuTarget = object({ menuId: { const: 'window' } });
 const menuItemTarget = object({ menuId: { const: 'window' }, itemId: identity });
@@ -39,6 +41,7 @@ export const commandCatalog = {
   ...applicationSwitchingCatalog,
   ...fullScreenCatalog,
   ...spacesCatalog,
+  ...launchpadCatalog,
   ...Object.fromEntries([
   defineShared('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
     ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],
@@ -46,9 +49,9 @@ export const commandCatalog = {
     ['A different profile resets fictional application records and all window/menu/focus/scroll state.'], NONE,
     object({ profileId: identity })),
   defineShared('app.open', 'shell.apps', object({ appId: identity }), object({ title: text }, NONE),
-    ['appId is in targets.applications; workspace dimensions are available.', windowAvailable],
-    ['Reactivate the most-recent application window, including minimized windows, or reopen one retaining fictional app data. Optional contextual title; root focus. Never duplicates an existing window.'], NONE, NONE,
-    object({ appId: identity, windowId: identity })),
+    ['appId is in targets.applications; workspace dimensions are available; shell presentations do not accept a window title.', windowAvailable],
+    ['Reactivate the most-recent application window, including minimized windows, or reopen one retaining fictional app data. Optional contextual title; root focus. A registered shell presentation opens its native overlay without creating, running or activating a managed application window; windowId is null.'], NONE, NONE,
+    object({ appId: identity, windowId: nullableWindowId })),
   defineShared('window.create', 'shell.window-create', object({ appId: identity }), object({ title: text }, NONE),
     ['Registered application supports multipleWindows; actual workspace is available; no pending application quit or blocking dialog.', windowAvailable],
     ['Create, activate and focus a fresh independent managed window with a new scene-local ID. Existing windows are unchanged.'], ['Initialize fresh window-local app state; shared fictional records are unchanged.'], NONE,
@@ -96,8 +99,8 @@ export const commandCatalog = {
     object({ windowId: identity, folderId: identity })),
   define('desktop.open', 'shell.apps', object({ fileId: identity }), empty,
     ['fileId is a live entry in targets.desktop.files (including simulated Dock locations); app.open requirements also apply.'],
-    ['Open the registered app with the real contextual title through app.open; Finder shows actual simulated location records.'], NONE, NONE,
-    object({ appId: identity, windowId: identity, fileId: identity })),
+    ['Open the registered app through app.open; application bundles have no contextual title. Finder shows actual simulated locations; shell bundles present their overlay and return windowId:null.'], NONE, NONE,
+    object({ appId: identity, windowId: nullableWindowId, fileId: identity })),
   define('desktop.focus', 'shell.desktop', empty, empty, NONE,
     ['Clear selection and active window, dismiss menus, blur managed-window controls.']),
   define('desktop.focusControl', 'shell.desktop', { oneOf: [

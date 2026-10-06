@@ -48,7 +48,7 @@ export const macDockCatalog = Object.fromEntries([
     ['Retain canonical session preferences independently of window/app lifetime and immutable profiles.'], [match({ payload: true })], object({ preferences })),
   define('dock.activate', capability, app, empty, [available, 'appId is an installed application.'],
     ['Leave app overview and desktop/Dock menus, then use real app.open to launch/restore/focus the application.'], NONE, NONE,
-    object({ appId: identity, windowId: identity })),
+    object({ appId: identity, windowId: nullableIdentity })),
   define('dock.pin', capability, app, object({ pinned: flag }), [available, 'Finder remains pinned.'],
     ['Set native Keep in Dock idempotently; a running unpinned application retains its live alias until quit. Pin a recent/other installed application into the app side.'],
     ['Change only scene-local Dock aliases/order, never install, move or delete an application bundle.'], NONE, object({ appId: identity, pinned: flag })),

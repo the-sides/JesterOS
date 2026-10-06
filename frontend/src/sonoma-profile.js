@@ -15,13 +15,16 @@ export const sonomaProfile = {
   capabilities: [
     'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
     'shell.window-create', 'app.lifecycle', 'shell.switcher', 'app.visibility',
-    'shell.full-screen', 'shell.split-view', 'shell.window-green-menu', 'shell.mission-control',
+    'shell.full-screen', 'shell.split-view', 'shell.window-green-menu', 'shell.mission-control', 'shell.launchpad',
     'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management', 'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'scene.profile-selection',
     'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
+  launchpad: { otherAppIds: [
+    'activitymonitor', 'diskutility', 'systeminformation', 'terminal',
+  ] },
   applications: {
     finder: { ...launchOnly('finder', 'Finder', 'main'), coverage: 'desktop-locations' },
-    launchpad: launchOnly('launchpad', 'Launchpad', 'main'),
+    launchpad: { id: 'launchpad', name: 'Launchpad', icon: 'launchpad', presentation: 'launchpad', multipleWindows: false, quitAllowed: false, dock: 'main', coverage: 'shell-launcher' },
     safari: launchOnly('safari', 'Safari', 'main'),
     messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 1024, height: 740, minimumSize: { width: 800, height: 600 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'sample' },
     mail: launchOnly('mail', 'Mail', 'main'),

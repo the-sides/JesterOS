@@ -106,3 +106,15 @@ An ordinary desktop or a derived solo-full-screen/Split View entry in the Mac Sp
 **Mission Control**:
 A page-contained current-desktop overview of original inert managed windows and a Spaces strip. Its preview desktop, frozen survivor order, selected control and independent physical scroll are distinct from foreground ownership and active Space. Cancellation restores connected original focus/caret; desktop deletion migrates HOME owners rather than closing them.
 
+**Launchpad**:
+A macOS shell presentation for registered installed simulated apps. It does not allocate a managed window, become the active application, add a running indicator or advance application MRU/recent use. Generic activation returns a null window identity.
+
+**Launchpad arrangement**:
+Persistent main pages and nonnested folder membership with each eligible app present exactly once. Moving a tile changes arrangement, not application-bundle records, document lifetime or filesystem parents. Empty folders dissolve; single-member folders remain.
+
+**Launchpad folder draft**:
+Transient inline name input distinct from the retained folder name. Invalid commits preserve the draft and expose validation; cancellation preserves the name. Editing/jiggle does not authorize uninstalling readonly built-in bundles.
+
+**Captured presentation invoker**:
+The actual focus owner at shell entry. Native Dock activation captures its focused button; direct entry with an original editor focused captures that editor/caret. Restoration never substitutes a cloned editor or a guessed pre-click focus owner.
+

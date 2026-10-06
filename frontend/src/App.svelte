@@ -14,6 +14,8 @@
   import { spacesDefaults, spacesItems, windowSpaceId, missionControlWindows, missionControlItems,
     reconcileSpaces, createSpacesCommands } from './spaces.js';
   import MissionControl from './MissionControl.svelte';
+  import { launchpadDefaults, launchpadAppIds, launchpadItems, launchpadControlIds, createLaunchpadCommands } from './launchpad.js';
+  import Launchpad from './Launchpad.svelte';
   import { createDesktopCommands } from './desktop-commands.js';
   import { createDesktopItemCommands } from './desktop-item-commands.js';
   import { createDesktopContextCommands } from './desktop-context-commands.js';
@@ -56,6 +58,7 @@
   const hasDockContext = profile.capabilities.includes('shell.dock-context');
   const hasFullScreen = profile.capabilities.includes('shell.full-screen');
   const hasSpaces = profile.capabilities.includes('shell.mission-control');
+  const hasLaunchpad = profile.capabilities.includes('shell.launchpad');
   const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
   const desktopUtilityApps = macDesktop ? {
     'desktop-info': { ...applications.finder, width: 360, height: 560, minimumSize: { width: 300, height: 300 } },
@@ -113,6 +116,8 @@
   let spaceState = $state(spacesDefaults());
   let missionControlControls = $state();
   let missionControlSlots = $state({});
+  let launchpadState = $state(launchpadDefaults(profile));
+  let launchpadControls = $state();
   const spaceItems = $derived(hasSpaces ? spacesItems(spaceState, presentation, windows, profile,
     switching.hiddenAppIds, pendingQuitAppIds) : []);
   const overviewWindows = $derived(hasSpaces ? missionControlWindows(spaceState, windows,
@@ -337,11 +342,12 @@
       return { status: 'applied', target: { profileId: nextProfile.id } };
     },
     ...createApplicationCommands(applications, {
-      available: windowInteractionsAvailable,
+      available: app => app.presentation ? sceneInteractionsAvailable() : windowInteractionsAvailable(),
       hasWorkspace: () => area.width > 0 && area.height > 0,
       hasWindow: appId => windows.some(window => window.appId === appId),
       isQuitting: appId => pendingQuitAppIds.includes(appId),
       canCreateWindow: appId => adapter.canCreateWindow?.(nativeState, appId) ?? true,
+      present: kind => handlers[`shell.${kind}.open`]({}, {}),
       open: openWindow, focusKeyboard: focusKeyboardWindow, quit: quitApplication,
     }),
     'desktop.refreshLayout': (target, payload) => {
@@ -411,7 +417,11 @@
     invoke: (command, target, payload) => handlers[command](target, payload),
     reveal: revealMacApplication, focusDock, restoreOverviewFocus,
     isQuitting: appId => pendingQuitAppIds.includes(appId), isHidden: isAppHidden,
-    dismissAppMenus: () => { spaceState.overview = null; clearNotesPresentation(); },
+    dismissAppMenus: appId => {
+      spaceState.overview = null;
+      if (!applications[appId]?.presentation) launchpadState.view = null;
+      clearNotesPresentation();
+    },
   }));
   if (hasDockContext) Object.assign(handlers, createMacDockFolderCommands(desktopState, {
     getStore: () => macFiles, available: sceneInteractionsAvailable, getView: () => dockFolderView,
@@ -470,6 +480,27 @@
     activateSpace: activateManagedSpace, foregroundMembershipChanged: settleSpaceForeground,
     invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
   }));
+  if (hasLaunchpad) Object.assign(handlers, createLaunchpadCommands({
+    profile, state: launchpadState,
+    available: () => sceneInteractionsAvailable() && Boolean(desktopView && stageArea.width > 0 && stageArea.height > 0),
+    settle: async () => { await tick(); await tick(); }, getView: () => launchpadControls,
+    captureScene: captureLaunchpadScene, restoreScene: restoreLaunchpadScene,
+    captureFocus: captureNativeFocus, restoreFocus: restoreNativeFocus,
+    dismissPresentations: () => {
+      if (stageDrag) stagePointerUp({ pointerId: stageDrag.pointerId, type: 'pointercancel' });
+      clearSwitchingPresentations(); switching.switcher = null; switching.appMenu = null;
+      cancelPairingForActivation(null); presentation.greenMenu = null;
+      presentation.revealed = { top: false, launcher: false };
+    },
+    invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
+    getActiveWindowId: () => activeWindowId, getActiveAppId: () => activeAppId, getWindows: () => windows,
+    isOriginalFocused: windowId => {
+      const window = windows.find(entry => entry.id === windowId);
+      const node = managedWindowElement(windowId);
+      return Boolean(window && !window.minimized && windowPresented(window) && node?.contains(document.activeElement)
+        && !node.closest('[inert]') && getComputedStyle(node).visibility === 'visible');
+    },
+  }));
   Object.assign(handlers,
     createFullScreenCommands({
       profile, state: presentation, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
@@ -495,7 +526,7 @@
     }, expandedProperty),
     createDesktopCommands(desktopState, {
       getView: () => desktopView, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
-      windowMenuAvailable: () => !spaceState.overview && (fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed),
+      windowMenuAvailable: () => !spaceState.overview && !launchpadState.view && (fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed),
       getFiles: () => macDesktop ? macFiles.files.filter(file => !isTrashed(macFiles, file))
         .map(file => ({ ...file, appId: file.appId ?? (file.kind === 'folder' ? 'finder' : 'preview') })) : getDesktopItems(),
       getItems: getDesktopItems,
@@ -514,7 +545,7 @@
   );
   if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
     getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes').id),
-    isVisible: () => !spaceState.overview && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
+    isVisible: () => !spaceState.overview && !launchpadState.view && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
       && windows.some(window => window.appId === 'notes' && !window.minimized && windowPresented(window)),
   }));
   if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
@@ -537,14 +568,15 @@
   const commands = createFeatureCommands(handlers,
     () => $state.snapshot({ profile, windows, activeWindowId, activeAppId, runningAppIds, pendingQuitAppIds, switching, presentation, area, desktop: desktopState,
       ...(hasSpaces ? { spaces: spaceState } : {}),
+      ...(hasLaunchpad ? { launchpad: launchpadState } : {}),
       ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(nativeState ? { native: nativeState } : {}),
     }),
     settleCommands, sceneCatalog, () => ({
       profiles: listOSProfiles().map(({ id, name, family, version }) => ({ profileId: id, name, family, version })),
-      applications: Object.values(applications).map(({ id, name, dock, taskbar, coverage, minimumSize, multipleWindows, quitAllowed }) => ({
-        appId: id, name, coverage, minimumSize, multipleWindows, quitAllowed,
+      applications: Object.values(applications).map(({ id, name, dock, taskbar, coverage, minimumSize, multipleWindows, quitAllowed, presentation }) => ({
+        appId: id, name, coverage, minimumSize, multipleWindows, quitAllowed, ...(presentation ? { presentation } : {}),
         running: runningAppIds.includes(id), active: activeAppId === id, quitting: pendingQuitAppIds.includes(id),
         ...(macDesktop ? { hidden: isAppHidden(id) } : {}),
         windowIds: windows.filter(window => window.appId === id).map(window => window.id),
@@ -630,6 +662,16 @@
           itemIds: [...overviewItems], windows: overviewWindows.map(item => ({ ...item })) } : null,
         shortcuts: { toggle: 'Control+ArrowUp', alias: 'Control+Shift+F10', previous: 'Control+ArrowLeft', next: 'Control+ArrowRight',
           nativeDelivery: 'Only delivered page events are handled; no host Spaces, gestures or settings are changed.' },
+      } } : {}),
+      ...(hasLaunchpad ? { launchpad: {
+        appIds: launchpadAppIds(profile), pages: launchpadState.pages.map(items => [...items]),
+        folders: launchpadState.folders.map(folder => ({ ...folder, appIds: [...folder.appIds] })),
+        view: launchpadState.view ? { ...$state.snapshot(launchpadState.view),
+          itemIds: launchpadControlIds(profile, launchpadState),
+          items: launchpadItems(profile, launchpadState, launchpadState.view.folderId ? 'folder' : 'main'),
+          bounds: launchpadControls?.bounds() ?? null } : null,
+        shortcuts: { alias: 'Control+Shift+F11', previousPage: 'Command+ArrowLeft', nextPage: 'Command+ArrowRight',
+          nativeDelivery: 'Only delivered page events are handled; no host Launchpad, applications, gestures or settings are changed.' },
       } } : {}),
       windows: windows.map((window) => ({
         windowId: window.id, appId: window.appId, minimized: window.minimized, fullScreen: window.fullScreen, [expandedProperty]: window[expandedProperty],
@@ -721,7 +763,7 @@
     return !disposed && (adapter.windowInteractionsAvailable?.(nativeState) ?? true);
   }
   function windowInteractionsAvailable() {
-    return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview;
+    return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view;
   }
 
   function getApplicationView(windowId) {
@@ -969,6 +1011,7 @@
     unhideApplication(profile.defaults.desktopAppId);
     cancelPairingForActivation(null);
     spaceState.overview = null;
+    launchpadState.view = null;
     if (hasSpaces) spaceState.activeSpaceId = spaceState.lastDesktopId;
     activeWindowId = null;
     activeAppId = profile.defaults.desktopAppId;
@@ -984,7 +1027,7 @@
   }
 
   function windowCommand(command, id, payload = {}) {
-    if (spaceState.overview) return;
+    if (spaceState.overview || launchpadState.view) return;
     return commands.execute({ command, target: { windowId: id }, payload });
   }
 
@@ -1033,6 +1076,7 @@
   }
   function windowVisible(window) {
     if (window.minimized && !switcherWindowBounds[window.id] && !dockWindowBounds[window.id]) return false;
+    if (launchpadState.view) return false;
     if (isAppHidden(window.appId)) return false;
     if (spaceState.overview) return Boolean(missionControlBounds[window.id]);
     if (switching.switcher?.kind === 'windows') return Boolean(switcherWindowBounds[window.id]);
@@ -1041,7 +1085,7 @@
     return windowPresented(window);
   }
   function windowInteractive(window) {
-    return !spaceState.overview && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
+    return !spaceState.overview && !launchpadState.view && !window.minimized && !switching.switcher && !desktopState.dock?.appWindows
       && fullScreenStage.mode !== 'pairing' && windowPresented(window);
   }
   function measureStageArea() {
@@ -1091,7 +1135,7 @@
   let stageDrag = null;
   function fullScreenKeydown(event) {
     if (!hasFullScreen || event.defaultPrevented || event.isComposing || !sceneInteractionsAvailable()
-      || spaceState.overview || switching.switcher || !activeWindowId) return;
+      || spaceState.overview || launchpadState.view || switching.switcher || !activeWindowId) return;
     const native = macDesktop ? event.metaKey && event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f'
       : event.key === 'F11' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
     const alias = event.key === 'F9' && event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
@@ -1101,7 +1145,7 @@
     }
   }
   function stagePointerDown(event) {
-    if (spaceState.overview || fullScreenStage.mode !== 'split' || event.button !== 0 || !event.isPrimary) return;
+    if (spaceState.overview || launchpadState.view || fullScreenStage.mode !== 'split' || event.button !== 0 || !event.isPrimary) return;
     const target = event.target;
     if (!target?.closest?.('[data-window-drag]') || target.closest('button,input,textarea,select,a,[contenteditable],[data-window-no-drag]')) return;
     const id = target.closest('.managed-window')?.dataset.windowId;
@@ -1115,13 +1159,13 @@
     if (!drag || drag.pointerId !== event.pointerId) return;
     stageDrag = null;
     if (drag.element.hasPointerCapture(event.pointerId)) drag.element.releasePointerCapture(event.pointerId);
-    if (spaceState.overview || event.type !== 'pointerup' || fullScreenStage.mode !== 'split' || Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return;
+    if (spaceState.overview || launchpadState.view || event.type !== 'pointerup' || fullScreenStage.mode !== 'split' || Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return;
     const divider = stageArea.width * fullScreenStage.ratio;
     if (drag.side === 'left' ? event.clientX > divider : event.clientX < divider)
       commands.execute({ command: 'window.splitView.swap' });
   }
   function stagePointerMove(event) {
-    if (spaceState.overview || fullScreenStage.mode === 'normal' || switching.switcher || !sceneInteractionsAvailable()) return;
+    if (spaceState.overview || launchpadState.view || fullScreenStage.mode === 'normal' || switching.switcher || !sceneInteractionsAvailable()) return;
     const topLocked = Boolean(presentation.greenMenu || switching.appMenu || desktopState.windowMenuOpen);
     const topLimit = presentation.revealed.top ? stageArea.menuHeight + 50 : 2;
     revealFullScreen('top', topLocked || event.clientY <= topLimit);
@@ -1133,7 +1177,7 @@
     revealFullScreen('launcher', locked || near);
   }
   function resizeSplitView(event) {
-    if (spaceState.overview || fullScreenStage.mode !== 'split') return;
+    if (spaceState.overview || launchpadState.view || fullScreenStage.mode !== 'split') return;
     const ratio = Math.max(.2, Math.min(.8, event.clientX / stageArea.width));
     return commands.execute({ command: 'window.splitView.resize', payload: { ratio } });
   }
@@ -1228,9 +1272,10 @@
   }
   function captureSpacesScene() {
     const scroll = [];
-    for (const node of document.querySelectorAll('.managed-window, .managed-window *, [data-shell-switcher] *, [data-mission-control] *'))
+    for (const node of document.querySelectorAll('.managed-window, .managed-window *, [data-shell-switcher] *, [data-mission-control] *, [data-launchpad] *'))
       if (node.scrollTop || node.scrollLeft) scroll.push({ node, top: node.scrollTop, left: node.scrollLeft });
-    return { state: $state.snapshot({ switching, presentation, desktop: desktopState, notesView: notesViewState }),
+    return { state: $state.snapshot({ switching, presentation, desktop: desktopState, notesView: notesViewState, launchpad: launchpadState }),
+      launchpadView: launchpadState.view,
       windowIds: windows.map(window => window.id), activeWindowId, activeAppId,
       focus: captureNativeFocus(), switchingReturnFocus, scroll };
   }
@@ -1239,6 +1284,9 @@
     Object.assign(presentation, snapshot.state.presentation);
     Object.assign(desktopState, snapshot.state.desktop);
     if (notesViewState) Object.assign(notesViewState, snapshot.state.notesView);
+    Object.assign(launchpadState, snapshot.state.launchpad);
+    launchpadState.view = snapshot.launchpadView;
+    if (snapshot.launchpadView) Object.assign(snapshot.launchpadView, snapshot.state.launchpad.view);
     const order = new Map(snapshot.windowIds.map((id, index) => [id, index]));
     windows.sort((a, b) => order.get(a.id) - order.get(b.id));
     activeWindowId = snapshot.activeWindowId; activeAppId = snapshot.activeAppId;
@@ -1247,6 +1295,29 @@
     await restoreNativeFocus(snapshot.focus);
     for (const { node, top, left } of snapshot.scroll) if (node.isConnected) node.scrollTo({ top, left, behavior: 'instant' });
     await tick();
+  }
+  function captureLaunchpadScene() {
+    return { base: captureSpacesScene(), spaces: $state.snapshot(spaceState), overview: spaceState.overview,
+      windows: windows.map(window => ({ reference: window, data: $state.snapshot(window) })),
+      runningAppIds: [...runningAppIds], nextWindowId };
+  }
+  async function restoreLaunchpadScene(snapshot) {
+    windows = snapshot.windows.map(({ reference, data }) => {
+      for (const key of Object.keys(reference)) if (!Object.hasOwn(data, key)) delete reference[key];
+      Object.assign(reference, data);
+      return reference;
+    });
+    runningAppIds = [...snapshot.runningAppIds]; nextWindowId = snapshot.nextWindowId;
+    Object.assign(spaceState, snapshot.spaces);
+    spaceState.overview = snapshot.overview;
+    if (snapshot.overview) Object.assign(snapshot.overview, snapshot.spaces.overview);
+    await restoreSpacesScene(snapshot.base);
+  }
+  function launchpadKeydown(event) {
+    if (!hasLaunchpad || event.defaultPrevented || event.isComposing || !sceneInteractionsAvailable()
+      || event.key !== 'F11' || !event.ctrlKey || !event.shiftKey || event.metaKey || event.altKey) return;
+    consumeSwitchingKey(event);
+    if (!event.repeat) commands.execute({ command: launchpadState.view ? 'shell.launchpad.close' : 'shell.launchpad.open' });
   }
   async function activateManagedSpace(entry) {
     if (!hasSpaces || !sceneInteractionsAvailable()) return false;
@@ -1292,7 +1363,7 @@
       if (!event.repeat) commands.execute({ command: spaceState.overview ? 'shell.missionControl.close' : 'shell.missionControl.open' });
       return;
     }
-    if (event.shiftKey || !['ArrowLeft', 'ArrowRight'].includes(event.key) || switching.switcher || presentation.pairing) return;
+    if (launchpadState.view || event.shiftKey || !['ArrowLeft', 'ArrowRight'].includes(event.key) || switching.switcher || presentation.pairing) return;
     consumeSwitchingKey(event);
     const index = spaceItems.findIndex(item => item.spaceId === spaceState.activeSpaceId);
     const destination = spaceItems[index + (event.key === 'ArrowLeft' ? -1 : 1)];
@@ -1311,8 +1382,11 @@
         focusedControl: nativeState.shell.focusedControl } } : {}),
       ...(hasSpaces ? { overview: spaceState.overview } : {}),
     });
+    snapshot.overviewReference = spaceState.overview;
+    snapshot.launchpadView = launchpadState.view;
     desktopState.context = null; desktopState.focusedControl = null;
     spaceState.overview = null;
+    launchpadState.view = null;
     if (hasWindowMenu) { desktopState.windowMenuOpen = false; desktopState.windowMenuItem = null; desktopState.windowMenuScrollTop = 0; }
     dismissDockPresentation();
     if (notesViewState) clearNotesPresentation();
@@ -1324,7 +1398,11 @@
     if (snapshot.dock) Object.assign(desktopState.dock, snapshot.dock);
     if (snapshot.notes) Object.assign(notesViewState, snapshot.notes);
     if (snapshot.shell) Object.assign(nativeState.shell, snapshot.shell);
-    if (hasSpaces) spaceState.overview = snapshot.overview;
+    if (hasSpaces) {
+      spaceState.overview = snapshot.overviewReference;
+      if (snapshot.overviewReference) Object.assign(snapshot.overviewReference, snapshot.overview);
+    }
+    launchpadState.view = snapshot.launchpadView;
     await tick(); await tick();
   }
   async function activateSwitcherApplication(appId, preserveSwitcher = false) {
@@ -1438,6 +1516,8 @@
   function switchingOutside(event) {
     if (event.type === 'focusin' && ownedWindowFocus) return;
     const target = event.target;
+    if (launchpadState.view && event.type === 'pointerdown' && !target?.closest?.('[data-launchpad]'))
+      commands.execute({ command: 'shell.launchpad.close', payload: { restoreFocus: false } });
     if (switching.switcher && !target?.closest?.('[data-shell-switcher]'))
       commands.execute({ command: 'shell.switcher.close', payload: { restoreFocus: false } });
     if (switching.appMenu && !target?.closest?.('[data-application-menu], [data-application-menu-button]'))
@@ -1455,6 +1535,7 @@
   onMount(() => {
     const unregister = registerCommands(commands);
     const stopScene = adapter.startScene?.(nativeState, commands.execute);
+    window.addEventListener('keydown', launchpadKeydown, true);
     window.addEventListener('keydown', spacesKeydown, true);
     window.addEventListener('keydown', fullScreenKeydown, true);
     document.addEventListener('pointermove', stagePointerMove, true);
@@ -1469,6 +1550,7 @@
     document.addEventListener('focusin', switchingOutside, true);
     return () => {
       disposed = true; stopScene?.(); unregister();
+      window.removeEventListener('keydown', launchpadKeydown, true);
       window.removeEventListener('keydown', switchingKeydown, true);
       window.removeEventListener('keyup', switchingKeyup, true);
       window.removeEventListener('keydown', fullScreenKeydown, true);
@@ -1496,6 +1578,7 @@
     switching.switcher = null; switching.appMenu = null;
     window.minimized = false;
     spaceState.overview = null;
+    launchpadState.view = null;
     if (hasSpaces) {
       reconcileFullScreenWindowing(presentation, windows, switching.hiddenAppIds, pendingQuitAppIds);
       reconcileSpaces(spaceState, presentation, windows, profile, switching.hiddenAppIds, pendingQuitAppIds, switching.creationWindowIds);
@@ -1805,6 +1888,7 @@
   switchingState={switching}
   {fullScreenStage}
   missionControlOpen={Boolean(spaceState.overview)}
+  launchpadOpen={Boolean(launchpadState.view)}
   onfullscreenreveal={revealFullScreen}
   {runningAppIds}
   {activeWindowId}
@@ -1824,7 +1908,7 @@
   registerView={registerDesktopView}
   onlayout={() => commands.execute({ command: 'desktop.refreshLayout' })}
 >
-  {#if !spaceState.overview && fullScreenStage.mode !== 'normal'}
+  {#if !spaceState.overview && !launchpadState.view && fullScreenStage.mode !== 'normal'}
     <div class="stage-backdrop" aria-hidden="true" style:left="{stageArea.x}px" style:top="{stageArea.y}px"
       style:width="{stageArea.width}px" style:height="{stageArea.height}px"></div>
   {/if}
@@ -1832,7 +1916,7 @@
     {@const projection = missionControlBounds[window.id] ?? switcherWindowBounds[window.id] ?? dockWindowBounds[window.id]
       ?? pairingWindowBounds[window.id] ?? fullScreenWindowBounds[window.id]}
     {#if !window.minimized || projection}
-      {@render managedWindow(window, activeWindowId === window.id && !spaceState.overview && !switching.switcher && !isAppHidden(window.appId),
+      {@render managedWindow(window, activeWindowId === window.id && !spaceState.overview && !launchpadState.view && !switching.switcher && !isAppHidden(window.appId),
         missionControlBounds[window.id] ? 12001 : switcherWindowBounds[window.id] ? 11001 : dockWindowBounds[window.id] ? 7001
           : pairingWindowBounds[window.id] ? 9101 : fullScreenWindowBounds[window.id] ? index + 2 : index + 1,
         projection, windowInteractive(window), windowVisible(window))}
@@ -1843,11 +1927,14 @@
       activeSpaceId={spaceState.activeSpaceId} sceneRect={stageArea} execute={commands.execute}
       onlayout={slots => { missionControlSlots = slots; }} bind:this={missionControlControls} />
   {/if}
+  {#if launchpadState.view}
+    <Launchpad {profile} state={launchpadState} sceneRect={stageArea} execute={commands.execute} bind:this={launchpadControls} />
+  {/if}
   {#if fullScreenStage.mode === 'pairing' && pairingRect}
     <SplitViewPicker {profile} state={presentation.pairing} items={pairingItems} rect={pairingRect}
       execute={commands.execute} onlayout={slots => { pairingPreviewSlots = slots; }} bind:this={pairingControls} />
   {/if}
-  {#if !spaceState.overview && fullScreenStage.mode === 'split'}
+  {#if !spaceState.overview && !launchpadState.view && fullScreenStage.mode === 'split'}
     <div class="split-divider" data-split-view-divider role="slider" aria-label="Resize Split View" aria-orientation="horizontal"
       aria-valuemin="20" aria-valuemax="80" aria-valuenow={Math.round(fullScreenStage.ratio * 100)} tabindex="0"
       style:left="{stageArea.x + stageArea.width * fullScreenStage.ratio - 2}px" style:top="{stageArea.y}px"

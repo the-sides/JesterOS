@@ -19,10 +19,10 @@ export function createMacDockCommands(desktop, context) {
   const ownedWindow = windowId => state.appWindows && context.getWindows().find(window => window.id === windowId && window.appId === state.appWindows.appId);
   const appTarget = (target, payload, names = [], required = names) => fields(target, ['appId']) && id(target.appId) && fields(payload, names, required);
   const appError = appId => !app(appId) ? rejected('not_found', 'The installed application no longer exists.') : !available() ? unavailable() : null;
-  const clearMenus = () => { state.context = null; state.folderStack = null; desktop.context = null; desktop.rename = null;
+  const clearMenus = appId => { state.context = null; state.folderStack = null; desktop.context = null; desktop.rename = null;
     desktop.windowMenuOpen = false; desktop.windowMenuItem = null;
     if (desktop.stacks) desktop.stacks.focusedStackId = null;
-    context.dismissAppMenus();
+    context.dismissAppMenus(appId);
   };
   const dockItems = () => context.getDockItems();
   const applicationId = itemId => typeof itemId === 'string' && itemId.startsWith('app:') && app(itemId.slice(4)) ? itemId.slice(4) : null;
@@ -178,7 +178,7 @@ export function createMacDockCommands(desktop, context) {
       if (!appTarget(target, payload)) return invalid();
       const error = appError(target.appId); if (error) return error;
       if (context.isQuitting(target.appId)) return unavailable();
-      clearMenus(); state.appWindows = null;
+      clearMenus(target.appId); state.appWindows = null;
       return context.invoke('app.open', target, {});
     },
     'dock.pin': (target, payload) => {
@@ -302,6 +302,8 @@ export function createMacDockCommands(desktop, context) {
     'dock.windows.open': async (target, payload) => {
       if (!appTarget(target, payload)) return invalid();
       const error = appError(target.appId); if (error) return error;
+      if (context.profile.applications[target.appId].presentation)
+        return rejected('disabled', 'A shell presentation has no managed app windows.');
       const owned = context.getWindows().filter(window => window.appId === target.appId);
       clearMenus();
       state.revealed = true;

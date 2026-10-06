@@ -207,3 +207,6 @@ Final Rust-served discovery again measured **190 contracts**, with strictly comp
 
 The Windows scene still exposes **190 contracts** and advertises neither `shell.mission-control` nor any of its twelve commands. Every known Mission Control/Spaces request rejected **unsupported_profile**; canonical inspection remained byte-identical across the complete batch, and no Mac overview mounted. Windows Task View/virtual desktops are not implemented by this Mac slice and remain separate native scope. The existing in-page full-screen stage remains available without host fullscreen/display changes.
 
+## OS-16 unsupported boundary
+
+Windows still exposes **190 contracts** and advertises neither `shell.launchpad` nor any of its seventeen commands. Every known Launchpad request rejected **unsupported_profile**; complete canonical inspection remained byte-identical across the batch. No Mac launcher/window appeared. Windows Start is its separate existing native simulation, not a renamed Launchpad. Combined strict catalog compilation,107 tests/1502 assertions and final build passed with only the existing bundle advisory; final production diagnostics were empty.

@@ -3,6 +3,7 @@
 </script>
 
 <script>
+  import ClassicPreviewIcon from './ClassicPreviewIcon.svelte';
   let { name, assets } = $props();
 </script>
 
@@ -36,6 +37,8 @@
       <path d="M59 48h10v22h13L64 89 46 70h13Z" fill="#2e8cb9" opacity=".65" />
     </svg>
   </span>
+{:else if name === 'preview'}
+  <ClassicPreviewIcon />
 {:else}
   <img class="app-icon" src={`${assets.icons}/${name}.${vectorIcons.has(name) ? 'svg' : 'png'}`} alt="" aria-hidden="true" draggable="false" />
 {/if}
