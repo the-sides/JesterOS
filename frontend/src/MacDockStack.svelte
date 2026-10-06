@@ -321,11 +321,11 @@
 </div>
 
 <style>
-  .dock-stack { position: fixed; z-index: 7100; box-sizing: border-box; display: flex; flex-direction: column; min-width: 0; color: #252525; border: 1px solid rgb(0 0 0 / 24%); border-radius: 7px; background: rgb(218 213 211 / 88%); box-shadow: 0 8px 28px #0006, inset 0 1px 0 #ffffff5c; backdrop-filter: blur(22px) saturate(1.15); font-family: var(--ui-font); font-size: 13px; line-height: 18px; user-select: none; outline: none; }
-  .dock-stack::after { content: ''; position: absolute; z-index: -1; left: calc(var(--pointer-x) - 8px); bottom: -9px; width: 16px; height: 16px; transform: rotate(45deg); border-right: 1px solid rgb(0 0 0 / 24%); border-bottom: 1px solid rgb(0 0 0 / 24%); border-radius: 0 0 3px; background: rgb(218 213 211 / 96%); }
+  .dock-stack { position: fixed; z-index: 7100; box-sizing: border-box; display: flex; flex-direction: column; min-width: 0; color: var(--appearance-dock-ink, #252525); border: 1px solid var(--appearance-dock-border, rgb(0 0 0 / 24%)); border-radius: 7px; background: var(--appearance-dock-bg, rgb(218 213 211 / 88%)); box-shadow: 0 8px 28px #0006, inset 0 1px 0 #ffffff5c; backdrop-filter: blur(22px) saturate(1.15); font-family: var(--ui-font); font-size: 13px; line-height: 18px; user-select: none; outline: none; }
+  .dock-stack::after { content: ''; position: absolute; z-index: -1; left: calc(var(--pointer-x) - 8px); bottom: -9px; width: 16px; height: 16px; transform: rotate(45deg); border-right: 1px solid var(--appearance-dock-border, rgb(0 0 0 / 24%)); border-bottom: 1px solid var(--appearance-dock-border, rgb(0 0 0 / 24%)); border-radius: 0 0 3px; background: var(--appearance-dock-bg, rgb(218 213 211 / 96%)); }
   .below::after { top: -9px; bottom: auto; transform: rotate(225deg); }
-  .modern { border-radius: 10px; background: rgb(227 231 224 / 80%); border-color: rgb(41 45 36 / 28%); font-family: var(--sonoma-font); box-shadow: 0 10px 34px #0005, inset 0 0 0 1px #ffffff38; backdrop-filter: blur(30px) saturate(1.45); }
-  .modern::after { background: rgb(227 231 224 / 94%); }
+  .modern { border-radius: 10px; background: var(--appearance-dock-bg, rgb(227 231 224 / 80%)); border-color: var(--appearance-dock-border, rgb(41 45 36 / 28%)); font-family: var(--sonoma-font); box-shadow: 0 10px 34px #0005, inset 0 0 0 1px #ffffff38; backdrop-filter: blur(30px) saturate(1.45); }
+  .modern::after { background: var(--appearance-dock-bg, rgb(227 231 224 / 94%)); }
   .stack-header { position: relative; display: flex; align-items: center; flex-shrink: 0; box-sizing: border-box; height: var(--header-height); min-width: 0; padding: 3px 38px; }
   h2 { width: 100%; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 15px; line-height: 22px; font-weight: 400; }
   button { box-sizing: border-box; border: 0; background: transparent; color: inherit; font: inherit; cursor: default; outline: none; }
@@ -337,25 +337,25 @@
   .file-icon { display: block; width: 64px; height: 64px; flex-shrink: 0; filter: drop-shadow(0 2px 2px #0003); }
   .file-icon :global(.app-icon), .file-icon :global(.sonoma-icon) { display: block; width: 100%; height: 100%; }
   .file-label { display: block; max-width: 100%; min-width: 0; padding: 0 3px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .file-control.selected .file-label { color: white; background: #3875c9; }
+  .file-control.selected .file-label { color: var(--appearance-selection-ink, white); background: var(--appearance-selection, #3875c9); }
   .file-control.selected .file-icon { border-radius: 5px; background: #ffffff35; }
-  .file-control:focus-visible .file-label { outline: 2px solid #94c6ff; outline-offset: 1px; }
-  .stack-footer { box-sizing: border-box; flex-shrink: 0; height: var(--footer-height); min-width: 0; padding: 3px 6px; border: 1px solid transparent; border-top-color: #00000016; border-radius: 0 0 6px 6px; }
+  .file-control:focus-visible .file-label { outline: 2px solid var(--appearance-focus, #94c6ff); outline-offset: 1px; }
+  .stack-footer { box-sizing: border-box; flex-shrink: 0; height: var(--footer-height); min-width: 0; padding: 3px 6px; border: 1px solid transparent; border-top-color: var(--appearance-dock-border, #00000016); border-radius: 0 0 6px 6px; }
   .finder-control, .more-control { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: calc(var(--finder-height) - 8px); margin: 0; padding: 2px 8px; border-radius: 4px; }
   .finder-control span, .more-control span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .finder-arrow { width: 24px; height: 24px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.4; }
   .arrow-fill { fill: currentColor; stroke: none; }
   .more-control { height: var(--more-height); justify-content: space-between; }
-  .back-control.selected, .finder-control.selected, .more-control.selected { background: #3875c9; color: white; }
-  .back-control:focus-visible, .finder-control:focus-visible, .more-control:focus-visible { outline: 2px solid #94c6ff; outline-offset: -1px; }
-  .empty-state { grid-column: 1 / -1; align-self: center; margin: 12px 0; padding: 0 8px; color: #575757; text-align: center; }
+  .back-control.selected, .finder-control.selected, .more-control.selected { background: var(--appearance-selection, #3875c9); color: var(--appearance-selection-ink, white); }
+  .back-control:focus-visible, .finder-control:focus-visible, .more-control:focus-visible { outline: 2px solid var(--appearance-focus, #94c6ff); outline-offset: -1px; }
+  .empty-state { grid-column: 1 / -1; align-self: center; margin: 12px 0; padding: 0 8px; color: var(--appearance-dock-muted, #575757); text-align: center; }
   .list .stack-items { display: flex; flex-direction: column; gap: 0; padding: 4px 5px; }
   .list .file-control { flex-direction: row; justify-content: flex-start; gap: 7px; width: 100%; height: 29px; flex-shrink: 0; padding: 3px 7px; border-radius: 3px; text-align: left; }
   .list .file-icon { width: 22px; height: 22px; }
   .list .file-label { flex: 1; padding: 0; }
-  .list .file-control.selected { color: white; background: #3875c9; }
+  .list .file-control.selected { color: var(--appearance-selection-ink, white); background: var(--appearance-selection, #3875c9); }
   .list .file-control.selected .file-icon { background: transparent; }
-  .list .file-control:focus-visible { outline: 2px solid #94c6ff; outline-offset: -1px; }
+  .list .file-control:focus-visible { outline: 2px solid var(--appearance-focus, #94c6ff); outline-offset: -1px; }
   .list .file-control:focus-visible .file-label { outline: none; }
   .fan { border: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
   .fan::after { background: rgb(57 57 57 / 94%); border-color: #ffffff30; }
@@ -366,10 +366,10 @@
   .fan .file-control { flex-direction: row-reverse; justify-content: flex-start; gap: 8px; height: var(--fan-row); flex-shrink: 0; padding: 0; padding-right: var(--fan-offset); }
   .fan .file-icon { width: calc(var(--fan-row) - 4px); height: calc(var(--fan-row) - 4px); transform: rotate(var(--fan-angle)); }
   .fan .file-label { padding: 3px 8px; color: white; background: rgb(30 30 30 / 78%); border: 1px solid #ffffff25; box-shadow: 0 1px 3px #0005; text-align: right; }
-  .fan .file-control.selected .file-label { background: #3875c9; border-color: #82b9f4; }
+  .fan .file-control.selected .file-label { background: var(--appearance-selection, #3875c9); color: var(--appearance-selection-ink, white); border-color: var(--appearance-focus, #82b9f4); }
   .fan .file-control.selected .file-icon { background: transparent; }
   .fan .stack-footer { color: #f8f8f8; background: rgb(57 57 57 / 88%); border: 1px solid #ffffff30; border-radius: 6px; box-shadow: 0 3px 10px #0005; backdrop-filter: blur(18px); }
   .fan .empty-state { margin: 8px 0; color: white; align-self: stretch; text-shadow: 0 1px 3px #000; }
   .modern .back-control, .modern .finder-control, .modern .more-control, .modern .file-control { border-radius: 5px; }
-  @media (prefers-reduced-transparency: reduce) { .dock-stack:not(.fan) { background: #dedcd7; backdrop-filter: none; } .modern:not(.fan) { background: #e2e5df; } .fan .stack-footer { background: #393939; } }
+  @media (prefers-reduced-transparency: reduce) { .dock-stack:not(.fan) { background: var(--appearance-dock-bg, #dedcd7); backdrop-filter: none; } .modern:not(.fan) { background: var(--appearance-dock-bg, #e2e5df); } .fan .stack-footer { background: #393939; } }
 </style>

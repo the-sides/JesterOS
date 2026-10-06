@@ -84,11 +84,11 @@
 </div>
 
 <style>
-  .menu-anchor { position: fixed; z-index: 10500; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 6px solid rgb(242 242 242 / 96%); pointer-events: none; }
-  .green-menu { position: fixed; z-index: 10500; box-sizing: border-box; width: max-content; min-width: 0; max-width: calc(100vw - 8px); padding: 5px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid #ffffff90; border-radius: 7px; background: rgb(242 242 242 / 96%); box-shadow: 0 0 0 1px #0002, 0 8px 25px #0004; color: #222; font: 13px/20px var(--system-font, sans-serif); outline: none; }
+  .menu-anchor { position: fixed; z-index: 10500; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 6px solid var(--appearance-context-bg, rgb(242 242 242 / 96%)); pointer-events: none; }
+  .green-menu { position: fixed; z-index: 10500; box-sizing: border-box; width: max-content; min-width: 0; max-width: calc(100vw - 8px); padding: 5px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border: 1px solid var(--appearance-context-border, #ffffff90); border-radius: 7px; background: var(--appearance-context-bg, rgb(242 242 242 / 96%)); box-shadow: 0 0 0 1px #0002, 0 8px 25px #0004; color: var(--appearance-context-ink, #222); font: 13px/20px var(--system-font, sans-serif); outline: none; }
   button { display: flex; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; gap: 10px; padding: 2px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-align: left; outline: none; cursor: default; }
-  button.selected:not(:disabled) { background: #246bd6; color: white; }
-  button:disabled { color: #999; }
+  button.selected:not(:disabled) { background: var(--appearance-selection, #246bd6); color: var(--appearance-selection-ink, white); }
+  button:disabled { color: var(--appearance-disabled, #999); }
   button svg { width: 20px; height: 16px; flex-shrink: 0; }
   button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

@@ -127,3 +127,12 @@ One independently configured and positioned clock, calculator, calendar, weather
 **Fictional widget reference time**:
 The explicit civil-time reference used by Dashboard clocks, calendar Today and offline forecast dates. Visible clock ticks advance that reference; host date/time is never authoritative. Weather observations and currency rates remain fictional samples even when unit/date calculations are real.
 
+**Appearance preference**:
+The active profile's manual light/dark policy, control accent and independent text highlight. High Sierra dark applies only to menu bar/Dock; Windows retains native Settings as its sole authority. An appearance change is not an OS-profile change or document reset.
+
+**Control accent versus text highlight**:
+Accent tints controls, active selections and focus; highlight colors selected text. An actual accent change resets highlight to its corresponding preset; repeating the same accent preserves independent highlight. This idempotent edge is declared browser policy.
+
+**Bounded custom highlight**:
+A six-digit sRGB color edited by in-page RGB sliders/Hex, not the complete native Colors panel. Invalid drafts do not alter canonical color; clean focused drafts follow external custom-color changes without losing caret, while a preset removal returns focus to the surviving Highlight control.
+

@@ -1,8 +1,8 @@
 @font-face { font-family: 'Sonoma UI'; src: url('/fonts/InterVariable.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
-:root[data-os-renderer='sonoma'] { --sonoma-font: 'Sonoma UI', sans-serif; font-family: var(--sonoma-font); font-size: 13px; color: #252525; font-synthesis: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+:root[data-os-renderer='sonoma'] { --sonoma-font: 'Sonoma UI', sans-serif; font-family: var(--sonoma-font); font-size: 13px; color: var(--appearance-ink, #252525); font-synthesis: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 :root[data-os-renderer='sonoma'].native-apple-font { --sonoma-font: -apple-system, BlinkMacSystemFont, 'Sonoma UI', sans-serif; }
 .sonoma-desktop { position: relative; width: 100%; height: 100svh; overflow: hidden; background: #477753 center / cover no-repeat; font-family: var(--sonoma-font); }
-.sonoma-menu-bar { position: relative; z-index: 1000; height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 17px 0 20px; color: #fff; background: rgb(35 48 34 / 18%); backdrop-filter: blur(30px) saturate(1.3); text-shadow: 0 1px 2px rgb(0 0 0 / 18%); font-size: 13px; }
+.sonoma-menu-bar { position: relative; z-index: 1000; height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 17px 0 20px; color: var(--menu-ink, #fff); background: var(--menu-glass, rgb(35 48 34 / 18%)); backdrop-filter: blur(30px) saturate(1.3); text-shadow: 0 1px 2px rgb(0 0 0 / 18%); font-size: 13px; }
 .sonoma-menu-headings, .sonoma-status-items { display: flex; align-items: center; height: 100%; white-space: nowrap; }
 .sonoma-menu-headings { gap: 21px; }
 .sonoma-app-menu { font-weight: 650; }
@@ -14,13 +14,13 @@
 .sonoma-status-items .sonoma-wifi svg { width: 19px; height: 14px; }
 .sonoma-window-menu-container { height: 100%; }
 .sonoma-window-menu-button { display: block; height: 28px; margin: 0 -8px; padding: 0 8px; border: 0; border-radius: 4px; background: none; color: inherit; line-height: 28px; cursor: default; }
-.sonoma-window-menu-button[aria-expanded='true'] { background: rgb(255 255 255 / 25%); }
-.sonoma-window-menu-button:focus-visible { outline: 2px solid #80baff; outline-offset: -2px; }
-.sonoma-window-menu { position: fixed; top: 30px; width: 264px; max-width: calc(100vw - 8px); max-height: calc(100svh - 34px); overflow-y: auto; padding: 5px; border: 1px solid rgb(255 255 255 / 55%); border-radius: 7px; background: rgb(242 242 242 / 94%); backdrop-filter: blur(28px); box-shadow: 0 0 0 1px rgb(0 0 0 / 13%), 0 8px 24px rgb(0 0 0 / 25%); color: #202020; text-shadow: none; }
+.sonoma-window-menu-button[aria-expanded='true'] { background: var(--appearance-menu-hover, rgb(255 255 255 / 25%)); }
+.sonoma-window-menu-button:focus-visible { outline: 2px solid var(--appearance-focus, #80baff); outline-offset: -2px; }
+.sonoma-window-menu { position: fixed; top: 30px; width: 264px; max-width: calc(100vw - 8px); max-height: calc(100svh - 34px); overflow-y: auto; padding: 5px; border: 1px solid var(--appearance-menu-border, rgb(255 255 255 / 55%)); border-radius: 7px; background: var(--appearance-menu-bg, rgb(242 242 242 / 94%)); backdrop-filter: blur(28px); box-shadow: 0 0 0 1px rgb(0 0 0 / 13%), 0 8px 24px rgb(0 0 0 / 25%); color: var(--appearance-menu-ink, #202020); text-shadow: none; }
 .sonoma-window-menu button { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 23px; padding: 2px 8px; border: 0; border-radius: 4px; background: none; color: inherit; text-align: left; line-height: 19px; cursor: default; }
-.sonoma-window-menu button:hover:not(:disabled), .sonoma-window-menu button:focus-visible { background: #0069e7; color: #fff; outline: none; }
-.sonoma-window-menu button:disabled { color: #969696; }
-.sonoma-menu-separator { height: 1px; margin: 5px 7px; background: rgb(0 0 0 / 12%); }
+.sonoma-window-menu button:hover:not(:disabled), .sonoma-window-menu button:focus-visible { background: var(--appearance-accent, #0069e7); color: var(--appearance-accent-ink, #fff); outline: none; }
+.sonoma-window-menu button:disabled { color: var(--appearance-menu-disabled, #969696); }
+.sonoma-menu-separator { height: 1px; margin: 5px 7px; background: var(--appearance-menu-separator, rgb(0 0 0 / 12%)); }
 .sonoma-menu-check { width: 12px; flex-shrink: 0; }
 .sonoma-menu-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sonoma-shortcut { margin-left: auto; font-size: 12px; opacity: .65; }
@@ -29,106 +29,106 @@
 .sonoma-file { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; padding: 0; border: 0; background: none; color: white; font-size: 12px; line-height: 16px; font-weight: 550; text-align: center; text-shadow: 0 1px 3px #333; cursor: default; }
 .sonoma-file .sonoma-icon { width: 64px; height: 64px; filter: drop-shadow(0 2px 2px rgb(0 0 0 / 25%)); }
 .sonoma-file span { max-width: 100%; padding: 0 3px; border-radius: 3px; }
-.sonoma-file.selected span { background: #0069df; text-shadow: none; }
+.sonoma-file.selected span { background: var(--appearance-selection, #0069df); color: var(--appearance-selection-ink, white); text-shadow: none; }
 .sonoma-file.selected .sonoma-icon { filter: brightness(.76) drop-shadow(0 2px 2px rgb(0 0 0 / 25%)); }
-.sonoma-file:focus-visible { outline: 2px solid #afcfff; outline-offset: 4px; }
-.sonoma-dock { --sonoma-dock-icon: 53px; --sonoma-dock-gap: 5px; position: absolute; z-index: 1000; left: 50%; bottom: 7px; transform: translateX(-50%); display: flex; align-items: flex-end; gap: var(--sonoma-dock-gap); padding: 7px 9px 13px; border: 1px solid rgb(255 255 255 / 40%); border-radius: 17px; background: rgb(244 242 226 / 34%); backdrop-filter: blur(28px) saturate(1.3); box-shadow: 0 0 0 1px rgb(0 0 0 / 16%), 0 4px 14px rgb(0 0 0 / 17%); }
+.sonoma-file:focus-visible { outline: 2px solid var(--appearance-focus, #afcfff); outline-offset: 4px; }
+.sonoma-dock { --sonoma-dock-icon: 53px; --sonoma-dock-gap: 5px; position: absolute; z-index: 1000; left: 50%; bottom: 7px; transform: translateX(-50%); display: flex; align-items: flex-end; gap: var(--sonoma-dock-gap); padding: 7px 9px 13px; border: 1px solid var(--appearance-dock-border, rgb(255 255 255 / 40%)); border-radius: 17px; background: var(--appearance-dock-bg, rgb(244 242 226 / 34%)); backdrop-filter: blur(28px) saturate(1.3); box-shadow: 0 0 0 1px rgb(0 0 0 / 16%), 0 4px 14px rgb(0 0 0 / 17%); }
 .sonoma-dock-apps { display: flex; gap: var(--sonoma-dock-gap); list-style: none; padding: 0; margin: 0; }
 .sonoma-dock-item { position: relative; width: var(--sonoma-dock-icon); height: var(--sonoma-dock-icon); flex-shrink: 0; }
 .sonoma-dock-button { display: block; position: relative; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: 12px; background: none; cursor: default; }
 .sonoma-dock-button:active { filter: brightness(.75); }
-.sonoma-dock-button:focus-visible { outline: 2px solid #2478d7; outline-offset: 2px; }
+.sonoma-dock-button:focus-visible { outline: 2px solid var(--appearance-focus, #2478d7); outline-offset: 2px; }
 .sonoma-dock-button .sonoma-icon { display: block; width: 100%; height: 100%; filter: drop-shadow(0 2px 1px rgb(0 0 0 / 22%)); }
-.sonoma-running-dot { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #32372e; bottom: -8px; left: calc(50% - 2px); }
-.sonoma-dock-separator { width: 1px; height: calc(var(--sonoma-dock-icon) - 5px); margin: 0 3px; background: rgb(58 58 58 / 23%); }
+.sonoma-running-dot { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: var(--appearance-dock-dot, #32372e); bottom: -8px; left: calc(50% - 2px); }
+.sonoma-dock-separator { width: 1px; height: calc(var(--sonoma-dock-icon) - 5px); margin: 0 3px; background: var(--appearance-dock-separator, rgb(58 58 58 / 23%)); }
 .sonoma-window-position { position: absolute; outline: none; font-family: var(--sonoma-font); }
 .sonoma-window-surface { position: relative; overflow: hidden; border-radius: 11px; transform-origin: top left; box-shadow: 0 0 0 1px rgb(0 0 0 / 22%), 0 24px 60px rgb(0 0 0 / 30%), 0 5px 16px rgb(0 0 0 / 20%); }
 .sonoma-window-position.inactive .sonoma-window-surface { box-shadow: 0 0 0 1px rgb(0 0 0 / 18%), 0 15px 35px rgb(0 0 0 / 22%); }
 .sonoma-window-position [data-window-drag] { touch-action: none; user-select: none; }
 .sonoma-window-position .window-traffic-lights { position: static; display: flex; flex-shrink: 0; gap: 8px; }
 .sonoma-window-position .traffic-light { display: grid; position: relative; place-items: center; width: 12px; height: 12px; padding: 0; margin: 0; border: 1px solid rgb(0 0 0 / 8%); border-radius: 50%; cursor: default; }
-.sonoma-window-position .traffic-light.close { background: #ff5f57; color: #820d08; }
-.sonoma-window-position .traffic-light.minimize { background: #febc2e; color: #995700; }
-.sonoma-window-position .traffic-light.zoom { background: #28c840; color: #006b11; }
+.sonoma-window-position .traffic-light.close { background: var(--appearance-traffic-light-bg, #ff5f57); color: var(--appearance-traffic-light-ink, #820d08); }
+.sonoma-window-position .traffic-light.minimize { background: var(--appearance-traffic-light-bg, #febc2e); color: var(--appearance-traffic-light-ink, #995700); }
+.sonoma-window-position .traffic-light.zoom { background: var(--appearance-traffic-light-bg, #28c840); color: var(--appearance-traffic-light-ink, #006b11); }
 .sonoma-window-position .window-traffic-lights.inactive .traffic-light { background: #ccc; }
-.sonoma-window-position .window-traffic-lights.inactive:hover .close { background: #ff5f57; }
-.sonoma-window-position .window-traffic-lights.inactive:hover .minimize { background: #febc2e; }
-.sonoma-window-position .window-traffic-lights.inactive:hover .zoom { background: #28c840; }
+.sonoma-window-position .window-traffic-lights.inactive:hover .close { background: var(--appearance-traffic-light-bg, #ff5f57); }
+.sonoma-window-position .window-traffic-lights.inactive:hover .minimize { background: var(--appearance-traffic-light-bg, #febc2e); }
+.sonoma-window-position .window-traffic-lights.inactive:hover .zoom { background: var(--appearance-traffic-light-bg, #28c840); }
 .sonoma-window-position .traffic-light svg { width: 10px; height: 10px; opacity: 0; fill: none; stroke: currentColor; stroke-width: 1.4; }
 .sonoma-window-position .traffic-light .zoom-symbol { fill: currentColor; stroke: none; }
 .sonoma-window-position .window-traffic-lights:hover svg, .sonoma-window-position .traffic-light:focus-visible svg { opacity: 1; }
-.sonoma-window-position .traffic-light:focus-visible { outline: 3px solid #397ac9; outline-offset: 3px; }
-.sonoma-launch-window { width: 100%; height: 100%; display: flex; flex-direction: column; background: #fff; }
-.sonoma-launch-toolbar { height: 52px; display: flex; align-items: center; gap: 28px; padding: 0 18px; border-bottom: 1px solid #d7d7d7; background: #f4f4f4; font-size: 15px; font-weight: 650; }
+.sonoma-window-position .traffic-light:focus-visible { outline: 3px solid var(--appearance-focus, #397ac9); outline-offset: 3px; }
+.sonoma-launch-window { width: 100%; height: 100%; display: flex; flex-direction: column; background: var(--appearance-surface, #fff); }
+.sonoma-launch-toolbar { height: 52px; display: flex; align-items: center; gap: 28px; padding: 0 18px; border-bottom: 1px solid var(--appearance-border, #d7d7d7); background: var(--appearance-toolbar, #f4f4f4); font-size: 15px; font-weight: 650; }
 .sonoma-launch-content { flex: 1; min-height: 0; }
-.sonoma-tool { display: flex; align-items: center; justify-content: center; width: 30px; height: 28px; padding: 4px; border: 0; border-radius: 5px; background: none; color: #777; cursor: default; flex-shrink: 0; }
+.sonoma-tool { display: flex; align-items: center; justify-content: center; width: 30px; height: 28px; padding: 4px; border: 0; border-radius: 5px; background: none; color: var(--appearance-muted, #777); cursor: default; flex-shrink: 0; }
 .sonoma-tool svg { width: 21px; height: 21px; }
-.sonoma-tool:hover:not(:disabled) { background: rgb(0 0 0 / 6%); }
-.sonoma-tool:focus-visible { outline: 2px solid #e1ac33; outline-offset: 1px; }
-.sonoma-tool:disabled { color: #b0b0b0; }
-.sonoma-notes { --sonoma-folder-width: 180px; --sonoma-list-width: 245px; display: flex; flex-direction: column; position: relative; width: 100%; height: 100%; background: #fff; font-size: 13px; }
+.sonoma-tool:hover:not(:disabled) { background: var(--appearance-hover, rgb(0 0 0 / 6%)); }
+.sonoma-tool:focus-visible { outline: 2px solid var(--appearance-focus, #e1ac33); outline-offset: 1px; }
+.sonoma-tool:disabled { color: var(--appearance-disabled, #b0b0b0); }
+.sonoma-notes { --sonoma-folder-width: 180px; --sonoma-list-width: 245px; display: flex; flex-direction: column; position: relative; width: 100%; height: 100%; background: var(--appearance-surface, #fff); font-size: 13px; }
 .sonoma-notes.folders-hidden { --sonoma-folder-width: 0px; }
 .sonoma-notes-toolbar { display: grid; grid-template-columns: var(--sonoma-folder-width) var(--sonoma-list-width) minmax(0, 1fr); height: 52px; flex-shrink: 0; }
-.sonoma-notes-leading { display: flex; align-items: center; justify-content: space-between; padding: 0 15px; background: #e9e9e9; }
+.sonoma-notes-leading { display: flex; align-items: center; justify-content: space-between; padding: 0 15px; background: var(--appearance-panel, #e9e9e9); }
 .sonoma-notes.folders-hidden .sonoma-notes-toolbar { grid-template-columns: 118px calc(var(--sonoma-list-width) - 118px) minmax(0, 1fr); }
-.sonoma-notes.folders-hidden .sonoma-notes-leading { background: #fff; gap: 12px; }
-.sonoma-notes-list-tools { display: flex; align-items: center; padding: 0 9px; gap: 2px; border-right: 1px solid #e0e0e0; }
+.sonoma-notes.folders-hidden .sonoma-notes-leading { background: var(--appearance-surface, #fff); gap: 12px; }
+.sonoma-notes-list-tools { display: flex; align-items: center; padding: 0 9px; gap: 2px; border-right: 1px solid var(--appearance-border, #e0e0e0); }
 .sonoma-notes-list-tools .sonoma-tool:last-child { margin-left: auto; }
-.sonoma-tool.sonoma-list-mode { background: #ededed; color: #777; }
+.sonoma-tool.sonoma-list-mode { background: var(--appearance-hover, #ededed); color: var(--appearance-muted, #777); }
 .sonoma-notes-editor-tools { display: flex; align-items: center; gap: 5px; padding: 0 11px; min-width: 0; }
 .sonoma-notes-editor-tools > .sonoma-tool { margin-right: auto; }
 .sonoma-note-format-tools, .sonoma-note-sharing-tools { display: flex; align-items: center; gap: 1px; }
 .sonoma-note-sharing-tools { margin-left: auto; }
-.sonoma-notes-search { display: flex; align-items: center; gap: 3px; width: 164px; min-width: 95px; border: 1px solid #efefef; border-radius: 6px; padding: 3px 6px; color: #8d8d8d; }
+.sonoma-notes-search { display: flex; align-items: center; gap: 3px; width: 164px; min-width: 95px; border: 1px solid var(--appearance-soft-border, #efefef); border-radius: 6px; padding: 3px 6px; color: var(--appearance-muted, #8d8d8d); background: var(--appearance-input, transparent); }
 .sonoma-notes-search svg { width: 14px; height: 14px; flex-shrink: 0; }
-.sonoma-notes-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: none; background: none; color: #333; font-size: 12px; }
-.sonoma-notes-search:focus-within { box-shadow: 0 0 0 3px rgb(235 186 64 / 45%); }
+.sonoma-notes-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: none; background: none; color: var(--appearance-ink, #333); caret-color: var(--appearance-caret, auto); font-size: 12px; }
+.sonoma-notes-search:focus-within { box-shadow: 0 0 0 3px var(--appearance-focus-shadow, rgb(235 186 64 / 45%)); }
 .sonoma-notes-columns { display: grid; grid-template-columns: var(--sonoma-folder-width) var(--sonoma-list-width) minmax(0, 1fr); flex: 1; min-height: 0; }
 .sonoma-notes.folders-hidden .sonoma-notes-columns { grid-template-columns: var(--sonoma-list-width) minmax(0, 1fr); }
-.sonoma-notes-folders { padding: 7px 10px; background: #e9e9e9; overflow-y: auto; }
-.sonoma-notes-folders h2 { margin: 0 4px 7px; color: #8b8b8b; font-size: 11px; font-weight: 600; }
-.sonoma-notes-folders button { display: flex; align-items: center; gap: 7px; width: 100%; height: 29px; padding: 4px 6px; border: 0; border-radius: 5px; color: #444; background: none; text-align: left; cursor: default; }
-.sonoma-notes-folders button.selected { background: #d2d2d2; }
-.sonoma-notes-folders button:focus-visible { outline: 2px solid #dfac25; }
+.sonoma-notes-folders { padding: 7px 10px; background: var(--appearance-panel, #e9e9e9); overflow-y: auto; }
+.sonoma-notes-folders h2 { margin: 0 4px 7px; color: var(--appearance-muted, #8b8b8b); font-size: 11px; font-weight: 600; }
+.sonoma-notes-folders button { display: flex; align-items: center; gap: 7px; width: 100%; height: 29px; padding: 4px 6px; border: 0; border-radius: 5px; color: var(--appearance-ink, #444); background: none; text-align: left; cursor: default; }
+.sonoma-notes-folders button.selected { background: var(--appearance-selection, var(--appearance-inactive-selection, #d2d2d2)); color: var(--appearance-selection-ink, var(--appearance-ink, #444)); }
+.sonoma-notes-folders button:focus-visible { outline: 2px solid var(--appearance-focus, #dfac25); }
 .sonoma-notes-folders svg { width: 17px; height: 17px; color: #d7a925; flex-shrink: 0; }
-.sonoma-folder-count { margin-left: auto; color: #888; font-size: 12px; }
-.sonoma-notes-list { min-height: 0; overflow-y: auto; border-right: 1px solid #dedede; padding: 0 9px 10px; }
-.sonoma-notes-list-heading { margin: 8px 12px 5px; font-size: 11px; font-weight: 600; color: #8b8b8b; }
-.sonoma-note-row { position: relative; display: flex; flex-direction: column; gap: 4px; width: 100%; min-height: 77px; padding: 12px 14px; border: 0; border-radius: 6px; background: none; color: #252525; text-align: left; cursor: default; }
-.sonoma-note-row::after { content: ''; position: absolute; height: 1px; left: 14px; right: 14px; bottom: 0; background: #ededed; }
-.sonoma-note-row.selected { background: #fbe59a; }
-.sonoma-notes.inactive .sonoma-note-row.selected { background: #e3e3e3; }
+.sonoma-folder-count { margin-left: auto; color: var(--appearance-muted, #888); font-size: 12px; }
+.sonoma-notes-list { min-height: 0; overflow-y: auto; border-right: 1px solid var(--appearance-border, #dedede); padding: 0 9px 10px; }
+.sonoma-notes-list-heading { margin: 8px 12px 5px; font-size: 11px; font-weight: 600; color: var(--appearance-muted, #8b8b8b); }
+.sonoma-note-row { position: relative; display: flex; flex-direction: column; gap: 4px; width: 100%; min-height: 77px; padding: 12px 14px; border: 0; border-radius: 6px; background: none; color: var(--appearance-ink, #252525); text-align: left; cursor: default; }
+.sonoma-note-row::after { content: ''; position: absolute; height: 1px; left: 14px; right: 14px; bottom: 0; background: var(--appearance-soft-border, #ededed); }
+.sonoma-note-row.selected { background: var(--appearance-selection, var(--appearance-note-row, #fbe59a)); color: var(--appearance-selection-ink, var(--appearance-note-row-ink, var(--appearance-ink, #252525))); }
+.sonoma-notes.inactive .sonoma-note-row.selected { background: var(--appearance-inactive-selection, #e3e3e3); color: var(--appearance-inactive-ink, var(--appearance-ink, #252525)); }
 .sonoma-note-row.selected::after { display: none; }
-.sonoma-note-row:focus-visible { outline: 2px solid #d6a51e; outline-offset: -2px; }
+.sonoma-note-row:focus-visible { outline: 2px solid var(--appearance-focus, #d6a51e); outline-offset: -2px; }
 .sonoma-note-row-title { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
-.sonoma-note-row-summary { display: flex; gap: 7px; width: 100%; color: #7a7a7a; font-size: 11px; white-space: nowrap; }
+.sonoma-note-row-summary { display: flex; gap: 7px; width: 100%; color: var(--appearance-muted, #7a7a7a); font-size: 11px; white-space: nowrap; }
 .sonoma-note-row-summary span { overflow: hidden; text-overflow: ellipsis; }
-.sonoma-note-row-folder { display: flex; align-items: center; gap: 4px; color: #7a7a7a; font-size: 10px; }
+.sonoma-note-row-folder { display: flex; align-items: center; gap: 4px; color: var(--appearance-muted, #7a7a7a); font-size: 10px; }
 .sonoma-note-row-folder svg { width: 12px; height: 12px; }
-.sonoma-notes-empty { color: #888; padding: 12px; text-align: center; }
-.sonoma-notes-editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0 23px 20px; }
-.sonoma-note-modified { padding: 2px 0 15px; color: #999; font-size: 11px; text-align: center; }
-.sonoma-note-title { width: 100%; border: 0; padding: 0 0 12px; outline: none; font-size: 23px; line-height: 29px; font-weight: 700; color: #292929; background: none; }
-.sonoma-note-title::placeholder { color: #aaa; }
-.sonoma-note-body { width: 100%; flex: 1; min-height: 0; resize: none; border: 0; outline: none; padding: 0; color: #292929; background: none; font: 14px/1.6 var(--sonoma-font); }
-.sonoma-note-deleted { margin-bottom: 15px; padding: 8px 10px; color: #7c6228; background: #fff4cf; border-radius: 5px; }
-.sonoma-notes-editor-empty { margin: auto; color: #aaa; font-size: 19px; }
-.sonoma-notes-context { position: absolute; z-index: 20; width: 214px; padding: 5px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 7px; background: rgb(244 244 244 / 95%); backdrop-filter: blur(20px); box-shadow: 0 0 0 1px rgb(0 0 0 / 12%), 0 7px 22px rgb(0 0 0 / 22%); }
-.sonoma-notes-context button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 28px; padding: 4px 7px; border: 0; border-radius: 4px; background: none; color: #333; text-align: left; cursor: default; }
+.sonoma-notes-empty { color: var(--appearance-muted, #888); padding: 12px; text-align: center; }
+.sonoma-notes-editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0 23px 20px; background: var(--appearance-note-paper, transparent); }
+.sonoma-note-modified { padding: 2px 0 15px; color: var(--appearance-muted, #999); font-size: 11px; text-align: center; }
+.sonoma-note-title { width: 100%; border: 0; padding: 0 0 12px; outline: none; font-size: 23px; line-height: 29px; font-weight: 700; color: var(--appearance-ink, #292929); caret-color: var(--appearance-caret, auto); background: none; }
+.sonoma-note-title::placeholder { color: var(--appearance-muted, #aaa); }
+.sonoma-note-body { width: 100%; flex: 1; min-height: 0; resize: none; border: 0; outline: none; padding: 0; color: var(--appearance-ink, #292929); caret-color: var(--appearance-caret, auto); background: none; font: 14px/1.6 var(--sonoma-font); }
+.sonoma-note-deleted { margin-bottom: 15px; padding: 8px 10px; color: var(--appearance-note-notice-ink, #7c6228); background: var(--appearance-note-notice-bg, #fff4cf); border-radius: 5px; }
+.sonoma-notes-editor-empty { margin: auto; color: var(--appearance-muted, #aaa); font-size: 19px; }
+.sonoma-notes-context { position: absolute; z-index: 20; width: 214px; padding: 5px; border: 1px solid var(--appearance-context-border, rgb(255 255 255 / 65%)); border-radius: 7px; background: var(--appearance-context-bg, rgb(244 244 244 / 95%)); backdrop-filter: blur(20px); box-shadow: 0 0 0 1px rgb(0 0 0 / 12%), 0 7px 22px rgb(0 0 0 / 22%); }
+.sonoma-notes-context button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 28px; padding: 4px 7px; border: 0; border-radius: 4px; background: none; color: var(--appearance-context-ink, #333); text-align: left; cursor: default; }
 .sonoma-notes-context button svg { width: 16px; height: 16px; }
-.sonoma-notes-context button:hover, .sonoma-notes-context button:focus-visible { background: #006de6; color: #fff; outline: none; }
-.sonoma-notes-context [role='separator'] { height: 1px; margin: 4px 7px; background: #ddd; }
-.sonoma-messages { display: grid; grid-template-columns: 285px minmax(0, 1fr); width: 100%; height: 100%; background: white; font-size: 13px; }
-.sonoma-messages-sidebar { display: flex; flex-direction: column; background: #e9e9e9; border-right: 1px solid #ccc; min-height: 0; }
+.sonoma-notes-context button:hover, .sonoma-notes-context button:focus-visible { background: var(--appearance-accent, #006de6); color: var(--appearance-accent-ink, #fff); outline: none; }
+.sonoma-notes-context [role='separator'] { height: 1px; margin: 4px 7px; background: var(--appearance-soft-border, #ddd); }
+.sonoma-messages { display: grid; grid-template-columns: 285px minmax(0, 1fr); width: 100%; height: 100%; background: var(--appearance-surface, white); font-size: 13px; }
+.sonoma-messages-sidebar { display: flex; flex-direction: column; background: var(--appearance-panel, #e9e9e9); border-right: 1px solid var(--appearance-border, #ccc); min-height: 0; }
 .sonoma-messages-sidebar-toolbar { height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 17px; flex-shrink: 0; }
-.sonoma-messages-sidebar-toolbar .sonoma-tool:disabled { color: #858585; }
-.sonoma-messages-search { display: flex; align-items: center; gap: 4px; height: 29px; margin: 0 12px 11px; padding: 4px 8px; border-radius: 6px; background: #dedede; color: #898989; }
+.sonoma-messages-sidebar-toolbar .sonoma-tool:disabled { color: var(--appearance-disabled, #858585); }
+.sonoma-messages-search { display: flex; align-items: center; gap: 4px; height: 29px; margin: 0 12px 11px; padding: 4px 8px; border-radius: 6px; background: var(--appearance-input, #dedede); color: var(--appearance-muted, #898989); }
 .sonoma-messages-search svg { width: 15px; height: 15px; }
-.sonoma-messages-search input { min-width: 0; width: 100%; padding: 0; border: 0; background: none; font-size: 12px; color: #888; }
+.sonoma-messages-search input { min-width: 0; width: 100%; padding: 0; border: 0; background: none; font-size: 12px; color: var(--appearance-ink, #888); caret-color: var(--appearance-caret, auto); }
 .sonoma-conversations { list-style: none; margin: 0; padding: 0 10px; overflow-y: auto; }
-.sonoma-conversations li { display: flex; align-items: center; gap: 10px; min-height: 77px; padding: 10px 9px; border-radius: 7px; color: #333; }
-.sonoma-conversations li.selected { background: #0987f7; color: #fff; }
-.sonoma-messages.inactive .sonoma-conversations li.selected { background: #ccc; color: #333; }
+.sonoma-conversations li { display: flex; align-items: center; gap: 10px; min-height: 77px; padding: 10px 9px; border-radius: 7px; color: var(--appearance-ink, #333); }
+.sonoma-conversations li.selected { background: var(--appearance-selection, #0987f7); color: var(--appearance-selection-ink, #fff); }
+.sonoma-messages.inactive .sonoma-conversations li.selected { background: var(--appearance-inactive-selection, #ccc); color: var(--appearance-inactive-ink, #333); }
 .sonoma-conversation-portrait { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
 .sonoma-conversation-copy { min-width: 0; flex: 1; }
 .sonoma-conversation-heading { display: flex; align-items: baseline; gap: 4px; font-weight: 650; font-size: 12px; }
@@ -138,29 +138,41 @@
 .sonoma-conversation-copy p span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sonoma-conversation-copy p img { height: 13px; width: auto; vertical-align: -2px; margin: 0 2px; }
 .sonoma-messages-thread { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-.sonoma-messages-recipient-toolbar { display: flex; align-items: center; gap: 9px; padding: 0 17px; height: 52px; flex-shrink: 0; border-bottom: 1px solid #e0e0e0; background: #fdfdfd; }
+.sonoma-messages-recipient-toolbar { display: flex; align-items: center; gap: 9px; padding: 0 17px; height: 52px; flex-shrink: 0; border-bottom: 1px solid var(--appearance-border, #e0e0e0); background: var(--appearance-toolbar, #fdfdfd); }
 .sonoma-recipient { margin-right: auto; font-size: 12px; }
-.sonoma-recipient > span { margin-right: 5px; color: #888; }
-.sonoma-messages-recipient-toolbar .sonoma-tool:disabled { color: #888; }
+.sonoma-recipient > span { margin-right: 5px; color: var(--appearance-muted, #888); }
+.sonoma-messages-recipient-toolbar .sonoma-tool:disabled { color: var(--appearance-disabled, #888); }
 .sonoma-message-history { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 19px 24px 27px; }
 .sonoma-message-photo { align-self: flex-start; max-width: 82%; }
 .sonoma-message-photo img { display: block; width: 330px; max-width: 100%; height: auto; border-radius: 15px; }
 .sonoma-message-bubble { position: relative; max-width: 88%; padding: 8px 13px; border-radius: 16px; font-size: 14px; line-height: 19px; }
 .sonoma-message-bubble p { margin: 0; }
-.sonoma-message-bubble.incoming { align-self: flex-start; background: #e9e9eb; color: #292929; }
+.sonoma-message-bubble.incoming { align-self: flex-start; background: var(--appearance-incoming-bubble, #e9e9eb); color: var(--appearance-ink, #292929); }
 .sonoma-message-bubble.outgoing { align-self: flex-end; background: #1689f7; color: white; }
 .sonoma-message-bubble::after { content: ''; position: absolute; bottom: 0; width: 12px; height: 12px; }
-.sonoma-message-bubble.incoming::after { left: -4px; background: #e9e9eb; clip-path: polygon(60% 0, 100% 100%, 0 100%, 40% 50%); }
+.sonoma-message-bubble.incoming::after { left: -4px; background: var(--appearance-incoming-bubble, #e9e9eb); clip-path: polygon(60% 0, 100% 100%, 0 100%, 40% 50%); }
 .sonoma-message-bubble.outgoing::after { right: -4px; background: #1689f7; clip-path: polygon(40% 0, 60% 50%, 100% 100%, 0 100%); }
 .sonoma-message-emoji { display: flex; align-self: flex-start; align-items: center; gap: 4px; }
 .sonoma-message-emoji img { height: 54px; width: auto; }
-.sonoma-delivered { position: absolute; right: 0; top: calc(100% + 4px); font-size: 10px; line-height: 13px; color: #8d8d8d; }
+.sonoma-delivered { position: absolute; right: 0; top: calc(100% + 4px); font-size: 10px; line-height: 13px; color: var(--appearance-muted, #8d8d8d); }
 .sonoma-messages-composer { display: flex; align-items: center; gap: 7px; padding: 8px 14px 12px; flex-shrink: 0; }
-.sonoma-imessage-apps { width: 25px; height: 25px; padding: 1px; border: 0; background: none; color: #999; }
+.sonoma-imessage-apps { width: 25px; height: 25px; padding: 1px; border: 0; background: none; color: var(--appearance-disabled, #999); }
 .sonoma-imessage-apps svg { width: 100%; height: 100%; }
-.sonoma-messages-input { display: flex; align-items: center; flex: 1; min-width: 0; height: 31px; border: 1px solid #ccc; border-radius: 16px; padding: 0 4px 0 12px; }
-.sonoma-messages-input input { flex: 1; min-width: 0; border: 0; padding: 0; background: none; font-size: 12px; }
+.sonoma-messages-input { display: flex; align-items: center; flex: 1; min-width: 0; height: 31px; border: 1px solid var(--appearance-border, #ccc); border-radius: 16px; padding: 0 4px 0 12px; background: var(--appearance-input, transparent); }
+.sonoma-messages-input input { flex: 1; min-width: 0; border: 0; padding: 0; background: none; font-size: 12px; color: var(--appearance-ink, FieldText); caret-color: var(--appearance-caret, auto); }
 .sonoma-messages-composer .sonoma-tool { width: 23px; height: 25px; padding: 2px; }
+.sonoma-notes-folders button.selected .sonoma-folder-count { color: var(--appearance-selection-ink, var(--appearance-muted, #888)); }
+.sonoma-note-row.selected .sonoma-note-row-summary, .sonoma-note-row.selected .sonoma-note-row-folder { color: var(--appearance-selection-ink, var(--appearance-note-row-muted, var(--appearance-muted, #7a7a7a))); }
+.sonoma-notes.inactive .sonoma-note-row.selected .sonoma-note-row-summary, .sonoma-notes.inactive .sonoma-note-row.selected .sonoma-note-row-folder { color: var(--appearance-inactive-ink, var(--appearance-muted, #7a7a7a)); }
+.sonoma-window-position.inactive .sonoma-launch-toolbar { background: var(--appearance-toolbar-inactive, var(--appearance-toolbar, #f4f4f4)); }
+.sonoma-messages.inactive .sonoma-messages-recipient-toolbar { background: var(--appearance-toolbar-inactive, var(--appearance-toolbar, #fdfdfd)); }
+.sonoma-notes-list-tools, .sonoma-notes-editor-tools { background: var(--appearance-toolbar, transparent); }
+.sonoma-notes.inactive .sonoma-notes-list-tools, .sonoma-notes.inactive .sonoma-notes-editor-tools { background: var(--appearance-toolbar-inactive, var(--appearance-toolbar, transparent)); }
+.sonoma-notes-search input::placeholder, .sonoma-messages-search input::placeholder, .sonoma-messages-input input::placeholder, .sonoma-note-body::placeholder { color: var(--appearance-muted, revert); }
+.sonoma-messages-search input:focus-visible, .sonoma-messages-input input:focus-visible { outline-color: var(--appearance-focus, revert); }
+.sonoma-note-title:focus-visible, .sonoma-note-body:focus-visible { outline: 2px solid var(--appearance-focus, transparent); outline-offset: 2px; }
+.sonoma-notes.inactive .sonoma-notes-folders button.selected { background: var(--appearance-inactive-selection, #d2d2d2); color: var(--appearance-inactive-ink, var(--appearance-ink, #444)); }
+.sonoma-notes.inactive .sonoma-notes-folders button.selected .sonoma-folder-count { color: var(--appearance-inactive-ink, var(--appearance-muted, #888)); }
 @media (max-width: 1100px) { .sonoma-dock { --sonoma-dock-icon: 46px; --sonoma-dock-gap: 4px; } .sonoma-menu-headings { gap: 17px; } }
 @media (max-width: 900px) { .sonoma-dock { --sonoma-dock-icon: 39px; --sonoma-dock-gap: 3px; } .sonoma-menu-headings { gap: 13px; } .sonoma-status-items { gap: 13px; } .sonoma-optional-menu { display: none; } }
 @media (max-width: 760px) { .sonoma-dock { --sonoma-dock-icon: min(38px, calc((100vw - 90px) / 16)); --sonoma-dock-gap: 2px; padding: 5px 6px 11px; border-radius: 13px; bottom: 5px; } .sonoma-dock-separator { margin: 0 1px; } .sonoma-files { right: 9px; width: 86px; gap: 18px; } .sonoma-file .sonoma-icon { width: 49px; height: 49px; } .sonoma-file { font-size: 11px; } }

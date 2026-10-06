@@ -23,14 +23,14 @@
   <details open={sections.name} ontoggle={(event) => toggle('name', event)}><summary>Name &amp; Extension:</summary><div class="name-field">{info.name}</div></details>
 </div>
 <style>
-  .info-inspector { height: 100%; overflow: auto; box-sizing: border-box; padding: 15px 12px; background: #ededed; color: #222; font: 12px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+  .info-inspector { height: 100%; overflow: auto; box-sizing: border-box; padding: 15px 12px; background: var(--appearance-panel, #ededed); color: var(--appearance-ink, #222); font: 12px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
   header { display: flex; align-items: center; gap: 12px; padding: 0 4px 15px; }
   header :global(.app-icon), header :global(.sonoma-icon) { width: 48px; height: 48px; flex-shrink: 0; }
-  header strong { font-size: 13px; overflow-wrap: anywhere; } p { margin: 3px 0 0; color: #666; }
-  details { border-top: 1px solid #ccc; padding: 7px 0; } summary { font-weight: 600; cursor: default; }
+  header strong { font-size: 13px; overflow-wrap: anywhere; } p { margin: 3px 0 0; color: var(--appearance-muted, #666); }
+  details { border-top: 1px solid var(--appearance-soft-border, #ccc); padding: 7px 0; } summary { font-weight: 600; cursor: default; }
   dl { display: grid; grid-template-columns: 65px 1fr; gap: 4px 8px; margin: 10px 5px 7px; }
-  dt { text-align: right; color: #666; } dd { margin: 0; overflow-wrap: anywhere; }
-  .name-field { margin: 9px 8px; padding: 3px 5px; background: white; border: 1px solid #bcbcbc; overflow-wrap: anywhere; }
-  .trash-state { padding: 7px; margin-bottom: 9px; color: #73532f; background: #f4e9d5; }
-  .modern { background: #f4f4f4; font-size: 13px; } .modern .name-field { border-radius: 5px; } .modern details { border-color: #ddd; }
+  dt { text-align: right; color: var(--appearance-muted, #666); } dd { margin: 0; overflow-wrap: anywhere; }
+  .name-field { margin: 9px 8px; padding: 3px 5px; background: var(--appearance-input, white); border: 1px solid var(--appearance-border, #bcbcbc); overflow-wrap: anywhere; }
+  .trash-state { padding: 7px; margin-bottom: 9px; color: var(--appearance-ink, #73532f); background: var(--appearance-card, #f4e9d5); }
+  .modern { background: var(--appearance-panel, #f4f4f4); font-size: 13px; } .modern .name-field { border-radius: 5px; } .modern details { border-color: var(--appearance-soft-border, #ddd); }
 </style>

@@ -298,7 +298,7 @@
   .switcher-pane { position: absolute; inset: 12px 14px; overflow: auto; scrollbar-width: thin; scrollbar-color: #5555 transparent; overscroll-behavior: contain; scroll-behavior: auto; }
   .roster { display: flex; width: max-content; min-width: 100%; height: 100%; align-items: center; }
   .application { position: relative; flex: 0 0 var(--cell-width); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; box-sizing: border-box; height: 100%; min-height: 1px; padding: 0; border: 0; background: transparent; color: #222; outline: none; cursor: default; }
-  .application.selected .application-icon { background: #0002; box-shadow: inset 0 0 0 1px #0001; }
+  .application.selected .application-icon { background: var(--appearance-selection, #0002); box-shadow: inset 0 0 0 1px #0001; }
   .application-icon { display: block; flex-shrink: 0; width: var(--icon-size); height: var(--icon-size); padding: 8px; border-radius: 10px; }
   .application-icon :global(.app-icon), .application-icon :global(.sonoma-icon) { display: block; width: 100%; height: 100%; object-fit: contain; }
   .application-name { display: block; width: var(--cell-width); min-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 14px; line-height: 20px; }
@@ -308,7 +308,7 @@
   .windows .roster { display: grid; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); gap: 12px; align-items: start; width: 100%; height: auto; }
   .window-card { position: relative; box-sizing: border-box; min-width: 0; height: var(--card-height); }
   .card-surface { position: absolute; z-index: 11000; inset: 0; border: 2px solid transparent; border-radius: 7px; background: #ffffffc9; pointer-events: none; }
-  .selected .card-surface { border-color: #0078d4; box-shadow: 0 0 0 1px #ffffffb0; }
+  .selected .card-surface { border-color: var(--win11-accent, #0078d4); box-shadow: 0 0 0 1px #ffffffb0; }
   .window-title { position: absolute; z-index: 11002; top: 2px; left: 10px; right: 36px; display: flex; align-items: center; height: 30px; gap: 7px; min-width: 0; pointer-events: none; font-size: 12px; line-height: 18px; }
   .window-title span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .preview-slot { position: absolute; left: 10px; right: 10px; top: 36px; bottom: 10px; pointer-events: none; }

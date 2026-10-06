@@ -588,14 +588,14 @@
   .soft-wallpaper { position: absolute; inset: -24px; background-position: center; background-size: cover; filter: blur(15px) brightness(.72) saturate(.85); pointer-events: none; }
   .modern .soft-wallpaper { filter: blur(22px) brightness(.78) saturate(.9); }
   .launchpad-backdrop { position: absolute; inset: 0; z-index: 13000; border: 0; padding: 0; background: #14202b20; cursor: default; }
-  .launchpad-backdrop:focus-visible { outline: 2px solid #a6d4ff; outline-offset: -3px; }
+  .launchpad-backdrop:focus-visible { outline: 2px solid var(--appearance-focus, #a6d4ff); outline-offset: -3px; }
   .launchpad-layout { position: absolute; z-index: 13002; display: flex; flex-direction: column; min-height: 0; overflow: clip; pointer-events: none; }
   .search-row { display: flex; justify-content: center; align-items: center; flex: 0 0 clamp(42px, 9vh, 78px); min-height: 0; pointer-events: none; }
   .launchpad-search { display: flex; align-items: center; width: min(245px, 70%); min-width: 0; height: 29px; padding: 0 8px; gap: 7px; background: #0003; border: 1px solid #ffffff5c; border-radius: 5px; box-shadow: inset 0 1px 2px #0002; pointer-events: auto; }
   .modern .launchpad-search { border-radius: 7px; background: #19232c47; }
   .launchpad-search svg { width: 15px; height: 15px; flex: 0 0 15px; fill: none; stroke: #fff; stroke-width: 1.7; opacity: .82; }
   .launchpad-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: #fff; font: 13px var(--system-font); user-select: text; }
-  .launchpad-search:focus-within { border-color: #b9daff; box-shadow: 0 0 0 2px #76b8fd80; }
+  .launchpad-search:focus-within { border-color: var(--appearance-focus, #b9daff); box-shadow: 0 0 0 2px var(--appearance-focus-shadow, #76b8fd80); }
   .launchpad-search input::placeholder { color: #fff; opacity: .86; }
   .launchpad-search input::-webkit-search-cancel-button { cursor: default; }
   .main-pane, .folder-pane { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #ffffff70 #0001; pointer-events: auto; }
@@ -605,20 +605,20 @@
   .tile-art { display: block; width: var(--icon-size); height: var(--icon-size); flex: 0 0 var(--icon-size); filter: drop-shadow(0 3px 3px #0003); border-radius: 12px; }
   .tile-art :global(.app-icon), .tile-art :global(.sonoma-icon), .drag-art :global(.app-icon), .drag-art :global(.sonoma-icon) { display: block; width: 100%; height: 100%; object-fit: contain; }
   .tile-label { display: block; max-width: 100%; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px #000d; }
-  .launchpad-tile:focus-visible .tile-art { outline: 3px solid #b0d9ff; outline-offset: 4px; }
+  .launchpad-tile:focus-visible .tile-art { outline: 3px solid var(--appearance-focus, #b0d9ff); outline-offset: 4px; }
   .launchpad-tile:active:not(.drag-source) .tile-art { filter: brightness(.85) drop-shadow(0 2px 2px #0003); }
   .launchpad-tile.drag-source { opacity: .35; }
-  .launchpad-tile.drop-target .tile-art { outline: 3px solid #d6eaff; outline-offset: 5px; background: #ffffff20; }
+  .launchpad-tile.drop-target .tile-art { outline: 3px solid var(--appearance-focus, #d6eaff); outline-offset: 5px; background: #ffffff20; }
   .folder-art { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 3px; width: 100%; height: 100%; padding: 8px; box-sizing: border-box; border-radius: 14px; background: linear-gradient(#e9edf099, #b9c8d88c); box-shadow: inset 0 1px 2px #ffffff60, 0 2px 4px #0003; }
   .folder-art > span { min-width: 0; min-height: 0; }
   .folder-art :global(.app-icon), .folder-art :global(.sonoma-icon) { width: 100%; height: 100%; }
   .page-dots { display: flex; justify-content: center; align-items: center; flex: 0 0 38px; gap: 3px; pointer-events: auto; }
   .page-dots button { display: grid; place-items: center; width: 21px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: default; }
   .page-dots button span { width: 7px; height: 7px; border-radius: 50%; background: #ffffff60; box-shadow: 0 1px 2px #0005; }
-  .page-dots button.current span { background: #fff; }
+  .page-dots button.current span { background: var(--appearance-selection, #fff); }
   .page-dots button.virtual span { background: transparent; border: 1px solid #ffffff70; }
-  .page-dots button.virtual.current span { background: #fff; }
-  .page-dots button:focus-visible { outline: 2px solid #b0d9ff; outline-offset: -2px; }
+  .page-dots button.virtual.current span { background: var(--appearance-selection, #fff); }
+  .page-dots button:focus-visible { outline: 2px solid var(--appearance-focus, #b0d9ff); outline-offset: -2px; }
   .no-results { margin: 18px 0; text-align: center; font-size: 19px; font-weight: 400; color: #ffffffe6; text-shadow: 0 1px 3px #0008; }
   .main-pane:has(.no-results) .app-grid { display: none; }
   .folder-backdrop { position: absolute; inset: 0; z-index: 1; border: 0; background: #0003; pointer-events: auto; cursor: default; }
@@ -627,8 +627,8 @@
   .folder-heading { flex: 0 0 auto; padding: 15px 10px 8px; text-align: center; min-width: 0; }
   .folder-name, .folder-name-input { box-sizing: border-box; max-width: 100%; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #fff; padding: 3px 10px; font: 25px var(--system-font); text-align: center; text-shadow: 0 1px 2px #0006; }
   .folder-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; }
-  .folder-name:focus-visible { outline: 2px solid #b0d9ff; }
-  .folder-name-input { width: min(380px, 95%); background: #0002; border-color: #a5ceff; outline: 2px solid #7bb9ff70; user-select: text; }
+  .folder-name:focus-visible { outline: 2px solid var(--appearance-focus, #b0d9ff); }
+  .folder-name-input { width: min(380px, 95%); background: #0002; border-color: var(--appearance-focus, #a5ceff); outline: 2px solid var(--appearance-focus-shadow, #7bb9ff70); user-select: text; }
   .rename-error { margin: 4px 0 0; font-size: 12px; color: #ffe1da; }
   .folder-pane { flex: 1 1 0; padding: 0 20px; }
   .folder-grid { gap: clamp(14px, 3vh, 30px) 6px; }

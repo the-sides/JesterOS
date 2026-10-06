@@ -43,13 +43,13 @@
   cursor: default;
 }
 
-.window-traffic-lights .close { background: #ff6058; color: #820d08; }
-.window-traffic-lights .minimize { background: #ffbe2f; color: #995700; }
-.window-traffic-lights .zoom { background: #29c840; color: #006b11; }
-.window-traffic-lights.inactive .traffic-light { background: #b8b8b8; border-color: rgb(0 0 0 / 10%); }
-.window-traffic-lights.inactive:hover .close { background: #ff6058; }
-.window-traffic-lights.inactive:hover .minimize { background: #ffbe2f; }
-.window-traffic-lights.inactive:hover .zoom { background: #29c840; }
+.window-traffic-lights .close { background: var(--appearance-traffic-light-bg, #ff6058); color: var(--appearance-traffic-light-ink, #820d08); }
+.window-traffic-lights .minimize { background: var(--appearance-traffic-light-bg, #ffbe2f); color: var(--appearance-traffic-light-ink, #995700); }
+.window-traffic-lights .zoom { background: var(--appearance-traffic-light-bg, #29c840); color: var(--appearance-traffic-light-ink, #006b11); }
+.window-traffic-lights.inactive .traffic-light { background: var(--appearance-disabled, #b8b8b8); border-color: var(--appearance-soft-border, rgb(0 0 0 / 10%)); }
+.window-traffic-lights.inactive:hover .close { background: var(--appearance-traffic-light-bg, #ff6058); }
+.window-traffic-lights.inactive:hover .minimize { background: var(--appearance-traffic-light-bg, #ffbe2f); }
+.window-traffic-lights.inactive:hover .zoom { background: var(--appearance-traffic-light-bg, #29c840); }
 
 .window-traffic-lights .traffic-light svg {
   width: 12px;
@@ -65,7 +65,7 @@
 .window-traffic-lights .traffic-light:focus-visible svg { opacity: 1; }
 .window-traffic-lights .traffic-light:active { filter: brightness(0.84); }
 .window-traffic-lights .traffic-light:focus-visible {
-  outline: 3px solid #397ac9;
+  outline: 3px solid var(--appearance-focus, #397ac9);
   outline-offset: 3px;
 }
 
@@ -74,25 +74,25 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  border: 1px solid rgb(130 130 130 / 68%);
+  border: 1px solid var(--appearance-border, rgb(130 130 130 / 68%));
   border-radius: inherit;
-  background: #f5f5f5;
+  background: var(--appearance-surface, #f5f5f5);
   font-family: var(--system-font);
 }
 
 .application-titlebar {
   position: relative;
   flex: 0 0 38px;
-  border-bottom: 1px solid #bcbcbc;
-  background: linear-gradient(#e7e7e7, #d4d4d4);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 60%);
+  border-bottom: 1px solid var(--appearance-border, #bcbcbc);
+  background: var(--appearance-toolbar, linear-gradient(#e7e7e7, #d4d4d4));
+  box-shadow: inset 0 1px 0 var(--appearance-light-edge, rgb(255 255 255 / 60%));
 }
 
 .application-title {
   display: block;
   overflow: hidden;
   margin: 0 106px;
-  color: #333;
+  color: var(--appearance-ink, #333);
   font-size: 17px;
   font-weight: 500;
   line-height: 37px;
@@ -101,6 +101,6 @@
   white-space: nowrap;
 }
 
-.managed-window.inactive .application-titlebar { background: linear-gradient(#ededed, #e4e4e4); }
-.managed-window.inactive .application-title { color: #888; }
+.managed-window.inactive .application-titlebar { background: var(--appearance-toolbar-inactive, linear-gradient(#ededed, #e4e4e4)); }
+.managed-window.inactive .application-title { color: var(--appearance-inactive-ink, #888); }
 .application-content { flex: 1; min-height: 0; }

@@ -88,11 +88,11 @@
       </li>
       <li class="message-bubble incoming photo-thanks">
         <p>Thanks! I’ll be posting the rest<br />soon.</p>
-        {@render bubbleTail('incoming', '#dfdde3')}
+        {@render bubbleTail('incoming', 'var(--appearance-incoming-bubble, #dfdde3)')}
       </li>
       <li class="message-bubble incoming camping-invitation">
         <p>Hey, we are planning a camping<br />trip next month. You should<br />come!</p>
-        {@render bubbleTail('incoming', '#dfdde3')}
+        {@render bubbleTail('incoming', 'var(--appearance-incoming-bubble, #dfdde3)')}
       </li>
       <li class="message-emoji" aria-label="Grinning face, camping, national park">
         <img class="grinning-emoji" src={`${assets.messages}/grinning-face.png`} alt="Grinning face" width="65" height="68" />

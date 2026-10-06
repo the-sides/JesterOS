@@ -214,3 +214,11 @@ Windows still exposes **190 contracts** and advertises neither `shell.launchpad`
 ## OS-17 unsupported Dashboard boundary
 
 Windows remains190 contracts and advertises neither `shell.dashboard` nor a Dashboard app/Space/widget board. All22 known requests rejected unsupported_profile and complete canonical inspection remained byte-identical. Native Windows Widgets is not implemented or renamed by this classic Mac slice; it remains separate scope. Combined strict catalogs,123 tests/1607 assertions and production build pass with only the existing bundle advisory.
+
+## OS-18 existing native appearance authority
+
+Windows remains190 contracts; `native.apps.settings.theme/accent` and existing `win11.settings.preference` remain the only preference authority. Native Settings → Personalization → Colors Light/Dark and all four represented accent controls drive shell/chrome/forms/dialogs and all ten implemented apps. No Mac General pane/store/alias is installed. Final Rust-served requests reject all four Mac appearance names unsupported_profile with byte-identical canonical inspection; strict190 schemas compile.
+
+Native source actors opened Explorer, Edge, Notepad, Calculator, Settings, Paint, Photos, Clock, Snipping Tool and Terminal. Dark titlebars41/44/49, app surface32/32/32, editable controls48/48/48/text244 and real Start/search/taskbar/Quick Settings/notifications-calendar/context/Properties/menus/dialogs were observed. Paint's white canvas, authored Photos SVG, actual Snipping capture and local Edge document content remained unchanged. Explicit Terminal Light content stays white while shared chrome/dialogs remain Dark.
+
+Direct theme writes with Notepad focused retained original editor/text/caret1550 and scroll1013; native Settings round trips retain tabs/text/caret/geometry. **Existing activation limitation:** a Settings→Notepad round trip without any theme write independently resets DOM scroll to0 while canonical ui.scroll remains1013. This baseline activation behavior was isolated, not suppressed or misreported as appearance retention. Native560×900 Colors keyboard controls fit without root overflow. Combined129 tests/1665 assertions/build pass; fresh actor/production page errors are empty.

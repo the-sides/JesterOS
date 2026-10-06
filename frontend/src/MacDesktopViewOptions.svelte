@@ -16,10 +16,11 @@
   <label class="check"><input type="checkbox" checked={options.showIconPreview} onchange={(event) => set('showIconPreview', event.currentTarget.checked)}/> Show icon preview</label>
 </div>
 <style>
-  .view-inspector { height: 100%; overflow: auto; box-sizing: border-box; padding: 14px 18px; color: #222; background: #ededed; font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; }
+  .view-inspector { height: 100%; overflow: auto; box-sizing: border-box; padding: 14px 18px; color: var(--appearance-ink, #222); background: var(--appearance-panel, #ededed); font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; }
   h2 { margin: 0 0 16px; font-size: 13px; font-weight: 600; text-align: center; }
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; } select { min-width: 125px; font: inherit; color: #222; }
-  .slider { display: block; margin: 14px 0 18px; } .slider>span { display: flex; justify-content: space-between; } input[type="range"] { display: block; width: 100%; margin: 8px 0 2px; accent-color: #287bd6; } small { display: flex; justify-content: space-between; color: #777; font-size: 10px; }
-  fieldset { padding: 0; border: 0; margin: 0 0 15px; display: flex; gap: 18px; } legend { margin-bottom: 6px; } input { accent-color: #287bd6; vertical-align: -2px; } .check { display: block; margin: 10px 0; }
-  .modern { background: #f4f4f4; font-size: 13px; } .modern select { border: 1px solid #bbb; border-radius: 5px; padding: 2px 5px; background: white; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; } select { min-width: 125px; font: inherit; color: var(--appearance-ink, #222); }
+  .slider { display: block; margin: 14px 0 18px; } .slider>span { display: flex; justify-content: space-between; } input[type="range"] { display: block; width: 100%; margin: 8px 0 2px; accent-color: var(--appearance-accent, #287bd6); } small { display: flex; justify-content: space-between; color: var(--appearance-muted, #777); font-size: 10px; }
+  fieldset { padding: 0; border: 0; margin: 0 0 15px; display: flex; gap: 18px; } legend { margin-bottom: 6px; } input { accent-color: var(--appearance-accent, #287bd6); vertical-align: -2px; } .check { display: block; margin: 10px 0; }
+  .modern { background: var(--appearance-panel, #f4f4f4); font-size: 13px; } .modern select { border: 1px solid var(--appearance-border, #bbb); border-radius: 5px; padding: 2px 5px; background: var(--appearance-input, white); }
+  input:focus-visible, select:focus-visible { outline-color: var(--appearance-focus, revert); }
 </style>

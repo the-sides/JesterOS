@@ -19,6 +19,8 @@
   import { dashboardDefaults, dashboardTargets, createDashboardCommands } from './dashboard.js';
   import Dashboard from './Dashboard.svelte';
   import DashboardPreferences from './DashboardPreferences.svelte';
+  import { appearanceDefaults, appearanceTargets, createAppearanceCommands, applyAppearance } from './appearance.js';
+  import MacAppearancePreferences from './MacAppearancePreferences.svelte';
   import { createDesktopCommands } from './desktop-commands.js';
   import { createDesktopItemCommands } from './desktop-item-commands.js';
   import { createDesktopContextCommands } from './desktop-context-commands.js';
@@ -63,6 +65,7 @@
   const hasSpaces = profile.capabilities.includes('shell.mission-control');
   const hasLaunchpad = profile.capabilities.includes('shell.launchpad');
   const hasDashboard = profile.capabilities.includes('shell.dashboard');
+  const hasAppearance = profile.capabilities.includes('shell.appearance');
   const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
   const desktopUtilityApps = macDesktop ? {
     'desktop-info': { ...applications.finder, width: 360, height: 560, minimumSize: { width: 300, height: 300 } },
@@ -243,6 +246,9 @@
   const initialData = adapter.createSceneData();
   let notesState = $state(initialData.notes);
   let nativeState = $state(initialData.native);
+  let appearanceState = $state(macDesktop ? appearanceDefaults(profile) : undefined);
+  $effect(() => applyAppearance(document.documentElement, profile, macDesktop ? appearanceState
+    : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent }));
   let macFiles = $state(macDesktop ? createMacSceneFiles() : undefined);
   const desktopFileStore = macDesktop ? macFiles : nativeState.apps;
   const desktopFilePolicy = macDesktop ? { validateName: validMacDesktopName } : {};
@@ -540,6 +546,10 @@
       pendingQuitAppIds, switching.creationWindowIds, dashboardState),
     openPreferences: openDashboardPreferences,
   }));
+  if (hasAppearance) Object.assign(handlers, createAppearanceCommands({
+    profile, state: appearanceState, available: sceneInteractionsAvailable,
+    settle: async () => { await tick(); await tick(); }, openPreferences: openAppearancePreferences,
+  }));
   Object.assign(handlers,
     createFullScreenCommands({
       profile, state: presentation, getWindows: () => windows, getActiveWindowId: () => activeWindowId,
@@ -609,12 +619,19 @@
       ...(hasSpaces ? { spaces: spaceState } : {}),
       ...(hasLaunchpad ? { launchpad: launchpadState } : {}),
       ...(hasDashboard ? { dashboard: dashboardState } : {}),
+      ...(hasAppearance ? { appearance: appearanceState } : {}),
       ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(nativeState ? { native: nativeState } : {}),
     }),
     settleCommands, sceneCatalog, () => ({
       profiles: listOSProfiles().map(({ id, name, family, version }) => ({ profileId: id, name, family, version })),
+      ...(hasAppearance ? { appearance: appearanceTargets(profile, appearanceState) } : {
+        appearance: { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent,
+          scope: 'full', highlight: null, customHighlight: false,
+          commands: { preference: 'win11.settings.preference', preferences: 'win11.settings.navigate' },
+          preferenceControls: { mode: 'theme', accent: 'accent' }, preferencesPage: 'colors' },
+      }),
       applications: Object.values(applications).map(({ id, name, dock, taskbar, coverage, minimumSize, multipleWindows, quitAllowed, presentation }) => ({
         appId: id, name, coverage, minimumSize, multipleWindows, quitAllowed, ...(presentation ? { presentation } : {}),
         running: runningAppIds.includes(id), active: activeAppId === id, quitting: pendingQuitAppIds.includes(id),
@@ -870,6 +887,14 @@
     if (result.status !== 'applied') return result;
     const window = windows.find(window => window.id === result.target.windowId);
     window.settingsPane = 'mission-control'; window.title = 'Mission Control';
+    await tick();
+    return { status: 'applied', target: { appId: 'settings', windowId: window.id } };
+  }
+  async function openAppearancePreferences() {
+    const result = await handlers['app.open']({ appId: 'settings' }, {});
+    if (result.status !== 'applied') return result;
+    const window = windows.find(window => window.id === result.target.windowId);
+    window.settingsPane = 'appearance'; window.title = profile.renderer === 'sonoma' ? 'Appearance' : 'General';
     await tick();
     return { status: 'applied', target: { appId: 'settings', windowId: window.id } };
   }
@@ -1983,13 +2008,23 @@
             onzoom={() => toggleWindowZoom(window.id)}
           />
         {:else if hasDockContext && window.appId === 'settings'}
-          {#if hasDashboard && window.settingsPane === 'mission-control'}
+          {#if hasAppearance && window.settingsPane === 'appearance'}
+            <MacAppearancePreferences {profile} state={appearanceState} execute={commands.execute} />
+          {:else if hasDashboard && window.settingsPane === 'mission-control'}
             <DashboardPreferences mode={dashboardState.mode} execute={commands.execute} />
+            <div class="settings-pane-links">
+              <button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'appearance.preferences.open' })}>General…</button>
+            </div>
           {:else}
             <MacDockPreferences {profile} preferences={desktopState.dock.preferences} execute={commands.execute} />
-            {#if hasDashboard}
-              <button type="button" class="dashboard-preferences-link" onclick={() => commands.execute({ command: 'dashboard.preferences.open' })}>Mission Control…</button>
-            {/if}
+            <div class="settings-pane-links">
+              {#if hasAppearance}
+                <button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'appearance.preferences.open' })}>{profile.renderer === 'sonoma' ? 'Appearance…' : 'General…'}</button>
+              {/if}
+              {#if hasDashboard}
+                <button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'dashboard.preferences.open' })}>Mission Control…</button>
+              {/if}
+            </div>
           {/if}
         {:else if window.utilityKind === 'desktop-info'}
           <MacDesktopInfo {profile} info={desktopDetails[window.fileId]} windowId={window.id} sections={window.infoSections} execute={commands.execute} />
@@ -2100,6 +2135,8 @@
 <style>
   .stage-backdrop { position: absolute; z-index: 1; background: black; pointer-events: none; }
   .split-divider { position: absolute; width: 4px; background: #171717; cursor: col-resize; touch-action: none; outline: none; }
-  .split-divider:focus-visible { background: #5797dc; }
-  .dashboard-preferences-link { position: absolute; right: 20px; bottom: 12px; padding: 3px 12px; border: 1px solid #aaa; border-radius: 4px; background: #fafafa; color: #222; font: 12px var(--system-font); }
+  .split-divider:focus-visible { background: var(--appearance-focus, #5797dc); }
+  .settings-pane-links { position: absolute; right: 20px; bottom: 12px; display: flex; gap: 8px; }
+  .settings-pane-link { padding: 3px 12px; border: 1px solid var(--appearance-border, #aaa); border-radius: 4px; background: var(--appearance-card, #fafafa); color: var(--appearance-ink, #222); font: 12px var(--system-font); }
+  .settings-pane-link:focus-visible { outline: 2px solid var(--appearance-focus, #2478d7); outline-offset: 2px; }
 </style>

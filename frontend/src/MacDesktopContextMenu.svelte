@@ -95,14 +95,14 @@
   </div>
 {/if}
 <style>
-  .mac-context { position: fixed; z-index: 5000; box-sizing: border-box; min-width: min(218px, var(--context-area-width)); max-width: var(--context-area-width); max-height: var(--context-area-height); overflow-y: auto; padding: 4px 0; border: 1px solid #ababab; border-radius: 5px; background: rgb(247 247 247 / 97%); box-shadow: 0 5px 16px #0005; color: #222; font: 13px/19px -apple-system, BlinkMacSystemFont, sans-serif; text-shadow: none; }
+  .mac-context { position: fixed; z-index: 5000; box-sizing: border-box; min-width: min(218px, var(--context-area-width)); max-width: var(--context-area-width); max-height: var(--context-area-height); overflow-y: auto; padding: 4px 0; border: 1px solid var(--appearance-context-border, #ababab); border-radius: 5px; background: var(--appearance-context-bg, rgb(247 247 247 / 97%)); box-shadow: 0 5px 16px #0005; color: var(--appearance-context-ink, #222); font: 13px/19px -apple-system, BlinkMacSystemFont, sans-serif; text-shadow: none; }
   button { display: flex; align-items: center; width: 100%; gap: 5px; border: 0; padding: 1px 14px 1px 5px; color: inherit; background: transparent; font: inherit; text-align: left; cursor: default; outline: none; white-space: nowrap; }
-  button.highlighted:not(:disabled) { background: #246bd6; color: white; }
-  button:disabled { color: #999; }
+  button.highlighted:not(:disabled) { background: var(--appearance-selection, #246bd6); color: var(--appearance-selection-ink, white); }
+  button:disabled { color: var(--appearance-disabled, #999); }
   .check { width: 15px; flex-shrink: 0; text-align: center; }
   .arrow { margin-left: auto; padding-left: 20px; font-size: 20px; }
-  .separator { height: 1px; background: #d4d4d4; margin: 4px 0; }
+  .separator { height: 1px; background: var(--appearance-soft-border, #d4d4d4); margin: 4px 0; }
   button>span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
-  .modern { padding: 5px; border-color: #ffffff80; border-radius: 7px; background: rgb(242 242 242 / 91%); backdrop-filter: blur(25px); box-shadow: 0 0 0 1px #0002, 0 8px 25px #0004; }
+  .modern { padding: 5px; border-color: var(--appearance-context-border, #ffffff80); border-radius: 7px; background: var(--appearance-context-bg, rgb(242 242 242 / 91%)); backdrop-filter: blur(25px); box-shadow: 0 0 0 1px #0002, 0 8px 25px #0004; }
   .modern button { padding-top: 2px; padding-bottom: 2px; border-radius: 4px; }
 </style>

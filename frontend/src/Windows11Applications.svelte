@@ -79,6 +79,6 @@
     return () => { mounted = false; document.removeEventListener('keydown', keyboard); cleanup(); };
   });
 </script>
-<section class="w11-app" class:dark={native.apps.settings.theme === 'dark'} style:--w11-accent={native.apps.settings.accent} data-app-id={appId} data-window-id={windowId} aria-label={profile.applications[appId]?.name || appId} bind:this={root} onfocusin={observeFocus} onfocusout={observeBlur} onselect={observeSelection}>
+<section class="w11-app" class:dark={native.apps.settings.theme === 'dark'} class:custom-accent={native.apps.settings.accent !== '#0078d4'} style:--w11-accent={native.apps.settings.accent} data-app-id={appId} data-window-id={windowId} aria-label={profile.applications[appId]?.name || appId} bind:this={root} onfocusin={observeFocus} onfocusout={observeBlur} onselect={observeSelection}>
   {#if Component}<Component {profile} {native} {windowId} execute={scopedExecute} {registerSurface} />{/if}
 </section>

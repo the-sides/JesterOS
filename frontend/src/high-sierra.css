@@ -22,7 +22,7 @@
   --menu-ink: #171717;
   --menu-glass: rgb(247 247 247 / 73%);
   --dock-glass: rgb(229 228 228 / 49%);
-  color: #292929;
+  color: var(--appearance-ink, #292929);
   font-family: var(--ui-font);
   font-size: 13px;
   font-synthesis: none;
@@ -47,12 +47,12 @@
 :root[data-os-renderer='high-sierra'] .notes-modified { margin-bottom: 6px; }
 :root[data-os-renderer='high-sierra'] .notes-window .notes-note-title { flex-basis: 28px; margin-bottom: 12px; font-size: 17px; line-height: 26px; font-weight: 400; }
 :root[data-os-renderer='high-sierra'] .notes-window .notes-note-body { font-size: 17px; line-height: 25px; }
-:root[data-os-renderer='high-sierra'] .notes-row.selected { background: #f7e398; }
-:root[data-os-renderer='high-sierra'] .notes-window.inactive .notes-row.selected { background: #deddd9; }
+:root[data-os-renderer='high-sierra'] .notes-row.selected { background: var(--appearance-selection, var(--appearance-note-row, #f7e398)); }
+:root[data-os-renderer='high-sierra'] .notes-window.inactive .notes-row.selected { background: var(--appearance-inactive-selection, #deddd9); }
 
 /* Messages 11.0: independent Euna Kwon fixture, traditional full-width
    selection, vibrancy in the classic sidebar, and the 2017 photograph pair. */
-:root[data-os-renderer='high-sierra'] .messages-window { --messages-background: #fff; --messages-incoming: #e5e5e9; background: transparent; }
+:root[data-os-renderer='high-sierra'] .messages-window { --messages-background: var(--appearance-surface, #fff); --messages-incoming: var(--appearance-incoming-bubble, #e5e5e9); background: transparent; }
 :root[data-os-renderer='high-sierra'] .messages-window::after { border-width: 1px; }
 :root[data-os-renderer='high-sierra'] .messages-toolbar-sidebar,
 :root[data-os-renderer='high-sierra'] .messages-sidebar { background: rgb(242 242 242 / 83%); backdrop-filter: blur(25px) saturate(.8); }
@@ -61,11 +61,11 @@
 :root[data-os-renderer='high-sierra'] .messages-window.inactive .messages-recipient-toolbar { background: #e2e2e2; }
 :root[data-os-renderer='high-sierra'] .messages-search { background: rgb(176 183 191 / 30%); }
 :root[data-os-renderer='high-sierra'] .messages-conversations li { height: 89px; }
-:root[data-os-renderer='high-sierra'] .messages-conversations li.selected { background: #1a95f6; }
+:root[data-os-renderer='high-sierra'] .messages-conversations li.selected { background: var(--appearance-selection, #1a95f6); }
 :root[data-os-renderer='high-sierra'] .conversation-name { color: #171717; }
 :root[data-os-renderer='high-sierra'] .selected .conversation-name,
 :root[data-os-renderer='high-sierra'] .selected .conversation-time,
-:root[data-os-renderer='high-sierra'] .selected .conversation-preview { color: #fff; }
+:root[data-os-renderer='high-sierra'] .selected .conversation-preview { color: var(--appearance-selection-ink, #fff); }
 :root[data-os-renderer='high-sierra'] .messages-input-capsule input::placeholder { color: #888; }
 :root[data-os-renderer='high-sierra'] .message-bubble { font-size: 18px; }
 :root[data-os-renderer='high-sierra'] .hs-miami-photo { top: 0; right: 23px; width: 388px; height: 199px; overflow: hidden; border-radius: 0 0 17px 17px; }

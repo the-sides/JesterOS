@@ -205,7 +205,7 @@
     return () => { interactions.dispose(); cleanup?.(); observer.disconnect(); document.removeEventListener('pointerdown', outside); document.removeEventListener('contextmenu', context); document.removeEventListener('focusin', focus); document.removeEventListener('keydown', keyboard); };
   });
 </script>
-<div bind:this={root} class="win11-desktop" class:win11-dark={native.apps.settings.theme === 'dark'} class:win11-glow={native.apps.settings.wallpaper === 'glow'} class:win11-flow={native.apps.settings.wallpaper === 'flow'} style:--win11-accent={native.apps.settings.accent}>
+<div bind:this={root} class="win11-desktop" class:win11-dark={native.apps.settings.theme === 'dark'} class:custom-accent={native.apps.settings.accent !== '#0078d4'} class:win11-glow={native.apps.settings.wallpaper === 'glow'} class:win11-flow={native.apps.settings.wallpaper === 'flow'} style:--win11-accent={native.apps.settings.accent}>
   <div bind:this={workspace} class="win11-workspace" data-shell-control="desktop" tabindex="-1" role="group" aria-label="Windows desktop" style:overflow={fullScreenStage.mode !== 'normal' ? 'visible' : undefined} onpointerdown={workspacePointer}>
     {#if shell.viewOptions.showIcons}
       <div bind:this={desktopSurface} class="win11-desktop-files" data-shell-scroll="desktop" onscroll={(event) => observeScroll(event, 'desktop')} inert={Boolean(shell.dialog) || fullScreenStage.mode !== 'normal'} style:--desktop-icon-size="{shell.viewOptions.iconSize}px">
@@ -295,7 +295,7 @@
   .win11-desktop-entry { position: relative; width: 86px; flex-shrink: 0; touch-action: none; user-select: none; }
   .win11-desktop-files { right: 4px; height: calc(100% - 20px); max-height: none; display: flex; flex-direction: column; flex-wrap: wrap; gap: 8px; align-content: flex-start; overflow: auto; }
   .win11-desktop-file { min-height: calc(var(--desktop-icon-size) + 40px); }
-  .win11-desktop-rename { position: absolute; top: calc(var(--desktop-icon-size) + 11px); left: 2px; width: 82px; padding: 1px 2px; border: 1px solid #1565c0; background: white; color: #111 !important; text-align: center; font-size: 12px !important; z-index: 2; }
+  .win11-desktop-rename { position: absolute; top: calc(var(--desktop-icon-size) + 11px); left: 2px; width: 82px; padding: 1px 2px; border: 1px solid var(--win11-selection-line, #1565c0); background: var(--win11-input, white); color: var(--win11-input-text, #111) !important; text-align: center; font-size: 12px !important; z-index: 2; }
   .win11-properties dd { overflow-wrap: anywhere; }
-  .win11-desktop-marquee { position: absolute; border: 1px solid #78b6ee; background: #4b9fe536; pointer-events: none; z-index: 1; }
+  .win11-desktop-marquee { position: absolute; border: 1px solid var(--win11-selection-line, #78b6ee); background: var(--win11-marquee, #4b9fe536); pointer-events: none; z-index: 1; }
 </style>

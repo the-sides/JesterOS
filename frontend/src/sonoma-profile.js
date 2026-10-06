@@ -16,7 +16,7 @@ export const sonomaProfile = {
     'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
     'shell.window-create', 'app.lifecycle', 'shell.switcher', 'app.visibility',
     'shell.full-screen', 'shell.split-view', 'shell.window-green-menu', 'shell.mission-control', 'shell.launchpad',
-    'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management', 'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'scene.profile-selection',
+    'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management', 'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.appearance', 'scene.profile-selection',
     'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   launchpad: { otherAppIds: [

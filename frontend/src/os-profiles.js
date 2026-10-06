@@ -26,7 +26,7 @@ const profiles = freezeTree({
       'shell.window-create', 'app.lifecycle', 'shell.switcher', 'app.visibility',
       'shell.full-screen', 'shell.split-view', 'shell.mission-control', 'shell.launchpad', 'shell.dashboard',
       'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management', 'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu',
-      'scene.profile-selection',
+      'shell.appearance', 'scene.profile-selection',
       'notes.plain-text', 'notes.presentation', 'messages.sample',
     ],
     applications,

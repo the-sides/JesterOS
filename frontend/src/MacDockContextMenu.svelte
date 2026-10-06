@@ -216,11 +216,11 @@
     overscroll-behavior: contain;
     scrollbar-width: thin;
     padding: 4px 0;
-    border: 1px solid #ababab;
+    border: 1px solid var(--appearance-menu-border, #ababab);
     border-radius: 5px;
-    background: rgb(247 247 247 / 97%);
+    background: var(--appearance-menu-bg, rgb(247 247 247 / 97%));
     box-shadow: 0 5px 16px #0005;
-    color: #222;
+    color: var(--appearance-menu-ink, #222);
     font: 13px/19px -apple-system, BlinkMacSystemFont, sans-serif;
     text-shadow: none;
     user-select: none;
@@ -243,18 +243,18 @@
     outline: none;
     white-space: nowrap;
   }
-  button.highlighted:not(:disabled) { background: #246bd6; color: white; }
-  button:disabled { color: #999; }
+  button.highlighted:not(:disabled) { background: var(--appearance-selection, #246bd6); color: var(--appearance-selection-ink, white); }
+  button:disabled { color: var(--appearance-menu-disabled, #999); }
   .check { width: 15px; flex-shrink: 0; text-align: center; }
   .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .minimized { flex-shrink: 0; margin-left: auto; font-size: 12px; }
   .arrow { flex-shrink: 0; margin-left: auto; padding-left: 16px; font-size: 20px; }
-  .separator { height: 1px; background: #d4d4d4; margin: 4px 0; }
+  .separator { height: 1px; background: var(--appearance-menu-separator, #d4d4d4); margin: 4px 0; }
   .modern {
     padding: 5px;
-    border-color: #ffffff80;
+    border-color: var(--appearance-menu-border, #ffffff80);
     border-radius: 7px;
-    background: rgb(242 242 242 / 91%);
+    background: var(--appearance-menu-bg, rgb(242 242 242 / 91%));
     backdrop-filter: blur(25px);
     box-shadow: 0 0 0 1px #0002, 0 8px 25px #0004;
   }

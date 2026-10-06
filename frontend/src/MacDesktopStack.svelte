@@ -83,10 +83,10 @@
   .stack-icon :global(.app-icon), .stack-icon :global(.sonoma-icon), .generic-document, .down-arrow { width: var(--stack-size); height: var(--stack-size); }
   .down-arrow { position: absolute; inset: 0; }
   .stack-label { max-width: 100%; padding: 0 3px; border-radius: 3px; overflow-wrap: anywhere; }
-  .selected .stack-label { background: #3c76c1; box-shadow: inset 0 0 0 1px #8ebbf0; }
+  .selected .stack-label { background: var(--appearance-selection, #3c76c1); color: var(--appearance-selection-ink, white); box-shadow: inset 0 0 0 1px var(--appearance-focus, #8ebbf0); }
   .selected .stack-icon { border-radius: 4px; background: #ffffff26; }
   .desktop-stack:focus { outline: none; }
-  .desktop-stack:focus-visible .stack-label { box-shadow: inset 0 0 0 1px #afd3ff, 0 0 0 2px #abd1ff; }
+  .desktop-stack:focus-visible .stack-label { box-shadow: inset 0 0 0 1px var(--appearance-focus, #afd3ff), 0 0 0 2px var(--appearance-focus, #abd1ff); }
   .stack-item-info { max-width: 100%; color: #c5defb; font-size: .9em; }
   .right-label { width: max(180px, calc(var(--stack-size) + 120px)); flex-direction: row; flex-wrap: wrap; text-align: left; }
   .right-label .stack-label { flex: 1; min-width: 0; }

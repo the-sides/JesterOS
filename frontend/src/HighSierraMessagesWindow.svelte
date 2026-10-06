@@ -81,7 +81,7 @@
       </li>
       <li class="message-bubble incoming hs-miami-message">
         <p>Miami was amazing!</p>
-        {@render bubbleTail('incoming', '#e5e5e9')}
+        {@render bubbleTail('incoming', 'var(--appearance-incoming-bubble, #e5e5e9)')}
       </li>
       <li class="hs-euna-photo">
         <img src={`${assets.messages}/euna-photo.png`} alt="Euna in a yellow scarf in the sunshine" width="388" height="216" />

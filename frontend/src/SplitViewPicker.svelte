@@ -129,11 +129,11 @@
   .picker-backdrop { position: fixed; z-index: 9100; background: #262626; pointer-events: none; }
   .picker-pane { position: absolute; display: grid; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); align-content: safe center; gap: 16px; box-sizing: border-box; padding: 12px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; pointer-events: auto; }
   .window-card { position: relative; z-index: 9102; display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; height: var(--card-height); padding: 4px; border: 3px solid transparent; border-radius: 7px; background: transparent; color: white; outline: none; pointer-events: auto; cursor: default; }
-  .window-card.selected, .window-card:focus-visible { border-color: #a6c9f5; }
+  .window-card.selected, .window-card:focus-visible { border-color: var(--appearance-focus, #a6c9f5); }
   .preview { display: block; flex: 1; min-height: 0; width: 100%; pointer-events: none; }
   .card-label { display: flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; height: 28px; min-width: 0; font: 12px var(--system-font, sans-serif); text-shadow: 0 1px 2px black; }
   .card-label :global(svg), .card-label :global(img) { width: 20px; height: 20px; flex-shrink: 0; }
   .card-label > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .empty { position: relative; z-index: 9102; min-width: 0; color: #eee; text-align: center; font: 13px var(--system-font, sans-serif); pointer-events: auto; overflow: hidden; }
-  .empty button { max-width: 100%; padding: 3px 16px; border: 1px solid #aaa; border-radius: 4px; background: linear-gradient(white, #ddd); color: #222; font: inherit; }
+  .empty button { max-width: 100%; padding: 3px 16px; border: 1px solid var(--appearance-border, #aaa); border-radius: 4px; background: var(--appearance-card, linear-gradient(white, #ddd)); color: var(--appearance-ink, #222); font: inherit; }
 </style>

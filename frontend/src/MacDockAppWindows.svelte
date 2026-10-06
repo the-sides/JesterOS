@@ -105,12 +105,13 @@
   .identity-icon :global(.app-icon), .identity-icon :global(.sonoma-icon) { display: block; width: 100%; height: 100%; }
   h2 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(12px, calc(var(--overview-width) / 24), 22px); line-height: 1.3; font-weight: 500; }
   .window-hit { position: absolute; z-index: 7002; box-sizing: border-box; padding: 0; border: 0; border-radius: 5px; background: transparent; pointer-events: auto; cursor: default; outline: none; }
-  .window-hit.selected { box-shadow: inset 0 0 0 3px #58a5ff, 0 0 0 1px #c0deff, 0 0 8px 2px #3b8eff80; }
+  .window-hit.selected { box-shadow: inset 0 0 0 3px var(--appearance-selection, #58a5ff), 0 0 0 1px var(--appearance-focus, #c0deff), 0 0 8px 2px var(--appearance-focus-shadow, #3b8eff80); }
   .modern .window-hit { border-radius: 9px; }
-  .modern .window-hit.selected { box-shadow: inset 0 0 0 3px #75b5ff, 0 0 0 1px #d0e6ff, 0 0 8px 2px #4b9cff70; }
+  .modern .window-hit.selected { box-shadow: inset 0 0 0 3px var(--appearance-selection, #75b5ff), 0 0 0 1px var(--appearance-focus, #d0e6ff), 0 0 8px 2px var(--appearance-focus-shadow, #4b9cff70); }
   .window-label { position: absolute; z-index: 7002; display: flex; justify-content: center; align-items: center; box-sizing: border-box; height: 26px; gap: 6px; padding: 2px 7px; border-radius: 5px; background: rgb(24 24 24 / 76%); font-size: 12px; line-height: 18px; text-shadow: 0 1px 1px #0009; }
-  .window-label.selected { background: rgb(28 89 163 / 92%); }
+  .window-label.selected { background: var(--appearance-selection, rgb(28 89 163 / 92%)); color: var(--appearance-selection-ink, white); }
   .window-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .minimized { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d5e3f6; font-size: 10px; }
+  .window-label.selected .minimized { color: var(--appearance-selection-ink, #d5e3f6); }
   .empty-state { position: absolute; z-index: 7002; top: 50%; left: 50%; transform: translate(-50%, -50%); box-sizing: border-box; width: min(360px, 100%); max-height: 100%; overflow: hidden; margin: 0; padding: min(10px, 2%) min(16px, 3%); text-align: center; overflow-wrap: anywhere; font-size: clamp(12px, calc(var(--overview-width) / 20), 24px); line-height: 1.3; font-weight: 400; }
 </style>
