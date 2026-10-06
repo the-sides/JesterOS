@@ -4,6 +4,13 @@
   let panel = $state(null);
   let error = $state('');
   let replacement = $state(null);
+  let tagDraft = $state.raw(null);
+  const tagsValue = $derived.by(() => {
+    if (tagDraft?.ownerId !== dialog.id) return dialog.tags.join(', ');
+    const same = values => values.length === dialog.tags.length && values.every((tag, index) => tag === dialog.tags[index]);
+    return same(tagDraft.canonical) || same(tagDraft.value.split(',').map(tag => tag.trim()).filter(Boolean))
+      ? tagDraft.value : dialog.tags.join(', ');
+  });
   const records = $derived(Array.isArray(files) ? files : files?.files ?? []);
   const live = $derived(records.filter(file => !isTrashed({ files: records }, file) && file.id !== 'trash'));
   function writable(file) {
@@ -77,7 +84,9 @@
   <header><strong>Export {dialog.format === 'pdf' ? 'PDF' : 'Markdown'}</strong><span>{dialog.title}</span></header>
   <div class="body">
     <label>Save As<input data-file-dialog-control="name" maxlength="255" value={dialog.name} disabled={dialog.busy} oninput={event => configure({ name: event.currentTarget.value })} /></label>
-    <label>Tags<input data-file-dialog-control="tags" value={dialog.tags.join(', ')} placeholder="Separate with commas" disabled={dialog.busy} onchange={event => configure({ tags: event.currentTarget.value.split(',').map(tag => tag.trim()).filter(Boolean) })} /></label>
+    <label>Tags<input data-file-dialog-control="tags" maxlength="16512" value={tagsValue} placeholder="Separate with commas" disabled={dialog.busy}
+      oninput={event => { tagDraft = { ownerId: dialog.id, canonical: [...dialog.tags], value: event.currentTarget.value }; }}
+      onchange={event => configure({ tags: event.currentTarget.value.split(',').map(tag => tag.trim()).filter(Boolean) })} /></label>
     <label>Where<select data-file-dialog-control="folder" value={dialog.folderId} disabled={dialog.busy} onchange={event => configure({ folderId: event.currentTarget.value })}>
       {#each folders as folder (folder.id)}<option value={folder.id}>{folder.name}</option>{/each}
     </select></label>

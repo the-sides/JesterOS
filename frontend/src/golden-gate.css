@@ -3,7 +3,7 @@
 :root[data-os-renderer='golden-gate'] { --golden-gate-font: 'Golden Gate UI', sans-serif; font-family: var(--golden-gate-font); font-size: 13px; color: var(--appearance-ink, #252529); font-synthesis: none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 :root[data-os-renderer='golden-gate'].native-apple-font { --golden-gate-font: -apple-system, BlinkMacSystemFont, 'Golden Gate UI', sans-serif; }
 .golden-gate-desktop { position: relative; width: 100%; height: 100svh; overflow: hidden; background: #756956 center / cover no-repeat; font-family: var(--golden-gate-font); }
-.golden-gate-menu-bar { position: relative; z-index: 1001; height: 28px; padding: 0 19px; display: flex; justify-content: space-between; align-items: center; color: var(--menu-ink, white); background: transparent; font-size: 13px; text-shadow: 0 1px 3px #0005; }
+.golden-gate-menu-bar { position: relative; z-index: 21000; height: 28px; padding: 0 19px; display: flex; justify-content: space-between; align-items: center; color: var(--menu-ink, white); background: transparent; font-size: 13px; text-shadow: 0 1px 3px #0005; }
 .golden-gate-menu-headings, .golden-gate-status-items { display: flex; align-items: center; height: 100%; white-space: nowrap; }
 .golden-gate-menu-headings { gap: 20px; min-width: 0; flex: 1; margin-right: 18px; }
 .golden-gate-status-items { gap: 19px; font-weight: 550; font-size: 12px; }

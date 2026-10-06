@@ -55,6 +55,12 @@
   import GoldenGatePrintDialog from './GoldenGatePrintDialog.svelte';
   import GoldenGatePrintCenter from './GoldenGatePrintCenter.svelte';
   import { createFinderFileCommands } from './finder-file-commands.js';
+  import { createTextEditingCommands, noteTextControlValue } from './text-editing-commands.js';
+  import { createFinderEditing } from './finder-editing.js';
+  import { createTextAssistance } from './text-assistance.js';
+  import { createTextToolsCommands } from './text-tools-commands.js';
+  import { selectNativeText, documentControlRange, controlDocumentOffset } from './text-native-selection.js';
+  import { createNativeClipboardCommands } from './native-clipboard.js';
   import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
@@ -77,6 +83,7 @@
   const hasMenuBar = profile.capabilities.includes('shell.menu-bar');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
+  const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
@@ -106,6 +113,14 @@
   let fileDialogState = $state({ current: null });
   let fileDialogControls = $state();
   let fileDialogController = $state();
+  let clipboardState = $state({ kind: 'empty', text: '', fileIds: [] });
+  let textToolsState = $state({ find: null, panel: null, spelling: null, liveSpelling: null, error: null });
+  let editingEpoch = $state(0), dictionaryStatus = $state('idle');
+  let textEditing, finderEditing, nativeClipboard;
+  let textTools = $state.raw(null);
+  let editingPreferenceRevision = 0, fileHistoryBatch = 0;
+  const textAssistance = hasEditWorkflows ? createTextAssistance() : null;
+  const textInputSelections = new WeakMap();
   $effect(() => {
     if (hasFileWorkflows && !foreground) fileDialogController?.suspend();
   });
@@ -279,6 +294,7 @@
   let messagesState = $state(initialData.messages);
   let appearanceState = $state(macDesktop ? initialData.appearance ?? appearanceDefaults(profile) : undefined);
   let printingState = $state(hasFileWorkflows ? initialData.printing : undefined);
+  let editingPreferences = $state(hasEditWorkflows ? initialData.editing : undefined);
   $effect(() => {
     if (appearanceOwner) return applyAppearance(document.documentElement, profile, macDesktop ? appearanceState
       : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
@@ -640,6 +656,33 @@
     isVisible: () => sceneInteractionsAvailable() && !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
       && windows.some(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window)),
   }));
+  if (hasEditWorkflows) {
+    textEditing = createTextEditingCommands(notesState, clipboardState, {
+      available: windowInteractionsAvailable, dataAvailable: sceneCoreAvailable, getSource: ownedTextSource,
+      prepare: target => prepareOwnedText(target),
+      finishSelection: finishOwnedTextSelection,
+      canCommitNote: (note, text) => workflowTextSize() - note.text.length + text.length - notesState.search.length <= 4 * 1024 * 1024,
+      canCommitSearch: query => workflowTextSize() - notesState.search.length + query.length <= 4 * 1024 * 1024,
+      onChanged: () => editingEpoch++,
+    });
+    Object.assign(handlers, textEditing.handlers);
+    const ownedTextTools = createTextToolsCommands(textToolsState, editingPreferences, clipboardState, textAssistance, {
+      available: windowInteractionsAvailable, getDocument: ownedTextDocument, getNotesWindow: ownedNotesWindow,
+      getToolInput: ownedToolInput, focusTool: focusOwnedTool, finishToolSelection: finishToolSelection,
+      prepareDocument: target => prepareOwnedText({ ...target, control: 'body' }),
+      revealMatch: revealNoteMatch, invoke: (command, target, payload, label) => command === 'notes.edit'
+        ? textEditing.editDocument(target.noteId, payload.text, label) : handlers[command](target, payload),
+      captureReturn: () => captureNativeFocus(),
+      isReturnCurrent: textToolReturnCurrent,
+      getDocumentSelection: documentSelectionTarget,
+      prepareAssistance: prepareTextDictionary, onPreferencesChanged: () => editingPreferenceRevision++,
+      restoreReturn: restoreTextToolReturn,
+      canCommitPreferences: next => workflowTextSize() - persistentStringUnits(editingPreferences) + persistentStringUnits(next) <= 4 * 1024 * 1024,
+      onChanged: () => editingEpoch++,
+    });
+    textTools = ownedTextTools;
+    Object.assign(handlers, ownedTextTools.handlers);
+  }
   if (hasFileWorkflows) {
     let fontBytes;
     const fontLoader = () => fontBytes ??= (async () => {
@@ -685,18 +728,27 @@
     });
     fileDialogController = fileDialog;
     Object.assign(handlers, fileDialog.handlers);
-    Object.assign(handlers, createFinderFileCommands({
+    const finderContext = {
       files: macFiles, available: windowInteractionsAvailable,
       getWindow: windowId => activeAppId === 'finder' && activeWindowId === windowId
         ? windows.find(window => window.id === windowId && window.appId === 'finder' && !window.utilityKind
           && !window.minimized && windowPresented(window)) : null,
       canAddFiles: canAddWorkflowFiles,
+      canReplaceFiles: canReplaceWorkflowFiles,
       openFile: fileId => handlers['desktop.open']({ fileId }, {}),
       navigate: (windowId, folderId) => handlers['desktop.folder.navigate']({ windowId, folderId }, {}),
       openInfo: fileId => openDesktopUtility('desktop-info', fileId),
       getDesktopSelection: () => activeAppId === 'finder' && activeWindowId === null ? desktopState.selectedFileIds : null,
       selectDesktop: fileId => { desktopState.selectedFileIds = [fileId]; desktopState.selectionAnchorId = fileId; },
-    }));
+    };
+    if (hasEditWorkflows) {
+      finderEditing = createFinderEditing({ ...finderContext, clipboard: clipboardState, onChanged: () => editingEpoch++,
+        filesChanged: reconcileFinderLocations,
+        selectDesktop: fileIds => { desktopState.selectedFileIds = [...fileIds]; desktopState.selectionAnchorId = fileIds[0] ?? null; } });
+      finderContext.editingHistory = finderEditing;
+      Object.assign(handlers, finderEditing.handlers);
+    }
+    Object.assign(handlers, createFinderFileCommands(finderContext));
     handlers['notes.document.create'] = async (target, payload) => {
       if (Object.keys(target).length || Object.keys(payload).length)
         return rejected('invalid_arguments', 'Use an empty New Note target and payload.');
@@ -717,6 +769,13 @@
       return created.status === 'applied'
         ? { status: 'applied', target: { noteId: created.target.noteId, windowId: opened.target.windowId } } : created;
     };
+  }
+  if (hasEditWorkflows) {
+    nativeClipboard = createNativeClipboardCommands(clipboardState, {
+      getControl: ownedDraftControl, prepare: prepareOwnedDraft, finish: finishOwnedDraft,
+      onChanged: () => editingEpoch++,
+    });
+    Object.assign(handlers, nativeClipboard.handlers);
   }
   if (hasApplicationMenu) Object.assign(handlers, createApplicationMenuCommands({
     profile, notes: notesState,
@@ -763,6 +822,7 @@
       ...(messagesState ? { messages: messagesState } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
+      ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
       ...(nativeState ? { native: nativeState } : {}),
       ...(hasRetention ? { retention: { closedWindows, automaticPersistence: false, reopen: 'last-ordinary-window-current-desktop' } } : {}),
     }),
@@ -912,6 +972,7 @@
         jobs: printingState.jobs.map(({ id, title, status, copies, pageCount, pageFrom, pageTo, printedPages }) =>
           ({ jobId: id, title, status, copies, pageCount, pageFrom, pageTo, printedPages })),
       } } : {}),
+      ...(hasEditWorkflows ? { editing: editingTargets() } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
 
@@ -1170,7 +1231,46 @@
     return changed;
   }
 
+  function finderRecordMutation(label, mutate) {
+    if (!hasEditWorkflows || !finderEditing || fileHistoryBatch) return mutate();
+    const before = finderEditing.capture();
+    const window = activeAppId === 'finder' ? windows.find(window => window.id === activeWindowId
+      && window.appId === 'finder' && !window.utilityKind && window.folderId) : null;
+    const owner = { windowId: window?.id ?? null, folderId: window?.folderId ?? 'desktop',
+      selectionBefore: [...(window?.finderSelectedFileIds ?? desktopState.selectedFileIds)] };
+    let result;
+    fileHistoryBatch++;
+    try { result = mutate(); } finally { fileHistoryBatch--; }
+    if (result.status === 'applied') {
+      finderEditing.recordChanged(label, before, owner, result.target.fileIds ?? (result.target.fileId ? [result.target.fileId] : undefined));
+      reconcileFinderLocations(before);
+    }
+    return result;
+  }
+  function reconcileFinderLocations(before) {
+    const previous = new Map(before.map(file => [file.id, file]));
+    const live = liveMacFileRecords(macFiles), byId = new Map(live.map(file => [file.id, file]));
+    for (const window of windows) {
+      if (window.appId === 'finder' && !window.utilityKind && window.folderId) {
+        let folderId = window.folderId;
+        const seen = new Set();
+        while (folderId && !byId.has(folderId) && !seen.has(folderId)) {
+          seen.add(folderId); folderId = previous.get(folderId)?.parentId;
+        }
+        if (folderId && byId.has(folderId) && folderId !== window.folderId) {
+          window.folderId = folderId; window.finderSelectedFileIds = [];
+        }
+        if (byId.has(window.folderId)) {
+          window.title = byId.get(window.folderId).name;
+          window.finderSelectedFileIds = (window.finderSelectedFileIds ?? []).filter(id => byId.get(id)?.parentId === window.folderId);
+        }
+      }
+      const file = byId.get(window.fileId);
+      if (file) window.title = window.utilityKind === 'desktop-info' ? `${file.name} Info` : file.name;
+    }
+  }
   function renameDesktopItem(fileId, name) {
+    return finderRecordMutation('Rename', () => {
     const result = desktopFileCommands['win11.files.rename']({ fileId }, { name });
     if (result.status === 'applied' && macDesktop)
       for (const window of windows) if (window.folderId === fileId || window.fileId === fileId) {
@@ -1178,9 +1278,11 @@
         window.title = window.utilityKind === 'desktop-info' ? `${name} Info` : name;
       }
     return result;
+    });
   }
 
   function moveDesktopItems(fileIds, folderId) {
+    return finderRecordMutation('Move Items', () => {
     if (macDesktop && liveFile(macFiles, folderId)?.readOnly)
       return rejected('disabled', 'The simulated installed-application location is read-only.');
     if (macDesktop && folderId === 'trash') return rejected('disabled', 'Trash deletion and restoration belong to the simulated filesystem lifecycle; this desktop slice moves to ordinary folders only.');
@@ -1193,8 +1295,10 @@
       for (const move of moves) if (move.parentId !== folderId)
         liveFile(macFiles, move.fileId).addedAt = nextMacFileTimestamp(macFiles);
     return result;
+    });
   }
   function createDesktopFolder(name, fileIds = []) {
+    return finderRecordMutation(fileIds.length ? 'New Folder with Selection' : 'New Folder', () => {
     const items = getDesktopItems();
     if (fileIds.some(fileId => !items.some(item => item.id === fileId))) return rejected('not_found', 'A grouping source no longer exists.');
     if (fileIds.some(fileId => !items.find(item => item.id === fileId).movable)) return rejected('disabled', 'Protected system entries cannot be grouped.');
@@ -1223,12 +1327,15 @@
       });
     }
     return result;
+    });
   }
   function trashDesktopItems(fileIds) {
+    return finderRecordMutation('Move to Trash', () => {
     const items = getDesktopItems();
     if (fileIds.some(fileId => !items.some(item => item.id === fileId))) return rejected('not_found', 'A trash source no longer exists.');
     if (fileIds.some(fileId => !items.find(item => item.id === fileId).movable)) return rejected('disabled', 'Protected system entries cannot be trashed.');
     return trashVirtualFiles(desktopFileStore, fileIds, macDesktop ? ['disk', 'desktop', 'downloads', 'trash'] : undefined);
+    });
   }
   function windowApplication(window) {
     const app = applications[window.appId], utility = APPLICATION_MENU_UTILITY_SIZES[window.utilityKind];
@@ -1316,6 +1423,314 @@
     const body = managedWindowElement(windowId).querySelector('[data-notes-control="body"]');
     body.focus({ preventScroll: true });
     return document.activeElement === body;
+  }
+  function ownedNotesWindow(windowId) {
+    if (!hasEditWorkflows || !windowInteractionsAvailable() || activeAppId !== 'notes' || activeWindowId !== windowId
+      || isAppHidden('notes') || pendingQuitAppIds.includes('notes')) return null;
+    return windows.find(window => window.id === windowId && window.appId === 'notes' && !window.utilityKind
+      && !window.minimized && windowPresented(window)) ?? null;
+  }
+  function ownedTextDocument(target) {
+    const window = ownedNotesWindow(target.windowId);
+    const note = window && visibleNotes(notesState).find(note => note.id === target.noteId && note.id === notesState.selectedId);
+    return note ? { window, note } : null;
+  }
+  function ownedTextSource(target) {
+    if (!ownedNotesWindow(target.windowId) || !['title', 'body', 'search'].includes(target.control)) return null;
+    const note = target.control === 'search' ? null : ownedTextDocument(target)?.note;
+    if (target.control !== 'search' && !note) return null;
+    const node = managedWindowElement(target.windowId)?.querySelector(`[data-notes-control="${target.control}"]`);
+    const value = target.control === 'search' ? notesState.search.replace(/[\r\n]/g, '') : noteTextControlValue(note, target.control);
+    if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length
+      || node.value !== value || (note && node.dataset.noteId !== note.id)) return null;
+    return { note: note ?? undefined, value, readOnly: Boolean(node.readOnly || note?.deleted),
+      selection: { start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection ?? 'none' } };
+  }
+  async function prepareOwnedText(target) {
+    if (!ownedTextSource(target)) return false;
+    const node = managedWindowElement(target.windowId).querySelector(`[data-notes-control="${target.control}"]`);
+    node.focus({ preventScroll: true });
+    return document.activeElement === node && Boolean(ownedTextSource(target));
+  }
+  async function finishOwnedTextSelection(target, range, revision) {
+    await tick(); await tick();
+    const source = ownedTextSource(target);
+    if (!source || (source.note ? source.note.updatedAt : textEditing.targets().searchRevision) !== revision) return false;
+    const node = managedWindowElement(target.windowId).querySelector(`[data-notes-control="${target.control}"]`);
+    return selectNativeText(node, range);
+  }
+  function textSelectionTarget() {
+    const token = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null;
+    const node = token?.node ?? document.activeElement;
+    const control = node?.dataset?.notesControl;
+    if (!['title', 'body', 'search'].includes(control)) return null;
+    const windowId = node.closest('[data-window-id]')?.dataset.windowId;
+    const noteId = control === 'search' ? undefined : token?.noteId ?? node.dataset.noteId;
+    if (control !== 'search' && noteId !== node.dataset.noteId) return null;
+    const source = ownedTextSource({ windowId, control, ...(noteId ? { noteId } : {}) });
+    if (!source) return null;
+    if (token && (token.noteRevision !== (source.note?.updatedAt ?? textEditing.targets().searchRevision) || token.sourceValue !== source.value)) return null;
+    const range = token?.selection ?? source.selection;
+    if (!Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end) || range.start < 0
+      || range.start > range.end || range.end > source.value.length) return null;
+    return { windowId, control, ...(noteId ? { noteId } : {}), revision: source.note?.updatedAt ?? textEditing.targets().searchRevision,
+      start: range.start, end: range.end };
+  }
+  function ownedToolInput(target) {
+    if (!ownedNotesWindow(target.windowId)) return null;
+    const node = sceneRoot?.querySelector(`[data-text-tool-window="${target.windowId}"] [data-text-tool-control="${target.control}"]`);
+    if (!node?.isConnected || node.disabled || node.readOnly || node.closest('[inert]') || !node.getClientRects().length
+      || typeof node.value !== 'string' || typeof node.selectionStart !== 'number') return null;
+    const before = textInputSelections.get(node);
+    return { value: node.value, start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection ?? 'none',
+      selection: { start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection ?? 'none' },
+      before: before ? { value: before.value, selection: { start: before.start, end: before.end, direction: before.direction } } : null };
+  }
+  function nativeToolTarget() {
+    const token = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null;
+    const node = token?.node ?? document.activeElement, control = node?.dataset?.textToolControl;
+    if (!['query', 'replacement', 'word'].includes(control) || !node.isConnected || !sceneRoot?.contains(node)) return null;
+    const windowId = node.closest('[data-text-tool-window]')?.dataset.textToolWindow;
+    const model = control === 'word' ? textToolsState.spelling : textToolsState.find;
+    const owner = model && ownedTextDocument({ windowId, noteId: model.noteId });
+    if (!owner || model.windowId !== windowId || (control === 'word' ? model.revision !== owner.note.updatedAt : !model.open)) return null;
+    const source = ownedToolInput({ windowId, control }), value = control === 'word' ? model.replacement : model[control];
+    if (!source || source.value !== value || token && (token.toolId !== model.toolId || token.sourceValue !== value)) return null;
+    const range = token?.selection ?? source.selection;
+    return { windowId, control, toolId: model.toolId, value, start: range.start, end: range.end };
+  }
+  function textToolReturnCurrent(token) {
+    const node = token?.node;
+    return Boolean(node?.isConnected && sceneRoot?.contains(node) && document.activeElement === node
+      && (token.sourceValue === undefined || token.sourceValue === node.value)
+      && (!token.selection || token.selection.start === node.selectionStart && token.selection.end === node.selectionEnd));
+  }
+  async function focusOwnedTool(kind, control, returnToken) {
+    await tick(); await tick();
+    const windowId = kind === 'find' ? textToolsState.find?.windowId : textToolsState.panel?.windowId;
+    if (!ownedNotesWindow(windowId)) return false;
+    const pane = sceneRoot.querySelector(`[data-text-panel-kind="${kind}"][data-text-tool-window="${windowId}"]`);
+    const node = control === 'panel' ? pane : pane?.querySelector(`[data-text-tool-control="${control}"]`);
+    if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return false;
+    if (returnToken && !textToolReturnCurrent(returnToken)) return Boolean(pane?.contains(document.activeElement));
+    node.focus({ preventScroll: true });
+    return document.activeElement === node;
+  }
+  async function finishToolSelection(target, range) {
+    await tick(); await tick();
+    if (!ownedToolInput(target)) return false;
+    const node = sceneRoot.querySelector(`[data-text-tool-window="${target.windowId}"] [data-text-tool-control="${target.control}"]`);
+    return selectNativeText(node, range);
+  }
+  async function revealNoteMatch(target, range) {
+    const source = ownedTextDocument(target);
+    if (!source) return false;
+    const revision = source.note.updatedAt;
+    const field = documentControlRange(source.note.text, range.start, range.end);
+    return finishOwnedTextSelection({ windowId: target.windowId, noteId: target.noteId, control: field.control }, field, revision);
+  }
+  function editingTargets() {
+    editingEpoch;
+    const selection = textSelectionTarget(), source = selection && ownedTextSource(selection);
+    const finderWindow = activeAppId === 'finder' && activeWindowId !== null ? { windowId: activeWindowId } : {};
+    const tools = textTools.targets(), tool = nativeToolTarget(), native = nativeDraftTarget();
+    const draftKey = tool ? tool.control === 'word' ? 'spelling:replacement' : `find:${tool.control}` : null;
+    const draft = draftKey && tools.drafts.find(history => history.key === draftKey);
+    const body = ownedTextSource({ windowId: activeWindowId, noteId: notesState.selectedId, control: 'body' });
+    return $state.snapshot({ preferences: editingPreferences, ...textEditing.targets(), selection,
+      selectionValueLength: source?.value.length ?? 0, selectionReadOnly: source?.readOnly ?? true,
+      documentReadOnly: body?.readOnly ?? true, documentAvailable: Boolean(body), dictionaryStatus,
+      finder: finderEditing?.targets(finderWindow) ?? null, tools, tool, native,
+      toolHistory: { undo: Boolean(draft?.undo), redo: Boolean(draft?.redo) }, nativeHistory: nativeClipboard?.targets(native) ?? null,
+      nativeTools: [...(sceneRoot?.querySelectorAll('[data-text-tool-control]') ?? [])]
+        .filter(node => node.isConnected && !node.disabled && !node.closest('[inert]') && node.getClientRects().length)
+        .map(node => ({ windowId: node.closest('[data-text-tool-window]')?.dataset.textToolWindow, control: node.dataset.textToolControl })) });
+  }
+  function observeTextBeforeInput(event) {
+    const node = event.target;
+    if (!hasEditWorkflows || !foreground || !sceneRoot?.contains(node) || typeof node.selectionStart !== 'number'
+      || !(node.dataset.notesControl || node.dataset.textToolControl || node.hasAttribute('data-desktop-rename')
+        || ['name', 'tags'].includes(node.dataset.fileDialogControl))) return;
+    textInputSelections.set(node, { value: node.value, start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection ?? 'none' });
+  }
+  function documentSelectionTarget(owner) {
+    const selected = textSelectionTarget();
+    if (!selected || !['title', 'body'].includes(selected.control) || selected.windowId !== owner.windowId || selected.noteId !== owner.noteId) return null;
+    const source = ownedTextDocument(owner);
+    return source ? { ...owner, revision: source.note.updatedAt,
+      start: controlDocumentOffset(source.note.text, selected.control, selected.start),
+      end: controlDocumentOffset(source.note.text, selected.control, selected.end) } : null;
+  }
+  async function restoreTextToolReturn(token, target, revision, guard = () => true) {
+    await tick(); await tick();
+    const source = ownedTextDocument(target), node = token?.node;
+    if (!guard() || !source || !node?.isConnected || !sceneRoot.contains(node) || node.closest('[inert]') || !node.getClientRects().length) return false;
+    if (token.toolId && token.toolId !== (node.dataset.textToolControl === 'word' ? textToolsState.spelling : textToolsState.find)?.toolId) return false;
+    if (['title', 'body'].includes(node.dataset.notesControl) && node.dataset.noteId !== target.noteId) return false;
+    if (token.selection && typeof node.setSelectionRange === 'function') {
+      const range = source.note.updatedAt === revision && token.sourceValue === node.value ? token.selection
+        : { start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection };
+      return selectNativeText(node, range);
+    }
+    node.focus({ preventScroll: true });
+    return document.activeElement === node;
+  }
+  async function prepareTextDictionary() {
+    if (dictionaryStatus === 'ready') return true;
+    dictionaryStatus = 'loading';
+    try {
+      await textAssistance.ready();
+      if (disposed) return false;
+      dictionaryStatus = 'ready'; textToolsState.error = null;
+      return true;
+    } catch {
+      if (!disposed) {
+        dictionaryStatus = 'failed';
+        textToolsState.error = 'The bundled English spelling dictionary could not be loaded. Turn off automatic spelling correction to continue typing.';
+      }
+      return false;
+    }
+  }
+  $effect(() => {
+    if (hasEditWorkflows && foreground && dictionaryStatus === 'idle'
+      && (editingPreferences.checkSpellingWhileTyping || editingPreferences.correctSpellingAutomatically)
+      && ownedNotesWindow(activeWindowId)) void prepareTextDictionary();
+  });
+  $effect(() => {
+    if (!hasEditWorkflows || dictionaryStatus !== 'ready' || !editingPreferences.checkSpellingWhileTyping || !ownedNotesWindow(activeWindowId)) return;
+    const note = visibleNotes(notesState).find(note => note.id === notesState.selectedId);
+    if (!note) return;
+    const owner = { windowId: activeWindowId, noteId: note.id, revision: note.updatedAt };
+    const learned = editingPreferences.learnedWords;
+    learned.length;
+    textToolsState.spellingEpoch;
+    const timer = setTimeout(() => {
+      if (!disposed && dictionaryStatus === 'ready' && editingPreferences.checkSpellingWhileTyping)
+        void textTools.handlers['text.spelling.check'](owner, { maxIssues: 500, suggestions: false });
+    }, 160);
+    return () => clearTimeout(timer);
+  });
+  function ownedDraftControl(target) {
+    if (!hasEditWorkflows || !foreground || disposed) return null;
+    let node, maxLength, commit;
+    if (target.surface === 'file-dialog') {
+      const dialog = fileDialogState.current;
+      if (!dialog || dialog.id !== target.ownerId || dialog.busy || !['pdf', 'markdown'].includes(dialog.format)
+        || !['name', 'tags'].includes(target.control) || !fileWorkflowsAvailable()
+        || activeAppId !== 'notes' || activeWindowId !== dialog.windowId) return null;
+      node = sceneRoot?.querySelector(`[data-file-dialog-id="${CSS.escape(dialog.id)}"] input[data-file-dialog-control="${target.control}"]`);
+      maxLength = target.control === 'name' ? 255 : 64 * 258;
+      commit = value => handlers['fileDialog.configure']({ dialogId: dialog.id }, target.control === 'name' ? { name: value }
+        : { tags: value.split(',').map(tag => tag.trim()).filter(Boolean) });
+    } else if (target.surface === 'desktop-rename') {
+      if (target.control !== 'name' || desktopState.rename?.fileId !== target.ownerId || !windowInteractionsAvailable()
+        || activeAppId !== 'finder' || activeWindowId !== null) return null;
+      node = sceneRoot?.querySelector('[data-desktop-rename]');
+      maxLength = 255;
+      commit = value => handlers['desktop.rename.change']({}, { name: value });
+    } else return null;
+    if (!node?.isConnected || node.disabled || node.readOnly || node.closest('[inert]') || !node.getClientRects().length
+      || typeof node.value !== 'string' || typeof node.selectionStart !== 'number') return null;
+    return { node, value: node.value, start: node.selectionStart, end: node.selectionEnd, maxLength, commit };
+  }
+  function nativeDraftTarget(node = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus?.node : document.activeElement) {
+    if (!node?.isConnected || !sceneRoot?.contains(node)) return null;
+    const target = node.hasAttribute('data-desktop-rename') && desktopState.rename
+      ? { surface: 'desktop-rename', ownerId: desktopState.rename.fileId, control: 'name' }
+      : node.closest('[data-file-dialog-id]') && ['name', 'tags'].includes(node.dataset.fileDialogControl)
+        ? { surface: 'file-dialog', ownerId: node.closest('[data-file-dialog-id]').dataset.fileDialogId, control: node.dataset.fileDialogControl } : null;
+    const source = target && ownedDraftControl(target);
+    const token = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null;
+    if (!source || source.node !== node || token?.node === node && (token.sourceValue !== source.value
+      || token.nativeDraft?.ownerId !== target.ownerId || token.nativeDraft?.surface !== target.surface || token.nativeDraft?.control !== target.control)) return null;
+    const range = token?.node === node ? token.selection : source;
+    return { ...target, value: source.value, start: range.start, end: range.end };
+  }
+  async function prepareOwnedDraft(target) {
+    const source = ownedDraftControl(target);
+    if (!source) return false;
+    source.node.focus({ preventScroll: true });
+    return document.activeElement === source.node && ownedDraftControl(target)?.node === source.node;
+  }
+  async function finishOwnedDraft(target, range, value) {
+    await tick(); await tick();
+    const source = ownedDraftControl(target);
+    if (!source) return false;
+    // Tags are a CSV draft over the canonical array. Keep the user's equivalent
+    // spelling/caret when the canonical setter commits equivalent tags.
+    if (target.surface === 'file-dialog' && target.control === 'tags' && source.value !== value) {
+      const tags = value.split(',').map(tag => tag.trim()).filter(Boolean);
+      const actual = fileDialogState.current.tags;
+      if (tags.length !== actual.length || tags.some((tag, index) => tag !== actual[index])) return false;
+      source.node.value = value;
+    } else if (source.value !== value) return false;
+    return selectNativeText(source.node, range);
+  }
+  function observeDraftInput(event) {
+    const target = nativeDraftTarget(event.target), before = textInputSelections.get(event.target);
+    if (!target || !before) return;
+    nativeClipboard.recordInput(target, before.value, target.value, { start: before.start, end: before.end, direction: before.direction },
+      { start: target.start, end: target.end, direction: event.target.selectionDirection ?? 'none' });
+  }
+  function observeNativeSelection(event) {
+    if (!hasEditWorkflows || !foreground || !sceneRoot?.contains(event.target)) return;
+    editingEpoch++;
+    const panel = textToolsState.panel;
+    if (panel?.kind === 'substitutions' && ['title', 'body'].includes(event.target?.dataset?.notesControl)) {
+      const selection = documentSelectionTarget({ windowId: panel.windowId, noteId: panel.noteId });
+      if (selection) panel.selection = selection;
+    }
+  }
+  async function editNativeText(event, windowId, control) {
+    const node = event.currentTarget;
+    if (!ownedNotesWindow(windowId) || !['title', 'body', 'search'].includes(control)) return;
+    const noteId = control === 'search' ? undefined : node.dataset.noteId;
+    const note = noteId && ownedTextDocument({ windowId, noteId })?.note;
+    if (control !== 'search' && (!note || note.deleted)) return;
+    const before = control === 'search' ? notesState.search.replace(/[\r\n]/g, '') : noteTextControlValue(note, control);
+    const entered = node.value, cursor = node.selectionEnd;
+    if (event.isComposing) {
+      const first = note?.text.split('\n', 1)[0], newline = note?.text.indexOf('\n');
+      const body = newline >= 0 ? note.text.slice(newline + 1) : '';
+      if (control === 'search') await commands.execute({ command: 'notes.search', payload: { query: entered } });
+      else {
+        const previous = textInputSelections.get(node);
+        const saved = previous?.value === before ? previous : { start: Math.min(cursor, before.length), end: Math.min(cursor, before.length), direction: 'none' };
+        textEditing.editDocument(noteId, control === 'title' ? entered + (newline >= 0 ? `\n${body}` : '') : `${first}\n${entered}`, 'typing',
+          { control, before: { start: saved.start, end: saved.end, direction: saved.direction },
+            after: { start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection ?? 'none' } });
+      }
+      return;
+    }
+    const previous = textInputSelections.get(node);
+    let start = 0, suffix = 0;
+    while (start < before.length && start < entered.length && before[start] === entered[start]) start++;
+    while (suffix < before.length - start && suffix < entered.length - start
+      && before[before.length - suffix - 1] === entered[entered.length - suffix - 1]) suffix++;
+    const oldRange = previous?.value === before ? previous : { start, end: before.length - suffix, direction: 'none' };
+    node.value = before; node.setSelectionRange(oldRange.start, oldRange.end, oldRange.direction);
+    if (entered === before) return;
+    const revision = note?.updatedAt ?? textEditing.targets().searchRevision;
+    const owner = { windowId, control, ...(noteId ? { noteId } : {}), revision };
+    const preferences = { ...editingPreferences }, preferenceRevision = editingPreferenceRevision;
+    let corrected;
+    try { corrected = control === 'search' ? { text: entered, cursor, changed: false }
+      : await textAssistance.correctInput(entered, cursor, preferences, preferences.learnedWords); }
+    catch { textToolsState.error = 'The bundled English spelling dictionary could not be loaded. Your text was not changed.'; return; }
+    if (control === 'body' ? corrected.text.includes('\r') : /[\r\n]/u.test(corrected.text)) {
+      const normalize = value => control === 'body' ? value.replace(/\r\n?/g, '\n') : value.replace(/[\r\n]/g, '');
+      corrected = { ...corrected, text: normalize(corrected.text), cursor: normalize(corrected.text.slice(0, corrected.cursor)).length };
+    }
+    const current = ownedTextSource(owner);
+    if (!current || editingPreferenceRevision !== preferenceRevision || (current.note?.updatedAt ?? textEditing.targets().searchRevision) !== revision
+      || current.value !== before || current.selection.start !== oldRange.start || current.selection.end !== oldRange.end) return;
+    start = 0; suffix = 0;
+    while (start < before.length && start < corrected.text.length && before[start] === corrected.text[start]) start++;
+    while (suffix < before.length - start && suffix < corrected.text.length - start
+      && before[before.length - suffix - 1] === corrected.text[corrected.text.length - suffix - 1]) suffix++;
+    const result = await commands.execute({ command: 'text.replace', target: { ...owner, start, end: before.length - suffix },
+      payload: { text: corrected.text.slice(start, corrected.text.length - suffix), label: 'typing', cursor: corrected.cursor } });
+    textToolsState.error = result.status === 'rejected' ? result.error.message : null;
   }
   function applicationMenuTargets() {
     return { preferences: { notes: { ...notesState.preferences } }, selection: applicationServiceSelection(),
@@ -1573,8 +1988,15 @@
     const selector = attributes.length
       ? node.localName + attributes.map(attribute => `[${attribute.name}="${CSS.escape(attribute.value)}"]`).join('')
       : node.id ? `#${CSS.escape(node.id)}` : null;
+    const draft = hasEditWorkflows ? nativeDraftTarget(node) : null;
     return { node, selector, windowId: node.closest('[data-window-id]')?.dataset.windowId,
       ...(['title', 'body'].includes(node.dataset?.notesControl) ? { noteId: node.dataset.noteId } : {}),
+      ...(hasEditWorkflows ? { toolPanel: node.closest('[data-text-panel-kind]')?.dataset.textPanelKind } : {}),
+      ...(draft ? { nativeDraft: { ownerId: draft.ownerId, surface: draft.surface, control: draft.control } } : {}),
+      ...(hasEditWorkflows && typeof node.selectionStart === 'number' ? { sourceValue: node.value,
+        ...(node.dataset.notesControl ? { noteRevision: node.dataset.notesControl === 'search' ? textEditing.targets().searchRevision
+          : notesState.notes.find(note => note.id === node.dataset.noteId)?.updatedAt } : {}),
+        ...(node.dataset.textToolControl ? { toolId: (node.dataset.textToolControl === 'word' ? textToolsState.spelling : textToolsState.find)?.toolId } : {}) } : {}),
       selection: typeof node.selectionStart === 'number'
         ? { start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection } : null };
   }
@@ -1585,6 +2007,11 @@
       const scope = token?.windowId ? managedWindowElement(token.windowId) : sceneRoot;
       const original = token?.node?.isConnected && sceneRoot?.contains(token.node) ? token.node
         : token?.selector && scope ? scope.querySelector(token.selector) : null;
+      if (token?.nativeDraft) {
+        const draft = original && nativeDraftTarget(original);
+        if (!draft || draft.ownerId !== token.nativeDraft.ownerId || draft.surface !== token.nativeDraft.surface
+          || draft.control !== token.nativeDraft.control || draft.value !== token.sourceValue) return false;
+      }
       if (original?.isConnected && typeof original.focus === 'function' && !original.closest('[inert]')
         && original.getClientRects().length && getComputedStyle(original).visibility === 'visible') {
         original.focus({ preventScroll: true });
@@ -1636,7 +2063,7 @@
   }
   function fileWorkflowOtherTextSize() {
     return persistentStringUnits({ version: 1, notes: null, files: null, printing: null,
-      messages: messagesState, appearance: appearanceState, dock: persistentDockData() });
+      editing: editingPreferences, messages: messagesState, appearance: appearanceState, dock: persistentDockData() });
   }
   function workflowTextSize() {
     return fileWorkflowOtherTextSize() + persistentStringUnits(notesState) + persistentStringUnits(printingState)
@@ -1649,6 +2076,57 @@
     for (let index = 0; index < records.length; index++)
       extra += persistentStringUnits(records[index]) + String(count + index).length;
     return workflowTextSize() + extra <= 4 * 1024 * 1024;
+  }
+  function canReplaceWorkflowFiles(files) {
+    return fileWorkflowOtherTextSize() + persistentStringUnits(notesState) + persistentStringUnits(printingState)
+      + persistentStringUnits({ files: files.filter(file => !file.readOnly), nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime }) <= 4 * 1024 * 1024;
+  }
+  function editMenuRequest(itemId) {
+    const edit = sharedMenuProviders().find(menu => menu.menuId === 'edit');
+    function find(items) {
+      for (const item of items) {
+        if (item.id === itemId) return item.enabled && item.request ? item.request : null;
+        if (item.children) { const found = find(item.children); if (found) return found; }
+      }
+      return null;
+    }
+    return edit ? find(edit.items) : null;
+  }
+  async function performEditRequest(request) {
+    if (!request) return;
+    if (menuBarState?.menuId) await dismissMenuBar?.();
+    const result = await commands.execute(request);
+    if (result.status === 'rejected' && activeAppId === 'notes') textToolsState.error = result.error.message;
+  }
+  function editingKeydown(event) {
+    if (!hasEditWorkflows || !foreground || disposed || event.defaultPrevented || event.isComposing) return;
+    const original = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus?.node : null;
+    if (!sceneRoot?.contains(event.target) && !sceneRoot?.contains(original)) return;
+    const key = event.key.toLowerCase(), command = event.metaKey || event.ctrlKey;
+    const pane = event.target?.closest?.('[data-text-panel-kind]');
+    if (pane && (key === 'escape' || command && key === 'w') && !event.altKey) {
+      const windowId = pane.dataset.textToolWindow;
+      const request = pane.dataset.textPanelKind === 'find'
+        ? { command: 'text.find.close', target: { windowId, noteId: textToolsState.find?.noteId } }
+        : { command: 'text.tools.close', target: { windowId } };
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (!event.repeat) void performEditRequest(request);
+      return;
+    }
+    if (!command || event.metaKey && event.ctrlKey) return;
+    const itemId = key === 'z' ? event.shiftKey ? 'redo' : 'undo' : key === 'x' ? 'cut' : key === 'c' ? 'copy'
+      : key === 'v' ? event.shiftKey && event.altKey ? 'paste-match-style' : 'paste'
+      : key === 'a' ? 'select-all' : key === 'f' ? event.altKey ? 'search-notes' : 'find-note'
+      : key === 'g' ? event.shiftKey ? 'find-previous' : 'find-next' : key === 'e' ? 'use-selection-find'
+      : key === 'j' ? 'jump-selection' : key === ':' || key === ';' ? key === ':' || event.shiftKey ? 'show-spelling' : 'check-spelling' : null;
+    if (!itemId || event.altKey && !['search-notes', 'paste-match-style'].includes(itemId)) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (!event.repeat) void performEditRequest(editMenuRequest(itemId));
+  }
+  function editingClipboardEvent(event) {
+    if (!hasEditWorkflows || !foreground || disposed || event.defaultPrevented || !sceneRoot?.contains(event.target)) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    void performEditRequest(editMenuRequest(event.type));
   }
   function fileWorkflowKeydown(event) {
     if (!hasFileWorkflows || event.defaultPrevented || event.isComposing || !(event.metaKey || event.ctrlKey)
@@ -1685,8 +2163,13 @@
     event.preventDefault(); event.stopPropagation();
     if (!event.repeat) commands.execute(request);
   }
+  function fileDraftMenusAvailable() {
+    const dialog = fileDialogState.current;
+    return Boolean(hasEditWorkflows && dialog && !dialog.busy && ['markdown', 'pdf'].includes(dialog.format)
+      && activeAppId === 'notes' && activeWindowId === dialog.windowId && fileWorkflowsAvailable());
+  }
   function sharedMenusAvailable() {
-    return sceneInteractionsAvailable() && !spaceState.overview && !launchpadState.view && !dashboardOpen
+    return (sceneInteractionsAvailable() || fileDraftMenusAvailable()) && !spaceState.overview && !launchpadState.view && !dashboardOpen
       && !switching.switcher && !presentation.pairing && !desktopState.dock?.appWindows
       && (fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed);
   }
@@ -1696,7 +2179,8 @@
     const ordinary = Boolean(active && !active.fullScreen && !active.minimized && !isAppHidden(active.appId));
     const request = (command, window = active, payload = {}) => window
       ? { command, target: { windowId: window.id }, payload } : undefined;
-    const enabled = Boolean(app && runningAppIds.includes(appId) && !pendingQuitAppIds.includes(appId));
+    const running = Boolean(app && runningAppIds.includes(appId) && !pendingQuitAppIds.includes(appId));
+    const enabled = running && !fileDialogState.current;
     const appWindows = windows.filter(window => window.appId === appId);
     const original = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus?.node : document.activeElement;
     const control = original?.dataset?.notesControl;
@@ -1708,14 +2192,17 @@
     const finderFolder = finderWindow ? liveFile(macFiles, finderWindow.folderId) : finderDesktop ? liveFile(macFiles, 'desktop') : null;
     const finderIds = finderWindow?.finderSelectedFileIds ?? (finderDesktop ? desktopState.selectedFileIds : []);
     const commandMenus = appCommandMenuProviders({ profile, appId, enabled, activeWindow: active,
+      ...(hasEditWorkflows ? { editing: editingTargets() } : {}),
       notes: appId === 'notes' ? { available: Boolean(notesView && appWindows.some(window => !window.utilityKind && !window.minimized && windowPresented(window))),
         documentAvailable: Boolean(active?.appId === 'notes' && !active.utilityKind && !active.minimized && windowPresented(active)),
         selected: visibleNotes(notesState).find(note => note.id === notesState.selectedId),
         sidebarVisible: notesState.sidebarVisible, textControl, hasText: Boolean(textControl && original.value.length) } : null,
       finder: appId === 'finder' ? { windowId: finderWindow?.id ?? null, folderId: finderFolder?.id ?? null,
         writable: Boolean(finderFolder && !finderFolder.readOnly && finderFolder.id !== 'trash'),
+        childIds: finderFolder ? liveMacFileRecords(macFiles).filter(file => file.parentId === finderFolder.id || finderDesktop && file.id === 'disk').map(file => file.id) : [],
         selected: finderFolder ? liveMacFileRecords(macFiles).filter(file => finderIds.includes(file.id)
           && (file.parentId === finderFolder.id || finderDesktop && file.id === 'disk')) : [] } : null });
+    if (fileDraftMenusAvailable()) for (const menu of commandMenus) menu.enabled = menu.menuId === 'edit' && running;
     return [
       { menuId: 'application', kind: 'application', label: app?.name ?? '', appId,
         enabled,
@@ -2102,6 +2589,14 @@
       listen(window, 'keydown', dashboardKeydown, true),
       listen(window, 'keydown', spacesKeydown, true),
       listen(window, 'keydown', fullScreenKeydown, true),
+      listen(window, 'keydown', editingKeydown, true),
+      listen(sceneRoot, 'beforeinput', observeTextBeforeInput, true),
+      listen(sceneRoot, 'input', observeDraftInput, true),
+      listen(sceneRoot, 'select', observeNativeSelection, true),
+      listen(sceneRoot, 'focusin', observeNativeSelection, true),
+      listen(sceneRoot, 'copy', editingClipboardEvent, true),
+      listen(sceneRoot, 'cut', editingClipboardEvent, true),
+      listen(sceneRoot, 'paste', editingClipboardEvent, true),
       listen(window, 'keydown', fileWorkflowKeydown, true),
       listen(document, 'pointermove', stagePointerMove, true),
       listen(document, 'pointerdown', stagePointerDown, true),
@@ -2414,7 +2909,7 @@
     return $state.snapshot({
       seed: { version: 1, notes: notesState, files: { files: macFiles.files.filter(file => !file.readOnly),
         nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime }, messages: messagesState, appearance: appearanceState,
-        printing: printingState, dock: persistentDockData() },
+        printing: printingState, editing: editingPreferences, dock: persistentDockData() },
       catalogTimes: Object.fromEntries(macFiles.files.filter(file => file.readOnly).map(file =>
         [file.id, { createdAt: file.createdAt, modifiedAt: file.modifiedAt, addedAt: file.addedAt, lastOpenedAt: file.lastOpenedAt }])),
       dockOrder: { mainOrderAppIds: dock.mainOrderAppIds, secondaryOrderItemIds: dock.secondaryOrderItemIds },
@@ -2486,6 +2981,8 @@
             viewState={notesViewState}
             execute={commands.execute}
             registerView={registerNotesView}
+            {...(hasEditWorkflows ? { windowId: window.id, editing: editingPreferences, dictionaryStatus,
+              textTools: textTools.targets(), ontextinput: editNativeText, ontextbeforeinput: observeTextBeforeInput } : {})}
             active={active && interactive}
             zoomed={window.zoomed}
             fullScreen={window.fullScreen}

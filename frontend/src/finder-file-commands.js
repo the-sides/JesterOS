@@ -107,8 +107,11 @@ export function createFinderFileCommands(ctx) {
       const records = [{ parentId: value.folder.id, name, kind: 'folder', appId: 'finder', icon: 'folder', content: '', deleted: false, tags: [] }];
       const allocation = allocate(records);
       if (!allocation || !ctx.canAddFiles(records)) return limited();
+      const historyOwner = ctx.editingHistory ? { windowId: value.window.id, folderId: value.folder.id,
+        selectionBefore: [...(value.window.finderSelectedFileIds ?? [])] } : null;
       ctx.files.files.push(...records); ctx.files.nextFileId = allocation.number; ctx.files.sceneTime = allocation.timestamp;
       value.window.finderSelectedFileIds = [records[0].id];
+      ctx.editingHistory?.recordCreated('New Folder', records, [records[0].id], historyOwner);
       return applied({ windowId: value.window.id, fileId: records[0].id });
     },
     'finder.file.duplicate': (target, payload) => {
@@ -141,9 +144,12 @@ export function createFinderFileCommands(ctx) {
       if (!allocation) return limited();
       for (let index = 1; index < records.length; index++) records[index].parentId = records[parents[index]].id;
       if (!ctx.canAddFiles(records)) return limited();
+      const historyOwner = ctx.editingHistory ? { windowId: value.window?.id ?? null, folderId: value.folder.id,
+        selectionBefore: [...(value.window ? value.window.finderSelectedFileIds ?? [] : ctx.getDesktopSelection?.() ?? [])] } : null;
       ctx.files.files.push(...records); ctx.files.nextFileId = allocation.number; ctx.files.sceneTime = allocation.timestamp;
       if (value.window) value.window.finderSelectedFileIds = [records[0].id];
       else ctx.selectDesktop(records[0].id);
+      ctx.editingHistory?.recordCreated('Duplicate', records, [records[0].id], historyOwner);
       return applied({ windowId: value.window?.id ?? null, fileId: records[0].id });
     },
     'finder.info.open': async (target, payload) => {

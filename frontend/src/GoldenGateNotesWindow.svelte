@@ -4,10 +4,14 @@
   import { noteTitle, notePreview, groupNotes } from './notes-state.js';
   import { createGoldenGateNotesView } from './golden-gate-notes-view.js';
   import './golden-gate-documents.css';
+  import GoldenGateTextTools from './GoldenGateTextTools.svelte';
+  import TextAnnotationLayer from './TextAnnotationLayer.svelte';
+  import { noteControlAnnotations } from './text-annotations.js';
 
   let { state: noteState, viewState, execute, registerView, active = true, zoomed = false,
     onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu,
-    fullScreen = false, revealedTop = true, modernGreenMenu = true } = $props();
+    fullScreen = false, revealedTop = true, modernGreenMenu = true,
+    windowId = null, editing = null, dictionaryStatus = 'idle', textTools = null, ontextinput, ontextbeforeinput } = $props();
   let root, searchInput, listElement;
   let titleInput = $state(null), bodyInput = $state(null), contextElement = $state(null);
   const context = $derived(viewState.context);
@@ -15,6 +19,12 @@
   const notes = $derived(groups.flatMap(group => group.notes));
   const groupHeadings = $derived(new Map(groups.map(group => [group.notes[0].id, group])));
   const selected = $derived(noteState.notes.find((note) => note.id === noteState.selectedId));
+  const find = $derived(editing && textTools?.find?.open && textTools.find.windowId === windowId && textTools.find.noteId === selected?.id ? textTools.find : null);
+  const spelling = $derived(editing?.checkSpellingWhileTyping && textTools?.liveSpelling?.windowId === windowId
+    && textTools.liveSpelling.noteId === selected?.id && textTools.liveSpelling.revision === selected?.updatedAt ? textTools.liveSpelling : null);
+  const titleAnnotations = $derived(editing && selected ? noteControlAnnotations(selected, 'title', find, spelling) : null);
+  const bodyAnnotations = $derived(editing && selected ? noteControlAnnotations(selected, 'body', find, spelling) : null);
+  const dictionaryLoading = $derived(Boolean(editing?.correctSpellingAutomatically && dictionaryStatus !== 'ready'));
   const dateFormat = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
   const summaryDateFormat = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', timeZone: 'UTC' });
   const view = createGoldenGateNotesView({ execute: (request) => execute(request), state: () => noteState,
@@ -48,7 +58,7 @@
 <svelte:window onkeydown={view.keyboard} />
 <svelte:document onpointerdown={view.dismissContext} onfocusin={view.dismissContext} />
 
-<section class="golden-gate-notes" class:inactive={!active} class:folders-hidden={!noteState.sidebarVisible}
+<section class="golden-gate-notes" class:editable-document={Boolean(editing)} class:inactive={!active} class:folders-hidden={!noteState.sidebarVisible}
   style:--golden-gate-notes-text-size="{noteState.preferences.textSize}px"
   bind:this={root} aria-label="Notes application" onfocusin={view.observeFocus} onfocusout={view.observeBlur}>
   <header class="golden-gate-notes-toolbar" data-window-drag>
@@ -78,7 +88,7 @@
         <button type="button" class="golden-gate-document-tool" aria-label="Share note — not implemented" disabled>{@render symbol('share')}</button>
         <button type="button" class="golden-gate-document-tool" aria-label="Lock note and other note actions — not implemented" title="Lock note and additional actions are not implemented" disabled>{@render symbol('more')}</button>
       </div>
-      <label class="golden-gate-document-search golden-gate-notes-search">{@render symbol('search')}<input type="search" data-notes-control="search" data-golden-gate-notes-control="search" aria-label="Search notes" placeholder="Search" bind:this={searchInput} value={noteState.search} oninput={(event) => view.command('search', {}, { query: event.currentTarget.value })} /></label>
+      <label class="golden-gate-document-search golden-gate-notes-search">{@render symbol('search')}<input type="search" data-notes-control="search" data-golden-gate-notes-control="search" aria-label="Search notes" placeholder="Search" spellcheck={editing ? false : undefined} bind:this={searchInput} value={noteState.search} onbeforeinput={ontextbeforeinput} oninput={event => ontextinput ? ontextinput(event, windowId, 'search') : view.command('search', {}, { query: event.currentTarget.value })} /></label>
     </div>
   </header>
 
@@ -106,13 +116,31 @@
     </nav>
     <section class="golden-gate-notes-editor" aria-label="Note editor">
       {#if selected}
+        {#if find}<GoldenGateTextTools mode="find" {windowId} note={selected} tools={textTools} preferences={editing} {execute} onbeforeinput={ontextbeforeinput} />{/if}
         <time class="golden-gate-notes-modified" datetime={new Date(selected.updatedAt).toISOString()}>{dateFormat.format(selected.updatedAt)}</time>
         {#if selected.deleted}<div class="golden-gate-notes-deleted">Restore this note to make changes.</div>{/if}
-        <input class="golden-gate-notes-title" data-notes-control="title" data-golden-gate-notes-control="title" data-note-id={selected.id} aria-label="Note title" placeholder="New Note" spellcheck="false" readonly={selected.deleted} bind:this={titleInput} value={view.firstLine(selected)} oninput={(event) => view.edit(event.currentTarget.value, view.bodyText(selected))} onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); view.command('focus', { control: 'body' }); } }} />
-        <textarea class="golden-gate-notes-body" data-notes-control="body" data-golden-gate-notes-control="body" data-note-id={selected.id} aria-label="Note body" spellcheck="false" readonly={selected.deleted} bind:this={bodyInput} value={view.bodyText(selected)} oninput={(event) => view.edit(view.firstLine(selected), event.currentTarget.value)} onscroll={(event) => view.observeScroll('editor', event)}></textarea>
+        {#if editing}
+          <div class="annotation-title-frame">
+            <input class="golden-gate-notes-title" data-notes-control="title" data-golden-gate-notes-control="title" data-note-id={selected.id} aria-label="Note title" placeholder="New Note" spellcheck="false" readonly={selected.deleted || Boolean(dictionaryLoading)} bind:this={titleInput} value={view.firstLine(selected)} onbeforeinput={ontextbeforeinput} oninput={event => ontextinput(event, windowId, 'title')} onkeydown={event => { if (event.key === 'Enter') { event.preventDefault(); view.command('focus', { control: 'body' }); } }} />
+            <TextAnnotationLayer control={titleInput} segments={titleAnnotations.segments} textSize={noteState.preferences.textSize} />
+          </div>
+          <div class="annotation-body-frame">
+            <textarea class="golden-gate-notes-body" data-notes-control="body" data-golden-gate-notes-control="body" data-note-id={selected.id} aria-label="Note body" spellcheck="false" readonly={selected.deleted || Boolean(dictionaryLoading)} bind:this={bodyInput} value={view.bodyText(selected)} onbeforeinput={ontextbeforeinput} oninput={event => ontextinput(event, windowId, 'body')} onscroll={event => view.observeScroll('editor', event)}></textarea>
+            <TextAnnotationLayer control={bodyInput} segments={bodyAnnotations.segments} textSize={noteState.preferences.textSize} />
+          </div>
+          {#if textTools.error}<p class="text-edit-error" role="status">{textTools.error}</p>{/if}
+          {#if dictionaryStatus === 'loading'}<p class="text-edit-hint" role="status">Loading the local spelling dictionary…{dictionaryLoading ? ' Typing is briefly unavailable.' : ''}</p>{/if}
+          {#if spelling?.nextFrom !== null && spelling?.nextFrom !== undefined}<p class="text-edit-hint">Spelling highlights are limited to 500 issues. Spelling and Grammar can continue through the note.</p>{/if}
+        {:else}
+          <input class="golden-gate-notes-title" data-notes-control="title" data-golden-gate-notes-control="title" data-note-id={selected.id} aria-label="Note title" placeholder="New Note" spellcheck="false" readonly={selected.deleted} bind:this={titleInput} value={view.firstLine(selected)} oninput={event => view.edit(event.currentTarget.value, view.bodyText(selected))} onkeydown={event => { if (event.key === 'Enter') { event.preventDefault(); view.command('focus', { control: 'body' }); } }} />
+          <textarea class="golden-gate-notes-body" data-notes-control="body" data-golden-gate-notes-control="body" data-note-id={selected.id} aria-label="Note body" spellcheck="false" readonly={selected.deleted} bind:this={bodyInput} value={view.bodyText(selected)} oninput={event => view.edit(view.firstLine(selected), event.currentTarget.value)} onscroll={event => view.observeScroll('editor', event)}></textarea>
+        {/if}
       {:else}<div class="golden-gate-notes-editor-empty">{noteState.search ? 'No matching notes' : noteState.folder === 'deleted' ? 'No recently deleted notes' : 'No note selected'}</div>{/if}
     </section>
   </div>
+  {#if editing && selected && textTools.panel?.windowId === windowId && textTools.panel.noteId === selected.id}
+    <GoldenGateTextTools mode={textTools.panel.kind} {windowId} note={selected} tools={textTools} preferences={editing} {execute} onbeforeinput={ontextbeforeinput} />
+  {/if}
   {#if context}
     <div class="golden-gate-notes-context" role="menu" aria-label="Note actions" tabindex="-1" bind:this={contextElement} style:left="{context.left}px" style:top="{context.top}px" onkeydown={view.contextKeydown}>
       {#if noteState.folder === 'deleted'}
@@ -125,3 +153,14 @@
     </div>
   {/if}
 </section>
+
+<style>
+  .editable-document { position: relative; }
+  .annotation-title-frame, .annotation-body-frame { position: relative; min-width: 0; }
+  .annotation-title-frame { flex-shrink: 0; }
+  .annotation-body-frame { flex: 1; min-height: 0; }
+  .annotation-title-frame :global(input) { display: block; box-sizing: border-box; }
+  .annotation-body-frame :global(textarea) { display: block; height: 100%; box-sizing: border-box; }
+  .text-edit-error, .text-edit-hint { flex: 0 0 auto; margin: 4px 0 0; font-size: 10px; overflow-wrap: anywhere; color: var(--appearance-muted, #777); }
+  .text-edit-error { color: #bc423a; }
+</style>

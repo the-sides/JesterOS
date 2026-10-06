@@ -1,5 +1,6 @@
 // Golden Gate represented app menus. Launch-only apps expose shell/window rows,
 // File uses real represented document/location operations; broader Edit/View/Help have their own backlog items.
+import { controlDocumentOffset } from './text-native-selection.js';
 export const APP_COMMAND_MENU_IDS = ['file', 'edit', 'format', 'view', 'go', 'conversation', 'history', 'bookmarks', 'help'];
 const commonHeadings = ['file', 'edit', 'view', 'help'];
 const appHeadings = {
@@ -14,8 +15,83 @@ const leaf = (id, text, enabled, request, extra = {}) => ({ id, label: text, ena
   ...(enabled ? { request } : {}) });
 const request = (command, target = {}, payload = {}) => ({ command, target, payload });
 
+function editMenuItems({ appId, window, selected, noteView, editing, finder }) {
+  const source = editing?.selection, tool = editing?.tool, native = editing?.native;
+  const clipboard = editing?.clipboard, history = editing?.history;
+  const document = noteView && window && !window.utilityKind && selected && editing?.documentAvailable;
+  const owner = document ? { windowId: window.id, noteId: selected.id } : null;
+  const versioned = owner ? { ...owner, revision: selected.updatedAt } : null;
+  const field = tool ?? native ?? source;
+  const canCopy = Boolean(field && field.start < field.end);
+  const writable = Boolean(field && (tool || native || !editing.selectionReadOnly));
+  const copy = operation => tool ? request('text.tools.clipboard', tool, { operation })
+    : native ? request('clipboard.control', native, { operation })
+    : source ? request(`text.clipboard.${operation}`, source) : null;
+  const noteHistory = source?.control === 'search' ? history?.search : history?.notes.find(note => note.noteId === selected?.id);
+  const undoOwner = source ? Object.fromEntries(Object.entries(source).filter(([key]) => !['start', 'end'].includes(key)))
+    : owner ? { ...versioned, control: 'body' } : null;
+  const draftHistory = tool ? editing.toolHistory : native ? editing.nativeHistory : null;
+  const finderOwner = finder?.windowId ? { windowId: finder.windowId } : {};
+  const location = appId === 'finder' && !field && finder?.folderId;
+  const action = direction => tool ? request('text.tools.clipboard', tool, { operation: direction })
+    : native ? request('clipboard.control', native, { operation: direction })
+    : location ? request(`finder.edit.${direction}`, finderOwner) : undoOwner ? request(`text.${direction}`, undoOwner) : null;
+  const labels = { typing: 'Typing', cut: 'Cut', paste: 'Paste', replace: 'Replace', spelling: 'Spelling', substitution: 'Substitutions' };
+  const undoLabel = location ? editing.finder?.undoLabel : noteHistory?.undoLabel ? `Undo ${labels[noteHistory.undoLabel]}` : 'Undo';
+  const redoLabel = location ? editing.finder?.redoLabel : noteHistory?.redoLabel ? `Redo ${labels[noteHistory.redoLabel]}` : 'Redo';
+  const undo = draftHistory ? draftHistory.undo : location ? editing.finder?.undo : (source ? writable : document && !editing.documentReadOnly) && noteHistory?.canUndo;
+  const redo = draftHistory ? draftHistory.redo : location ? editing.finder?.redo : (source ? writable : document && !editing.documentReadOnly) && noteHistory?.canRedo;
+  const find = editing?.tools.find;
+  const found = Boolean(document && find?.noteId === selected.id && find.windowId === window.id && find.count);
+  const selectedText = Boolean(document && source?.noteId === selected.id && ['title', 'body'].includes(source.control) && canCopy);
+  const fullRange = selectedText ? { ...versioned, start: controlDocumentOffset(selected.text, source.control, source.start),
+    end: controlDocumentOffset(selected.text, source.control, source.end) } : null;
+  const pref = editing?.preferences;
+  const option = (key, text) => leaf(key, text, document, request('text.preferences.set', { windowId: window?.id }, { [key]: !pref?.[key] }), { checked: Boolean(pref?.[key]) });
+  const selectAll = tool ? request('text.tools.clipboard', tool, { operation: 'selectAll' })
+    : native ? request('clipboard.control', native, { operation: 'selectAll' })
+    : source ? request('text.selection.set', { ...source, start: 0, end: editing.selectionValueLength })
+    : location ? finder.windowId ? request('finder.selection.set', finderOwner, { fileIds: finder.childIds })
+      : request('desktop.select.all') : null;
+  const rows = [
+    leaf('undo', tool || native ? 'Undo' : undoLabel, undo, action('undo'), { shortcut: '⌘Z' }),
+    leaf('redo', tool || native ? 'Redo' : redoLabel, redo, action('redo'), { shortcut: '⇧⌘Z' }),
+    { id: 'separator-clipboard', label: '', enabled: false, separator: true },
+    leaf('cut', 'Cut', writable && canCopy, copy('cut'), { shortcut: '⌘X' }),
+    leaf('copy', 'Copy', field ? canCopy : location && editing.finder?.copy,
+      field ? copy('copy') : request('finder.clipboard.copy', finderOwner), { shortcut: '⌘C' }),
+    leaf('paste', location ? 'Paste Items' : 'Paste', field ? writable && clipboard?.kind === 'text' && clipboard.text.length > 0
+      : location && editing.finder?.paste, field ? copy('paste') : request('finder.clipboard.paste', finderOwner), { shortcut: '⌘V' }),
+    ...(appId === 'notes' ? [leaf('paste-match-style', 'Paste and Match Style', writable && clipboard?.kind === 'text' && clipboard.text.length > 0,
+      copy('paste'), { shortcut: '⌥⇧⌘V' })] : []),
+    leaf('select-all', 'Select All', field ? (tool?.value ?? native?.value)?.length > 0 || Boolean(source && editing.selectionValueLength)
+      : location && finder.childIds.length > 0, selectAll, { shortcut: '⌘A' }),
+  ];
+  if (appId === 'notes') rows.push(
+    { id: 'find', label: 'Find', enabled: Boolean(document), children: [
+      leaf('find-note', 'Find…', document, request('text.find.open', owner), { shortcut: '⌘F' }),
+      leaf('find-next', 'Find Next', found, request('text.find.next', owner), { shortcut: '⌘G' }),
+      leaf('find-previous', 'Find Previous', found, request('text.find.next', owner, { backward: true }), { shortcut: '⇧⌘G' }),
+      leaf('use-selection-find', 'Use Selection for Find', selectedText, request('text.find.useSelection', fullRange), { shortcut: '⌘E' }),
+      leaf('jump-selection', 'Jump to Selection', selectedText, request('text.selection.set', source), { shortcut: '⌘J' }),
+      leaf('search-notes', 'Search Notes', noteView, request('notes.focus', { control: 'search' }, { select: true }), { shortcut: '⌥⌘F' }),
+    ] },
+    { id: 'spelling', label: 'Spelling and Grammar', enabled: Boolean(document), children: [
+      leaf('show-spelling', 'Show Spelling and Grammar', document, request('text.spelling.open', versioned), { shortcut: '⌘:' }),
+      leaf('check-spelling', 'Check Document Now', document, request('text.spelling.check', versioned, { from: 0, maxIssues: 1, suggestions: true }), { shortcut: '⌘;' }),
+      option('checkSpellingWhileTyping', 'Check Spelling While Typing'),
+      unavailable('check-grammar', 'Check Grammar With Spelling'), option('correctSpellingAutomatically', 'Correct Spelling Automatically'),
+    ] },
+    { id: 'substitutions', label: 'Substitutions', enabled: Boolean(document), children: [
+      leaf('show-substitutions', 'Show Substitutions', document, request('text.substitutions.open', owner)),
+      option('smartQuotes', 'Smart Quotes'), option('smartDashes', 'Smart Dashes'),
+      unavailable('smart-links', 'Smart Links'), option('textReplacement', 'Text Replacement'),
+    ] });
+  return rows;
+}
+
 /** Inputs are the current owner and real document/window presentation, never a second menu selection model. */
-export function appCommandMenuProviders({ profile, appId, enabled, activeWindow, notes, finder }) {
+export function appCommandMenuProviders({ profile, appId, enabled, activeWindow, notes, finder, editing }) {
   const app = profile.applications[appId];
   if (!app) return [];
   const window = activeWindow?.appId === appId ? activeWindow : null;
@@ -71,7 +147,7 @@ export function appCommandMenuProviders({ profile, appId, enabled, activeWindow,
         leaf('delete-note', 'Delete Note', editable, request('notes.trash', { noteId: selected?.id }, { focus: true })),
       ] : [newWindow]), close,
     ],
-    edit: [
+    edit: profile.capabilities.includes('shell.edit-workflows') ? editMenuItems({ appId, window, selected, noteView, editing, finder }) : [
       unavailable('undo', 'Undo', '⌘Z'), unavailable('redo', 'Redo', '⇧⌘Z'),
       { id: 'separator-clipboard', label: '', enabled: false, separator: true },
       unavailable('cut', 'Cut', '⌘X'), unavailable('copy', 'Copy', '⌘C'), unavailable('paste', 'Paste', '⌘V'),
