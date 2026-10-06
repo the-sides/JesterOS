@@ -6,6 +6,8 @@
     'launch-only': 'Application launching and managed windows; no application interior is implemented.',
     'desktop-locations': 'Desktop locations represented by the simulated shell.',
     sample: 'Sample conversations; no live messaging service.',
+    'sample-and-local-services': 'Fixed sample conversations plus local Services drafts and sent records; no network messaging.',
+    'local-services': 'Local Services contacts or editable mail drafts and fictional sent records; no external delivery or full account interface.',
     'plain-text': 'Local plain-text notes; no cloud sync or rich-text editing.',
     'dock-preferences': 'Simulated Dock preferences; no host system settings are changed.',
     'print-queue': 'Local fictional printer queue and immutable PDF output; no physical printer is used.',

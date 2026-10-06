@@ -26,6 +26,7 @@
     desktopDetails = {},
     dockApplications,
     dockMenuItems = [],
+    contextMenuItems = null,
     dockTiles = [],
     dockFolders = [],
     dockTrash,
@@ -50,7 +51,7 @@
   const stacksEnabled = $derived(Boolean(viewState.stacks?.enabled));
   const desktopLayout = $derived(desktopStackLayout(desktopFiles, desktopStacks, stacksEnabled));
   const visibleFiles = $derived(stacksEnabled ? desktopLayout.filter((entry) => entry.type !== 'stack') : desktopFiles);
-  const contextItems = $derived(desktopContextItems(viewState, desktopFiles, 'macos'));
+  const contextItems = $derived(contextMenuItems ?? desktopContextItems(viewState, desktopFiles, 'macos'));
   let filesPanel;
   let filesHeight = $state(undefined);
   let wrappedGrid = $state(null);

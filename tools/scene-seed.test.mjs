@@ -5,6 +5,7 @@ import { createNote } from '../frontend/src/notes-state.js';
 import { nextMacFileTimestamp, liveMacFileRecords } from '../frontend/src/desktop-file-state.js';
 import { createFile, writeFile } from '../frontend/src/windows11-app-helpers.js';
 import { recordMacAppUse } from '../frontend/src/mac-dock-model.js';
+import { communicationDefaults, draftPreview, createCommunicationDraft, submitCommunicationDraft } from '../frontend/src/communication-state.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const fixture = () => createDefaultSceneSeed(profile);
@@ -16,6 +17,69 @@ function rejects(change) {
   expect(validate(seed).ok).toBe(false);
   expect(seed).toEqual(before);
 }
+
+test('complete Golden seeds require empty real communications independently of the unchanged Messages sample', () => {
+  const seed = fixture(), sample = structuredClone(seed.messages);
+  expect(seed.communications).toEqual(communicationDefaults(Date.parse(profile.defaults.sceneTime)));
+  expect(validate(seed)).toEqual({ ok: true });
+  const contact = draftPreview(seed.communications, 'contact', { name: 'Local Casey', email: '', phone: '', notes: '  retained\r\n\u{1D11E}  ' });
+  expect(createCommunicationDraft(seed.communications, contact).status).toBe('applied');
+  expect(submitCommunicationDraft(seed.communications, contact.id).status).toBe('applied');
+  expect(seed.messages).toEqual(sample);
+  expect(validate(seed)).toEqual({ ok: true });
+  for (const change of [
+    model => { delete model.communications; },
+    model => { model.communications.selected.mail = 'missing'; },
+    model => { model.communications.selected.contacts = 'service-mail-1'; },
+    model => { model.communications.nextId = 0; },
+    model => { model.communications.selected.extra = null; },
+    model => { model.communications.deliveryAccount = 'host'; },
+  ]) rejects(change);
+});
+
+test('attachment snapshots survive virtual source changes and deletion; aggregate budgets include all communications bytes', () => {
+  const seed = fixture(), source = seed.files.files.find(file => file.kind === 'document');
+  const fields = { to: 'fictional recipient', subject: 'Snapshot', body: ' \r\n\u{1D11E} exact body  ' };
+  const attachment = { fileId: source.id, name: source.name, revision: source.revision, content: source.content };
+  const preview = draftPreview(seed.communications, 'mail', fields, [attachment]);
+  expect(createCommunicationDraft(seed.communications, preview).status).toBe('applied');
+  expect(submitCommunicationDraft(seed.communications, preview.id).status).toBe('applied');
+  source.content = 'Changed virtual source'; source.revision++; source.deleted = true;
+  // Saved attachments are archival snapshots, not live source references.
+  expect(seed.communications.outbox[0].attachments[0]).toEqual(attachment);
+  expect(seed.communications.outbox[0].fields.body).toBe(fields.body);
+  expect(validate(seed)).toEqual({ ok: true });
+  const missingSource = structuredClone(seed);
+  missingSource.communications.outbox[0].attachments[0].fileId = 'file-removed';
+  expect(validate(missingSource)).toEqual({ ok: true });
+  const large = fixture(), units = 1024 * 1024;
+  for (let index = 0; index < 3; index++) {
+    const draft = draftPreview(large.communications, 'contact', { name: `Local ${index}`, email: '', phone: '', notes: 'n'.repeat(units) });
+    expect(createCommunicationDraft(large.communications, draft).status).toBe('applied');
+  }
+  large.notes.notes[0].text = 's'.repeat(units);
+  const before = structuredClone(large);
+  expect(validate(large).ok).toBe(false);
+  expect(large).toEqual(before);
+});
+
+test('seed replacement preserves complete local draft bytes and rejects invalid communication identities before replacing', async () => {
+  const seed = fixture(), preview = draftPreview(seed.communications, 'message', { to: '', body: '\ufeff  unsent\r\n\u{1D11E} ' });
+  expect(createCommunicationDraft(seed.communications, preview).status).toBe('applied');
+  const replacements = [], handlers = createSceneSeedCommands({ profile, available: () => true,
+    replaceScene: async (value, source) => { replacements.push({ value, source }); } });
+  expect((await handlers['scene.replaceSeed']({}, { seed })).status).toBe('applied');
+  expect(replacements[0].value.communications).toEqual(seed.communications);
+  seed.communications.drafts[0].fields.body = 'Actor changed later';
+  expect(replacements[0].value.communications.drafts[0].fields.body).toBe('\ufeff  unsent\r\n\u{1D11E} ');
+  seed.communications.selected.messages = 'service-draft-missing';
+  expect((await handlers['scene.replaceSeed']({}, { seed })).error.code).toBe('invalid_arguments');
+  expect(replacements).toHaveLength(1);
+  const transparentProxy = new Proxy(fixture(), {});
+  expect(validate(transparentProxy).ok).toBe(false);
+  expect((await handlers['scene.replaceSeed']({}, { seed: transparentProxy })).status).toBe('rejected');
+  expect(replacements).toHaveLength(1);
+});
 
 test('complete custom seeds accept empty models and independent null note selection without merging', () => {
   const seed = fixture();

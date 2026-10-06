@@ -45,7 +45,11 @@ export function helpArticles(profile, appId) {
     article('appearance', 'Choose fictional appearance and colors', 'Set the local light or dark palette, accent, and highlight.',
       ['Appearance', 'Open the represented Appearance pane to choose Light or Dark, an available accent, and a preset or custom RGB/Hex highlight. Other System Settings panels are not represented and do not configure your computer.']));
   if (appId === 'messages') articles.push(article('sample-conversations', 'Read the fixed sample conversation', 'Messages displays one fixed fictional conversation.',
-    ['Sample content', 'The Trail Crew conversation is fixed scene content. Conversation selection, search, new messages, and sending are unavailable. This screen is not connected to an account and does not send messages to real people.']));
+    ['Sample content', 'The Trail Crew conversation is fixed scene content. Its conversation selection, search, new messages, and sending controls remain unavailable. Select its text to use Local Services; separate editable local drafts and fictional sent records do not change this sample or contact real people.']));
+  if (['contacts', 'mail', 'messages'].includes(appId)) articles.push(article('local-services', 'Use local Services records', 'Create contacts or compose an addressed fictional message from a real selection.',
+    ['Selection and composition', 'Select text in a represented Notes field, sample message, or local service record. Use the application menu’s Services submenu or the Local Services contextual popup. Create Contact preserves selected text in the contact’s Notes field and opens editable fields. New Email or New Message copies it into an editable draft; choosing a service never sends immediately.'],
+    ['Local records', 'Done saves an identified contact. Send Locally creates a scene-only sent record; nothing is delivered over a network. A contact’s Mail and Message buttons create an addressed editable composition. Discard Draft removes only that draft. The lists show real saved local records, not sample inboxes or live accounts.'],
+    ['Virtual attachments', 'Selected virtual documents can become immutable Mail attachment snapshots. Changing or deleting the original file does not change the stored snapshot. There is no host file picker, Mail Drop, cloud sync, or external delivery.']));
   return articles;
 }
 

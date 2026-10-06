@@ -3,7 +3,8 @@
   import './golden-gate-documents.css';
 
   let { scene, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu,
-    fullScreen = false, revealedTop = true, modernGreenMenu = true, active = true, zoomed = false } = $props();
+    fullScreen = false, revealedTop = true, modernGreenMenu = true, active = true, zoomed = false,
+    onservices = null, servicesEntryId = null } = $props();
   const symbols = {
     search: 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0m-1 5 6 6',
     filter: 'M4 6h16M7 12h10M10 18h4',
@@ -64,7 +65,7 @@
     </header>
     <ol class="golden-gate-messages-history" aria-label={`Fictional conversation with ${scene.thread.name}`}>
       <li class="golden-gate-messages-timestamp"><time datetime={scene.thread.timestamp}>{scene.thread.timestampLabel}</time></li>
-      {#each scene.thread.items as item}
+      {#each scene.thread.items as item, itemIndex}
         {#if item.kind === 'trail'}
       <li class="golden-gate-messages-artwork">
         {#if item.sender}<span class="golden-gate-messages-sender">{item.sender}</span>{/if}
@@ -83,7 +84,7 @@
         {:else}
           <li class="golden-gate-messages-bubble {item.direction}" class:golden-gate-messages-last={Boolean(item.delivery)}>
             {#if item.sender}<span class="golden-gate-messages-sender">{item.sender}</span>{/if}
-            <p>{item.text}</p>
+            <p data-service-message-index={itemIndex} tabindex="-1">{item.text}</p>
             {#if item.delivery}<span class="golden-gate-messages-delivered">{item.delivery}</span>{/if}
           </li>
         {/if}
@@ -96,6 +97,8 @@
       <div class="golden-gate-messages-input"><input aria-label="Message — fixed sample only" placeholder="iMessage" disabled /><button type="button" class="golden-gate-document-tool" aria-label="Record audio message — sample only" disabled>{@render symbol('audio')}</button></div>
       <button type="button" class="golden-gate-document-tool golden-gate-document-capsule" aria-label="Emoji and stickers — sample only" disabled>{@render symbol('emoji')}</button>
     </div>
-    <p class="golden-gate-messages-sample-notice">Fictional sample · Sending, search, and media actions unavailable</p>
+    <p class="golden-gate-messages-sample-notice">Fictional sample · Sending, search, and media actions unavailable
+      {#if onservices}<button type="button" disabled={!servicesEntryId} onclick={onservices}>Local Services</button>{/if}
+    </p>
   </div>
 </section>

@@ -9,6 +9,7 @@ import { spacesItems, windowSpaceId } from './spaces.js';
 import { macDockApps } from './mac-dock-model.js';
 import { dockFolderItemId } from './mac-dock-folders.js';
 import { finderPresentationSchema, notesPresentationSchema } from './viewing-state.js';
+import { communicationEntry } from './communication-state.js';
 
 const PROFILE_ID = 'macos-golden-gate-27.0.1';
 const STORAGE_KEY = `jesteros:${PROFILE_ID}:saved-session:v1`;
@@ -32,12 +33,13 @@ const bounds = object({ x: number(-MAX_COUNTER), y: number(-MAX_COUNTER), width:
 const desktopId = { ...identity, pattern: '^desktop-[1-9][0-9]*$' };
 const scrollPosition = object({ top: number(), left: number() });
 const scrollKey = choice('notes-list', 'notes-body', 'messages-conversations', 'messages-thread', 'finder-contents',
-  'window-content', 'settings-dock', 'settings-appearance', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue');
-const selectionKey = choice('notes-title', 'notes-body', 'notes-search');
+  'window-content', 'settings-dock', 'settings-appearance', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel');
+const selectionKey = choice('notes-title', 'notes-body', 'notes-search',
+  'service-name', 'service-email', 'service-phone', 'service-notes', 'service-to', 'service-subject', 'service-body');
 const viewToken = object({
-  scroll: array(object({ key: scrollKey, top: number(), left: number() }), 10),
-  selections: array(object({ key: selectionKey, noteId: nullable(identity), start: counter(), end: counter(),
-    direction: choice('forward', 'backward', 'none') }), 3),
+  scroll: array(object({ key: scrollKey, top: number(), left: number(), recordId: nullable(identity) }, ['key', 'top', 'left']), 10),
+  selections: array(object({ key: selectionKey, noteId: nullable(identity), recordId: identity, start: counter(), end: counter(),
+    direction: choice('forward', 'backward', 'none') }, ['key', 'noteId', 'start', 'end', 'direction']), 7),
   focusKey: nullable(selectionKey),
 });
 const windowRecord = object({
@@ -143,16 +145,30 @@ function matches(value, schema) {
 
 function validateView(view, window, seed) {
   if (!unique(view.scroll.map(entry => entry.key)) || !unique(view.selections.map(entry => entry.key))) return false;
+  const serviceApp = !window.utilityKind && ['contacts', 'mail', 'messages'].includes(window.appId);
+  const entry = serviceApp ? communicationEntry(seed.communications, window.appId) : null;
+  const service = serviceApp && (window.appId !== 'messages' || entry !== null);
   const allowed = window.utilityKind ? [window.utilityKind] : window.appId === 'notes' ? ['notes-list', 'notes-body']
-    : window.appId === 'messages' ? ['messages-conversations', 'messages-thread'] : window.appId === 'finder' ? ['finder-contents']
-      : window.appId === 'settings' ? [`settings-${window.settingsPane}`]
-        : window.appId === 'printcenter' ? ['printing-queue'] : ['window-content'];
+    : service ? ['service-panel', 'window-content']
+      : window.appId === 'messages' ? ['messages-conversations', 'messages-thread'] : window.appId === 'finder' ? ['finder-contents']
+        : window.appId === 'settings' ? [`settings-${window.settingsPane}`]
+          : window.appId === 'printcenter' ? ['printing-queue'] : ['window-content'];
   if (window.utilityKind || (window.appId !== 'notes' && window.appId !== 'messages')) allowed.push('window-content');
-  if (view.scroll.some(entry => !allowed.includes(entry.key))) return false;
+  if (view.scroll.some(scroll => !allowed.includes(scroll.key)
+    || (scroll.key === 'service-panel' ? !Object.hasOwn(scroll, 'recordId') || scroll.recordId !== (entry?.id ?? null)
+      : Object.hasOwn(scroll, 'recordId')))) return false;
+  if (service) {
+    if (view.focusKey !== null && !view.selections.some(selection => selection.key === view.focusKey)) return false;
+    return view.selections.every(selection => entry !== null && selection.noteId === null && selection.recordId === entry.id
+      && selection.key.startsWith('service-') && Object.hasOwn(entry.fields, selection.key.slice('service-'.length))
+      && selection.start <= selection.end && selection.end <= entry.fields[selection.key.slice('service-'.length)].length);
+  }
   if (window.utilityKind || window.appId !== 'notes') return view.selections.length === 0 && view.focusKey === null;
+  if (view.focusKey !== null && !['notes-title', 'notes-body', 'notes-search'].includes(view.focusKey)) return false;
   const notes = new Set(seed.notes.notes.map(note => note.id));
-  return view.selections.every(selection => selection.start <= selection.end
-    && (selection.key === 'notes-search' ? selection.noteId === null : notes.has(selection.noteId)));
+  return view.selections.every(selection => !Object.hasOwn(selection, 'recordId') && selection.start <= selection.end
+    && (selection.key === 'notes-search' ? selection.noteId === null
+      : ['notes-title', 'notes-body'].includes(selection.key) && notes.has(selection.noteId)));
 }
 
 function windowNumber(window, userId, profile) {
@@ -310,6 +326,7 @@ function validateSnapshot(value, profile) {
     if (!plainData(value, new Set(), budget)) return invalid(budget.units > MAX_STORAGE_UNITS || budget.nodes > MAX_STORAGE_UNITS
       ? 'Saved session exceeds the 2 Mi UTF-16 serialized storage limit.'
       : 'Expected a complete, bounded V1 saved session with closed fields and plain serializable data.');
+    value = structuredClone(value);
     if (!matches(value, savedSessionSchema)) return invalid('Expected a complete, bounded V1 saved session with closed fields and plain serializable data.');
     const serialized = JSON.stringify(value);
     if (serialized.length > MAX_STORAGE_UNITS) return invalid('Saved session exceeds the 2 Mi UTF-16 serialized storage limit.');

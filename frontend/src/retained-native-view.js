@@ -13,11 +13,19 @@ const scrollSelectors = {
   'application-about': '.golden-gate-about-app',
   'application-settings': '.golden-gate-notes-settings',
   'printing-queue': '[data-print-center-view="queue"] [data-print-center-area="jobs"]',
+  'service-panel': '[data-service-scroll]',
 };
 const controlSelectors = {
   'notes-title': '[data-golden-gate-notes-control="title"]',
   'notes-body': '[data-golden-gate-notes-control="body"]',
   'notes-search': '[data-golden-gate-notes-control="search"]',
+  'service-name': '[data-service-field="name"]',
+  'service-email': '[data-service-field="email"]',
+  'service-phone': '[data-service-field="phone"]',
+  'service-notes': '[data-service-field="notes"]',
+  'service-to': '[data-service-field="to"]',
+  'service-subject': '[data-service-field="subject"]',
+  'service-body': '[data-service-field="body"]',
 };
 const directions = new Set(['forward', 'backward', 'none']);
 const position = (value) => Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -35,6 +43,23 @@ function matchingSelection(selection, noteId) {
     : noteId !== null && selection.noteId === noteId;
 }
 
+function matchingService(root, element, recordId, fields) {
+  const field = element?.getAttribute('data-service-field');
+  return recordId !== null && root?.isConnected && element?.isConnected && root.contains(element)
+    && element.getAttribute('data-service-entry-id') === recordId && typeof element.value === 'string'
+    && fields !== null && Object.hasOwn(fields, field) && element.value === fields[field];
+}
+
+function matchingServiceSelection(selection, recordId) {
+  return selection.key?.startsWith('service-') && selection.noteId === null
+    && recordId !== null && selection.recordId === recordId;
+}
+
+function matchingServiceScroll(root, element, recordId) {
+  return root?.isConnected && element?.isConnected && root.contains(element)
+    && selectedNoteId(element.getAttribute('data-service-entry-id')) === recordId;
+}
+
 function canFocus(root, element) {
   if (!root?.isConnected || !element?.isConnected || !root.contains(element) || !available(element)) return false;
   if (!element.getClientRects().length) return false;
@@ -48,57 +73,73 @@ function canFocus(root, element) {
   return true;
 }
 
-export function captureRetainedView(root, { noteId = null, focusElement = root?.ownerDocument.activeElement } = {}) {
+export function captureRetainedView(root, { noteId = null, recordId = null, fields = null, focusElement = root?.ownerDocument.activeElement } = {}) {
   const token = { scroll: [], selections: [], focusKey: null };
   noteId = selectedNoteId(noteId);
+  recordId = selectedNoteId(recordId);
   for (const key of Object.keys(scrollSelectors)) {
     const element = find(root, scrollSelectors, key);
-    if (element) token.scroll.push({ key, top: position(element.scrollTop), left: position(element.scrollLeft) });
+    if (recordId !== null && key.startsWith('messages-') && find(root, scrollSelectors, 'service-panel')) continue;
+    if (key === 'service-panel' && !matchingServiceScroll(root, element, recordId)) continue;
+    if (element) token.scroll.push({ key, ...(key === 'service-panel' ? { recordId } : {}),
+      top: position(element.scrollTop), left: position(element.scrollLeft) });
   }
   for (const key of Object.keys(controlSelectors)) {
     const element = find(root, controlSelectors, key);
-    if (!available(element) || (key !== 'notes-search' && noteId === null)) continue;
+    const service = key.startsWith('service-');
+    if (!available(element) || (service ? !matchingService(root, element, recordId, fields) : key !== 'notes-search' && noteId === null)) continue;
     const start = element.selectionStart;
     const end = element.selectionEnd;
-    if (Number.isInteger(start) && start >= 0 && Number.isInteger(end) && end >= start) {
-      token.selections.push({ key, noteId: key === 'notes-search' ? null : noteId,
-        start, end, direction: directions.has(element.selectionDirection) ? element.selectionDirection : 'none' });
+    if (Number.isInteger(start) && start >= 0 && Number.isInteger(end) && end >= start
+      && (!service || end <= element.value.length)) {
+      token.selections.push({ key, noteId: service || key === 'notes-search' ? null : noteId,
+        ...(service ? { recordId } : {}), start, end,
+        direction: directions.has(element.selectionDirection) ? element.selectionDirection : 'none' });
     }
-    if (focusElement === element) token.focusKey = key;
+    if (focusElement === element && (!service || token.selections.some(selection => selection.key === key))) token.focusKey = key;
   }
   return token;
 }
 
-export function restoreRetainedView(root, token, { noteId = null, focus = false } = {}) {
+export function restoreRetainedView(root, token, { noteId = null, recordId = null, fields = null, focus = false } = {}) {
   if (!root || !token) return;
   noteId = selectedNoteId(noteId);
+  recordId = selectedNoteId(recordId);
   const selections = Array.isArray(token.selections) ? token.selections : [];
   for (const selection of selections) {
-    if (!selection || !matchingSelection(selection, noteId)) continue;
+    if (!selection) continue;
+    const service = selection.key?.startsWith('service-');
+    if (!(service ? matchingServiceSelection(selection, recordId) : matchingSelection(selection, noteId))) continue;
     const element = find(root, controlSelectors, selection.key);
-    if (!available(element) || typeof element.setSelectionRange !== 'function'
+    if (!available(element) || (service && !matchingService(root, element, recordId, fields)) || typeof element.setSelectionRange !== 'function'
       || !Number.isInteger(selection.start) || selection.start < 0
       || !Number.isInteger(selection.end) || selection.end < selection.start
       || !directions.has(selection.direction)) continue;
     const length = element.value.length;
+    if (service && selection.end > length) continue;
     element.setSelectionRange(Math.min(selection.start, length), Math.min(selection.end, length), selection.direction);
   }
   if (focus === true) {
     const key = token.focusKey;
     const element = find(root, controlSelectors, key);
-    const matchesNote = key === 'notes-search' || selections.some((selection) =>
-      selection?.key === key && matchingSelection(selection, noteId));
-    if (matchesNote && canFocus(root, element)) element.focus({ preventScroll: true });
+    const matchesOwner = key?.startsWith('service-')
+      ? matchingService(root, element, recordId, fields) && selections.some(selection => selection?.key === key
+        && matchingServiceSelection(selection, recordId) && Number.isInteger(selection.start) && selection.start >= 0
+        && Number.isInteger(selection.end) && selection.end >= selection.start && selection.end <= element.value.length
+        && directions.has(selection.direction))
+      : key === 'notes-search' || selections.some(selection => selection?.key === key && matchingSelection(selection, noteId));
+    if (matchesOwner && canFocus(root, element)) element.focus({ preventScroll: true });
   }
   // Selection and focus can move the viewport: apply the retained offsets last.
   // DOM setters clamp to the actual mounted container's current scroll extent.
   for (const scroll of Array.isArray(token.scroll) ? token.scroll : []) {
     if (!scroll || !Number.isFinite(scroll.top) || scroll.top < 0
       || !Number.isFinite(scroll.left) || scroll.left < 0) continue;
+    if (scroll.key === 'service-panel' && (!Object.hasOwn(scroll, 'recordId') || scroll.recordId !== recordId)) continue;
     if (scroll.key === 'notes-body' && !selections.some((selection) =>
       selection?.key === 'notes-body' && matchingSelection(selection, noteId))) continue;
     const element = find(root, scrollSelectors, scroll.key);
-    if (!element) continue;
+    if (!element || (scroll.key === 'service-panel' && !matchingServiceScroll(root, element, recordId))) continue;
     element.scrollTop = scroll.top;
     element.scrollLeft = scroll.left;
   }

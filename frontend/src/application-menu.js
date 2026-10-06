@@ -1,6 +1,5 @@
 import { isRecord, rejected } from './feature-commands.js';
 import { applicationMenuItems } from './application-switching.js';
-import { createNote } from './notes-state.js';
 import { notesPreferencesSchema } from './notes-preferences.js';
 
 export const APPLICATION_MENU_UTILITY_SIZES = {
@@ -10,13 +9,11 @@ export const APPLICATION_MENU_UTILITY_SIZES = {
 const supported = profile => profile.renderer === 'golden-gate' && profile.capabilities.includes('shell.application-menu');
 const fields = (value, keys) => isRecord(value) && Object.keys(value).every(key => keys.includes(key));
 const identity = value => typeof value === 'string' && value.length > 0;
-const position = value => Number.isSafeInteger(value) && value >= 0;
 const invalid = () => rejected('invalid_arguments', 'Use the closed application-menu target and documented payload.');
 const unavailable = () => rejected('unavailable', 'The native application presentation is unavailable.');
-const stale = () => rejected('stale_target', 'The selected source document or text changed before the service could run.');
 const applied = target => ({ status: 'applied', target });
 
-export function goldenApplicationMenuItems({ state, profile, appId, runningAppIds, pendingQuitAppIds, selection }) {
+export function goldenApplicationMenuItems({ state, profile, appId, runningAppIds, pendingQuitAppIds, services = [] }) {
   const live = runningAppIds.includes(appId) && !pendingQuitAppIds.includes(appId) && !state.hiddenAppIds.includes(appId);
   const request = command => ({ command, target: { appId } });
   const actions = {
@@ -30,23 +27,17 @@ export function goldenApplicationMenuItems({ state, profile, appId, runningAppId
       if (item.id === 'preferences') return { ...item, enabled: live && appId === 'notes',
         ...(appId === 'notes' ? { request: request('app.settings.open') } : {}) };
       if (item.id === 'services') {
-        const children = selection && live ? [{
-          id: `service-create-note:${selection.windowId}:${selection.noteId}:${selection.revision}:${selection.control}:${selection.start}:${selection.end}`,
-          label: 'Create Note from Selection', enabled: true,
-          request: { command: 'app.service.perform', target: { appId, serviceId: 'create-note', windowId: selection.windowId,
-            noteId: selection.noteId, control: selection.control }, payload: { start: selection.start, end: selection.end } },
-        }] : [{ id: 'no-services', label: 'No Services Apply', enabled: false }];
+        const children = live && services.length ? services : [{ id: 'no-services', label: 'No Services Apply', enabled: false }];
         return { id: item.id, label: item.label, enabled: live, children };
       }
       return { ...item, ...(actions[item.id] ? { request: actions[item.id] } : {}) };
     });
 }
 
-/** Panel geometry/lifetime remains in App. Preferences are seeded data; service
- * focus preparation precedes creation so a failed/stale source creates no note. */
+/** Panel geometry/lifetime remains in App; preferences are complete seeded data. */
 export function createApplicationMenuCommands(ctx) {
   const guard = () => !supported(ctx.profile)
-    ? rejected('unsupported_profile', 'Only Golden Gate supports application-menu panels and local services.')
+    ? rejected('unsupported_profile', 'Only Golden Gate supports application-menu panels.')
     : !ctx.available() ? unavailable() : null;
   function currentApp(appId) {
     if (!Object.hasOwn(ctx.profile.applications, appId)) return rejected('not_found', 'The application is not registered.');
@@ -102,30 +93,6 @@ export function createApplicationMenuCommands(ctx) {
         if (payload.left !== undefined) entry.element.scrollLeft = payload.left;
       }
       return applied({ windowId: target.windowId, top: entry.element.scrollTop, left: entry.element.scrollLeft });
-    },
-    'app.service.perform': async (target, payload) => {
-      const error = guard(); if (error) return error;
-      if (!fields(target, ['appId', 'serviceId', 'windowId', 'noteId', 'control']) || target.appId !== 'notes'
-        || target.serviceId !== 'create-note' || !identity(target.windowId) || !identity(target.noteId)
-        || !['title', 'body'].includes(target.control) || !fields(payload, ['start', 'end'])
-        || !position(payload.start) || !position(payload.end) || payload.end <= payload.start) return invalid();
-      const ownerError = currentApp(target.appId); if (ownerError) return ownerError;
-      const source = ctx.getSource(target); if (!source) return stale();
-      if (payload.end > source.value.length || payload.end - payload.start > 1024 * 1024) return invalid();
-      const value = source.value, revision = source.note.updatedAt, token = ctx.captureFocus();
-      let focused;
-      try { focused = await ctx.focusServiceBody(target.windowId); }
-      catch (error) { await ctx.restoreFocus(token, target.windowId); throw error; }
-      const current = ctx.getSource(target);
-      if (!focused || !ctx.available() || !current || current.value !== value || current.note.updatedAt !== revision) {
-        await ctx.restoreFocus(token, target.windowId);
-        return !focused || !ctx.available() ? unavailable() : stale();
-      }
-      // The already-focused native body is retained across the nonempty selected
-      // record change; no fallible focus work or second edit follows creation.
-      const noteId = createNote(ctx.notes, value.slice(payload.start, payload.end));
-      ctx.noteCreated();
-      return applied({ appId: 'notes', serviceId: 'create-note', windowId: target.windowId, sourceNoteId: target.noteId, noteId });
     },
   };
 }

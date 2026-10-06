@@ -44,7 +44,7 @@
   import MacDesktopViewOptions from './MacDesktopViewOptions.svelte';
   import { createNotesCommands } from './notes-commands.js';
   import { commandCatalog } from './command-catalog.js';
-  import { visibleNotes } from './notes-state.js';
+  import { visibleNotes, createNote } from './notes-state.js';
   import { appCommandMenuProviders } from './app-command-menus.js';
   import { APPLICATION_MENU_UTILITY_SIZES, goldenApplicationMenuItems, createApplicationMenuCommands } from './application-menu.js';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
@@ -66,6 +66,14 @@
   import { createWindowExtensionCommands } from './window-extension-commands.js';
   import { createHelpViewerCommands } from './help-viewer-commands.js';
   import GoldenGateHelpViewer from './GoldenGateHelpViewer.svelte';
+  import { createServiceCommands } from './service-commands.js';
+  import { createServiceSources } from './service-sources.js';
+  import { serviceMenuItems } from './service-registry.js';
+  import { communicationEntries, communicationEntry } from './communication-state.js';
+  import GoldenGateServiceProvider from './GoldenGateServiceProvider.svelte';
+  import GoldenGateServiceLookup from './GoldenGateServiceLookup.svelte';
+  import GoldenGateServicesContext from './GoldenGateServicesContext.svelte';
+  import WindowControls from './WindowControls.svelte';
   import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
@@ -92,6 +100,7 @@
   const hasViewWorkflows = profile.capabilities.includes('shell.view-workflows');
   const hasWindowExtensions = profile.capabilities.includes('shell.window-extensions');
   const hasHelpWorkflows = profile.capabilities.includes('shell.help-workflows');
+  const hasServices = profile.capabilities.includes('shell.services-workflows');
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
@@ -114,7 +123,7 @@
   let runningAppIds = $state(savedScene?.runningAppIds ?? (adapter.closeKeepsRunning ? [profile.defaults.desktopAppId] : []));
   let pendingQuitAppIds = $state([]);
   const quitInFlight = new Set();
-  let switching = $state({ ...applicationSwitchingDefaults(profile), ...savedScene?.switching });
+  const switching = $state({ ...applicationSwitchingDefaults(profile), ...savedScene?.switching });
   let closedWindows = $state(savedScene?.closedWindows ?? {});
   const pendingWindowViews = new Map(Object.entries(savedScene?.views ?? {}));
   const applicationUtilityReturnFocus = new Map();
@@ -130,6 +139,13 @@
   let viewPresentation = $state({ options: null, nextOptionsId: 1, error: null });
   let helpPane = $state(null), helpView = $state(null), helpViewer = $state.raw(null);
   $effect(() => { if (helpViewer) { foreground; activeAppId; switching.switcher; presentation.pairing; fileDialogState.current; helpViewer.reconcile(); } });
+  let services = $state.raw(null), serviceSources;
+  let serviceLookup = $state.raw(null), serviceContext = $state.raw(null), servicePending = $state.raw(null), servicePreparation = $state.raw(null);
+  let serviceLookupView = $state.raw(null), serviceContextView = $state.raw(null), serviceEpoch = $state(0);
+  const serviceViews = new Map(), sampleServiceViews = new Map();
+  let serviceErrors = $state({});
+  $effect(() => { if (services) { foreground; activeAppId; activeWindowId; switching.switcher; presentation.pairing;
+    fileDialogState.current; communicationsState; notesState.selectedId; serviceEpoch; services.reconcile(); } });
   let editingPreferenceRevision = 0, fileHistoryBatch = 0;
   const textAssistance = hasEditWorkflows ? createTextAssistance() : null;
   const textInputSelections = new WeakMap();
@@ -185,7 +201,7 @@
   let disposed = false;
   let area = $state({ width: 0, height: 0 });
   let presentation = $state({ ...fullScreenDefaults(), ...(savedScene ? { splitViews: savedScene.splitViews } : {}) });
-  let spaceState = $state({ ...spacesDefaults(), ...savedScene?.spaces });
+  const spaceState = $state({ ...spacesDefaults(), ...savedScene?.spaces });
   let missionControlControls = $state();
   let missionControlSlots = $state({});
   let launchpadState = $state(launchpadDefaults(profile));
@@ -312,6 +328,7 @@
   let notesState = $state(initialData.notes);
   let nativeState = $state(initialData.native);
   let messagesState = $state(initialData.messages);
+  let communicationsState = $state(hasServices ? initialData.communications : undefined);
   let appearanceState = $state(macDesktop ? initialData.appearance ?? appearanceDefaults(profile) : undefined);
   let printingState = $state(hasFileWorkflows ? initialData.printing : undefined);
   let editingPreferences = $state(hasEditWorkflows ? initialData.editing : undefined);
@@ -462,6 +479,7 @@
     focusDesktop, revealItem: revealDesktopFile, rename: renameDesktopItem, move: moveDesktopItems,
   }), createDesktopContextCommands(desktopState, {
     getItems: getDesktopItems, getView: () => desktopView, available: windowInteractionsAvailable,
+    getMenuItems: getDesktopContextMenuItems,
     focusDesktop, invoke: (command, target, payload) => handlers[command](target, payload),
     createFolder: createDesktopFolder, trash: trashDesktopItems,
     openInfo: fileId => openDesktopUtility('desktop-info', fileId),
@@ -865,20 +883,46 @@
     helpViewer = ownedHelpViewer;
     Object.assign(handlers, ownedHelpViewer.handlers);
   }
+  if (hasServices) {
+    serviceSources = createServiceSources({
+      namespace: () => windowNamespace, available: servicesAvailable,
+      activeAppId: () => activeAppId, activeWindowId: () => activeWindowId,
+      frame: getServiceFrame, menuFocus: () => menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null,
+      noteSelection: textSelectionTarget, noteSource: ownedTextSource,
+      noteSearchRevision: () => textEditing.targets().searchRevision,
+      provider: getServiceProvider, entry: (appId, entryId) => communicationEntry(communicationsState, appId, entryId),
+      selectedEntry: appId => communicationsState.selected[appId], selectedFiles: serviceSelectedFiles,
+      isSample: serviceSampleAvailable, sampleItem: index => messagesState.thread.items[index],
+      sampleRevision: () => messagesState.thread.timestamp,
+      retainedSource: () => services?.retainedSource(),
+    });
+    const serviceCommands = createServiceCommands(communicationsState, {
+      profile, notes: notesState, clipboard: clipboardState, namespace: () => windowNamespace,
+      ui: { get lookup() { return serviceLookup; }, set lookup(value) { serviceLookup = value; },
+        get context() { return serviceContext; }, set context(value) { serviceContext = value; } },
+      available: servicesAvailable, getSource: serviceSources.getSource, sourceCurrent: serviceSources.current,
+      ownsSourcePresentation: serviceSources.owns, describeSource: serviceSources.describe,
+      captureReturn: () => ({ ...captureSessionDesktop(), focus: services?.getReturnFocus() ?? captureNativeFocus() }),
+      restoreReturn: (snapshot, source) => serviceSources.owns(source) ? restoreSessionDesktop(snapshot) : false,
+      settle: async () => { await tick(); await tick(); }, getLookupView: () => serviceLookupView, getContextView: () => serviceContextView,
+      getProvider: getServiceProvider, describeProviders: describeServiceProviders, describeSampleMessages,
+      prepareDestination: prepareServiceDestination, destinationCurrent: serviceDestinationCurrent,
+      rollbackDestination: rollbackServiceDestination, finishDestination: finishServiceDestination,
+      prepareSource: prepareServiceSource, showFileInfo: showServiceFileInfo, selectSampleMessage: selectServiceSampleMessage,
+      canCreateNote: canCreateServiceNote, canCommitDraft: canCreateServiceDraft,
+      canCommitCommunications: canCommitServiceCommunications, providerValuesCurrent: serviceProviderValuesCurrent,
+      noteCreated: () => { clearNotesPresentation(); notesViewState.focusedControl = { control: 'body' }; },
+      changed: () => serviceEpoch++,
+    });
+    services = serviceCommands;
+    Object.assign(handlers, serviceCommands.handlers);
+  }
   if (hasApplicationMenu) Object.assign(handlers, createApplicationMenuCommands({
     profile, notes: notesState,
     available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
     getActiveAppId: () => activeAppId, getRunningAppIds: () => runningAppIds,
     isHidden: isAppHidden, isQuitting: appId => pendingQuitAppIds.includes(appId),
     openPanel: openApplicationUtility, getPanel: getApplicationPanel, focusPanel: focusApplicationPanel,
-    getSource: applicationServiceSource, captureFocus: captureNativeFocus,
-    focusServiceBody: focusApplicationServiceBody,
-    restoreFocus: (token, windowId) => sceneInteractionsAvailable() && activeWindowId === windowId
-      ? restoreNativeFocus(token) : false,
-    noteCreated: () => {
-      clearNotesPresentation();
-      notesViewState.focusedControl = { control: 'body' };
-    },
   }));
   if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
     native: nativeState,
@@ -908,6 +952,7 @@
       ...(hasAppearance ? { appearance: appearanceState } : {}),
       ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
       ...(messagesState ? { messages: messagesState } : {}),
+      ...(hasServices ? { communications: communicationsState, services: services.targets() } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -943,7 +988,7 @@
         positions: Object.fromEntries(Object.entries(desktopState.positions).map(([id, value]) => [id, { ...value }])),
         context: desktopState.context ? { ...desktopState.context } : null,
         sortBy: desktopState.sortBy, viewOptions: { ...desktopState.viewOptions },
-        menuItems: desktopContextItems(desktopState, getDesktopItems(), profile.family),
+        menuItems: getDesktopContextMenuItems(),
         ...(hasDesktopStacks ? { stacks: {
           ...desktopState.stacks, expandedStackIds: [...desktopState.stacks.expandedStackIds],
           topFileIds: { ...desktopState.stacks.topFileIds },
@@ -1069,6 +1114,7 @@
       ...(hasViewWorkflows ? { viewing: viewingTargets() } : {}),
       ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
       ...(hasHelpWorkflows ? { helpViewer: helpViewer.targets() } : {}),
+      ...(hasServices ? { services: services.targets() } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
 
@@ -1163,7 +1209,7 @@
     if (!element || element.closest('[inert]') || getComputedStyle(element).visibility !== 'visible') return false;
     element.focus({ preventScroll: true });
     if (hasRetention && pendingWindowViews.has(id)) {
-      restoreRetainedView(element, pendingWindowViews.get(id), { noteId: notesState.selectedId, focus: foreground });
+      restoreRetainedView(element, pendingWindowViews.get(id), retainedServiceOptions(windows.find(window => window.id === id), { focus: foreground }));
       pendingWindowViews.delete(id);
     }
     return hasRetention ? element.contains(document.activeElement) : document.activeElement === element;
@@ -1487,35 +1533,283 @@
       return rejected('unavailable', 'The application utility did not mount its native panel.');
     return { status: 'applied', target: { appId, windowId: window.id } };
   }
-  function applicationServiceSource(target) {
-    if (!hasApplicationMenu || !windowInteractionsAvailable() || switching.switcher || presentation.pairing
-      || activeAppId !== 'notes' || activeWindowId !== target.windowId || isAppHidden('notes')
-      || pendingQuitAppIds.includes('notes')) return null;
-    const window = windows.find(entry => entry.id === target.windowId && entry.appId === 'notes' && !entry.utilityKind);
-    const note = visibleNotes(notesState).find(entry => entry.id === target.noteId && entry.id === notesState.selectedId);
-    if (!window || window.minimized || !windowPresented(window) || !note || !['title', 'body'].includes(target.control)) return null;
-    const node = managedWindowElement(window.id)?.querySelector(`[data-notes-control="${target.control}"]`);
-    if (!node?.isConnected || node.dataset.noteId !== note.id || node.disabled || node.closest('[inert]')
-      || !node.getClientRects().length || typeof node.value !== 'string') return null;
-    return { note, value: node.value };
+  function servicesAvailable() {
+    return hasServices && windowInteractionsAvailable() && !switching.switcher && !presentation.pairing;
   }
-  function applicationServiceSelection() {
-    const token = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null;
-    const node = token?.node ?? document.activeElement, control = node?.dataset?.notesControl;
-    if (!['title', 'body'].includes(control)) return null;
-    const windowId = node.closest('[data-window-id]')?.dataset.windowId;
-    const noteId = token?.noteId ?? node.dataset.noteId;
-    if (noteId !== node.dataset.noteId) return null;
-    const source = applicationServiceSource({ windowId, noteId, control });
-    const range = token?.selection ?? { start: node.selectionStart, end: node.selectionEnd };
-    if (!source || !Number.isSafeInteger(range?.start) || !Number.isSafeInteger(range?.end)
-      || range.start < 0 || range.end <= range.start || range.end > source.value.length
-      || range.end - range.start > 1024 * 1024) return null;
-    return { windowId, noteId, control, revision: source.note.updatedAt, start: range.start, end: range.end };
+  function getDesktopContextMenuItems() {
+    const items = desktopContextItems(desktopState, getDesktopItems(), profile.family);
+    if (!hasServices || !desktopState.context?.fileId || activeAppId !== 'finder' || activeWindowId !== null) return items;
+    serviceEpoch;
+    const source = serviceSources?.physicalSource(), children = source?.kind === 'files' ? serviceMenuItems(source, profile) : [];
+    return children.length ? [...items, { id: 'local-services', label: 'Services', enabled: true, children }] : items;
+  }
+  function getServiceFrame(windowId, requireForeground = true) {
+    if (!servicesAvailable() || windowId === null) return null;
+    const window = windows.find(entry => entry.id === windowId && !entry.utilityKind && !entry.minimized
+      && !isAppHidden(entry.appId) && !pendingQuitAppIds.includes(entry.appId));
+    const element = window && managedWindowElement(windowId);
+    if (!window || !element?.isConnected || requireForeground && (activeWindowId !== windowId
+      || activeAppId !== window.appId || !windowPresented(window) || element.closest('[inert]') || !element.getClientRects().length)) return null;
+    return { window, element };
+  }
+  function serviceSampleAvailable(windowId) {
+    return Boolean(hasServices && getServiceFrame(windowId, false)?.window.appId === 'messages'
+      && communicationsState.selected.messages === null);
+  }
+  function sampleServiceView(windowId) {
+    const history = () => getServiceFrame(windowId, true)?.element.querySelector('.golden-gate-messages-history');
+    if (!sampleServiceViews.has(windowId)) sampleServiceViews.set(windowId, {
+      prepare: async () => Boolean(getServiceFrame(windowId, true)),
+      focus: async control => control === 'panel' && serviceSampleAvailable(windowId) && await focusKeyboardWindow(windowId),
+      fieldNode: () => null, contains: node => Boolean(getServiceFrame(windowId, true)?.element.contains(node)),
+      describe: () => ({ controlIds: ['panel'], focusedControl: document.activeElement === managedWindowElement(windowId) ? 'panel' : null,
+        scroll: { top: history()?.scrollTop ?? 0, left: history()?.scrollLeft ?? 0 } }),
+      scroll: ({ top, left, observe }) => {
+        const node = history(); if (!node) return null;
+        if (!observe) node.scrollTo({ top, left, behavior: 'instant' });
+        return { top: node.scrollTop, left: node.scrollLeft };
+      },
+    });
+    return sampleServiceViews.get(windowId);
+  }
+  function getServiceProvider(windowId) {
+    const frame = getServiceFrame(windowId, true);
+    if (!frame || !['contacts', 'mail', 'messages'].includes(frame.window.appId)) return null;
+    const appId = frame.window.appId, pending = servicePending?.windowId === windowId ? servicePending : null;
+    const entry = pending?.entry ?? communicationEntry(communicationsState, appId);
+    const view = serviceViews.get(windowId) ?? (appId === 'messages' && serviceSampleAvailable(windowId) ? sampleServiceView(windowId) : null);
+    return view ? { appId, windowId, entry, view, pending: Boolean(pending),
+      editable: Boolean(entry && communicationsState.drafts.some(draft => draft.id === entry.id)) } : null;
+  }
+  function registerServiceView(windowId, view, original) {
+    if (view) { serviceViews.set(windowId, view); serviceEpoch++; return () => {
+      if (serviceViews.get(windowId) === view) { serviceViews.delete(windowId); serviceEpoch++; }
+    }; }
+    if (!original || serviceViews.get(windowId) === original) { serviceViews.delete(windowId); serviceEpoch++; }
+  }
+  function registerServiceLookupView(view, original) {
+    if (view) { serviceLookupView = view; return () => { if (serviceLookupView === view) serviceLookupView = null; }; }
+    if (!original || serviceLookupView === original) serviceLookupView = null;
+  }
+  function registerServiceContextView(view, original) {
+    if (view) { serviceContextView = view; return () => { if (serviceContextView === view) serviceContextView = null; }; }
+    if (!original || serviceContextView === original) serviceContextView = null;
+  }
+  function serviceProviderModel(appId, windowId) {
+    serviceEpoch;
+    const pending = servicePending?.windowId === windowId ? servicePending : null;
+    const entry = pending?.entry ?? communicationEntry(communicationsState, appId);
+    return { entry, pending: Boolean(pending), editable: Boolean(pending || entry && communicationsState.drafts.some(draft => draft.id === entry.id)),
+      error: serviceErrors[windowId] ?? null,
+      entries: communicationEntries(communicationsState, appId).map(item => ({ id: item.id, kind: item.kind,
+        label: item.kind === 'contact' ? item.fields.name || item.fields.email || item.fields.phone
+          : item.kind === 'mail' ? item.fields.subject || item.fields.to || 'New email' : item.fields.to || 'New message',
+        draft: communicationsState.drafts.some(draft => draft.id === item.id) })),
+      contactSourceId: entry?.kind === 'contact' && !pending && activeWindowId === windowId ? serviceSources.contactSource(false)?.sourceId : null };
+  }
+  function describeServiceProviders() {
+    return windows.filter(window => ['contacts', 'mail', 'messages'].includes(window.appId) && !window.utilityKind).map(window => {
+      const provider = getServiceProvider(window.id);
+      return { appId: window.appId, windowId: window.id, available: Boolean(provider), entryId: communicationsState.selected[window.appId],
+        ...(provider ? provider.view.describe() : {}) };
+    });
+  }
+  function describeSampleMessages() {
+    const window = windows.find(window => window.appId === 'messages' && !window.utilityKind && serviceSampleAvailable(window.id));
+    return window ? messagesState.thread.items.flatMap((item, itemIndex) => item.kind === 'text'
+      ? [{ windowId: window.id, itemIndex, valueLength: item.text.length, readOnly: true }] : []) : [];
+  }
+  function serviceSelectedFiles(windowId, requireForeground = true) {
+    if (!servicesAvailable() || requireForeground && (activeAppId !== 'finder' || activeWindowId !== windowId)) return null;
+    const frame = windowId === null ? null : getServiceFrame(windowId, requireForeground);
+    if (windowId !== null && frame?.window.appId !== 'finder') return null;
+    const ids = windowId === null ? desktopState.selectedFileIds : frame.window.finderSelectedFileIds ?? [];
+    const available = windowId === null ? getDesktopItems().map(item => item.id)
+      : macFiles.files.filter(file => file.parentId === frame.window.folderId && !file.deleted).map(file => file.id);
+    if (!ids.length || ids.some(id => !available.includes(id))) return null;
+    const values = ids.map(fileId => {
+      const file = liveFile(macFiles, fileId), info = getDesktopFileInfo(fileId);
+      return file && info && !info.deleted ? { fileId, name: file.name, kind: file.kind, revision: file.revision,
+        content: file.content ?? '', path: `${info.path} / ${file.name}` } : null;
+    });
+    return values.every(Boolean) ? values : null;
+  }
+  function canCommitServiceCommunications(candidate) {
+    return workflowTextSize() - persistentStringUnits(communicationsState) + persistentStringUnits(candidate) <= 4 * 1024 * 1024;
+  }
+  function canCreateServiceDraft(preview) {
+    const candidate = $state.snapshot(communicationsState);
+    candidate.drafts.push(preview); candidate.nextId++; candidate.timeBase = preview.updatedAt;
+    candidate.selected[preview.kind === 'contact' ? 'contacts' : preview.kind === 'message' ? 'messages' : 'mail'] = preview.id;
+    return canCommitServiceCommunications(candidate);
+  }
+  function canCreateServiceNote(text) {
+    if (notesState.notes.length >= 1024 || text.length > 1024 * 1024
+      || notesState.notes.reduce((latest, note) => Math.max(latest, note.createdAt, note.updatedAt), notesState.timeBase) >= 8_640_000_000_000_000 - 1) return false;
+    const candidate = $state.snapshot(notesState); createNote(candidate, text);
+    return workflowTextSize() - persistentStringUnits(notesState) + persistentStringUnits(candidate) <= 4 * 1024 * 1024;
+  }
+  function captureServicePreparation() {
+    return { windows: $state.snapshot(windows), switching: $state.snapshot(switching), running: [...runningAppIds],
+      activeAppId, activeWindowId, nextWindowId, closed: $state.snapshot(closedWindows),
+      dock: $state.snapshot(desktopState.dock), spaces: $state.snapshot(spaceState), returnFocus: captureSessionDesktop() };
+  }
+  async function prepareServiceDestination(appId, entry, source) {
+    const snapshot = captureServicePreparation(), previousIds = new Set(windows.map(window => window.id));
+    const windowId = openWindow(appId), window = windows.find(window => window.id === windowId);
+    const preparation = { appId, windowId, entry, snapshot, createdIds: previousIds.has(windowId) ? [] : [windowId], source };
+    servicePreparation = preparation;
+    if (!window) return preparation;
+    if (appId === 'notes' && hasViewWorkflows) window.notesPresentation.documentVisible = true;
+    if (entry) servicePending = { ...preparation, entry };
+    await tick(); await tick();
+    const focused = appId === 'notes' ? await focusApplicationServiceBody(windowId)
+      : await serviceViews.get(windowId)?.focus(entry.kind === 'contact' ? 'name' : 'to');
+    preparation.focused = focused === true;
+    preparation.stale = activeWindowId !== windowId || activeAppId !== appId || disposed;
+    return preparation;
+  }
+  function serviceDestinationCurrent(preparation) {
+    if (!preparation?.focused || !getServiceFrame(preparation.windowId, true) || activeAppId !== preparation.appId) return false;
+    if (!preparation.entry) return document.activeElement?.dataset.notesControl === 'body'
+      && document.activeElement.closest('[data-window-id]')?.dataset.windowId === preparation.windowId;
+    const field = preparation.entry.kind === 'contact' ? 'name' : 'to', node = serviceViews.get(preparation.windowId)?.fieldNode(field);
+    return servicePending?.windowId === preparation.windowId && servicePending.entry === preparation.entry
+      && document.activeElement === node && node?.dataset.serviceEntryId === preparation.entry.id && node.value === preparation.entry.fields[field];
+  }
+  function finishServiceDestination(preparation) {
+    if (servicePreparation === preparation) servicePreparation = null;
+    if (servicePending?.windowId === preparation.windowId) servicePending = null;
+    pendingWindowViews.delete(preparation.windowId); serviceErrors[preparation.windowId] = null;
+  }
+  async function rollbackServiceDestination(preparation, source) {
+    if (servicePreparation === preparation) servicePreparation = null;
+    if (servicePending?.windowId === preparation.windowId) servicePending = null;
+    if (disposed) return;
+    const owned = activeWindowId === preparation.windowId && activeAppId === preparation.appId;
+    for (const id of preparation.createdIds) {
+      const index = windows.findIndex(window => window.id === id);
+      if (index >= 0) windows.splice(index, 1);
+      serviceViews.delete(id); pendingWindowViews.delete(id);
+    }
+    if (owned) {
+      const snapshot = preparation.snapshot, byId = new Map(windows.map(window => [window.id, window]));
+      windows = snapshot.windows.filter(window => byId.has(window.id)).map(window => Object.assign(byId.get(window.id), window));
+      Object.assign(switching, snapshot.switching); runningAppIds = snapshot.running; activeAppId = snapshot.activeAppId;
+      activeWindowId = snapshot.activeWindowId; nextWindowId = snapshot.nextWindowId; closedWindows = snapshot.closed;
+      desktopState.dock = snapshot.dock; Object.assign(spaceState, snapshot.spaces);
+      await tick(); await tick();
+      if (sceneCoreAvailable() && serviceSources.current(source) && activeAppId === source.appId && activeWindowId === source.windowId)
+        await restoreSessionDesktop(snapshot.returnFocus);
+      else if (sceneCoreAvailable() && activeWindowId) await focusKeyboardWindow(activeWindowId);
+    } else if (activeWindowId && !windows.some(window => window.id === activeWindowId)) focusRemaining();
+    serviceEpoch++;
+  }
+  async function prepareServiceSource(source) {
+    if (!serviceSources.owns(source) || !serviceSources.current(source)) return false;
+    if (source.windowId === null) { focusDesktop(); return serviceSources.owns(source); }
+    return await focusKeyboardWindow(source.windowId) && serviceSources.current(source);
+  }
+  async function showServiceFileInfo(source) {
+    const snapshot = captureServicePreparation(), before = new Set(windows.map(window => window.id)), windowIds = [];
+    const preparation = { appId: 'finder', windowId: null, snapshot, createdIds: [], source };
+    servicePreparation = preparation;
+    for (const file of source.files) {
+      if (!serviceSources.current(source)) break;
+      const result = await openDesktopUtility('desktop-info', file.fileId);
+      const current = windows.find(window => window.id === activeWindowId && window.utilityKind === 'desktop-info' && window.fileId === file.fileId);
+      if (current) preparation.windowId = current.id;
+      preparation.createdIds = windows.filter(window => !before.has(window.id)).map(window => window.id);
+      if (result.status !== 'applied') break;
+      windowIds.push(result.target.windowId);
+    }
+    if (windowIds.length === source.files.length && serviceSources.current(source)
+      && activeWindowId === windowIds.at(-1) && sceneCoreAvailable()) {
+      finishServiceDestination(preparation);
+      return { status: 'applied', target: { windowIds } };
+    }
+    await rollbackServiceDestination(preparation, source);
+    return rejected('unavailable', 'The original file selection or native information utility changed during preparation.');
+  }
+  function serviceProviderValuesCurrent(provider) {
+    return Boolean(provider.entry && Object.entries(provider.entry.fields).every(([field, value]) => {
+      const node = provider.view.fieldNode(field);
+      return node?.dataset.serviceEntryId === provider.entry.id && node.value === value;
+    }));
+  }
+  async function executeServicePresentation(request) {
+    const result = await commands.execute(request), windowId = request.target?.windowId;
+    if (windowId) {
+      serviceErrors[windowId] = result.status === 'rejected' ? result.error.message : null;
+      if (result.status === 'rejected' && request.command === 'services.draft.set') {
+        const provider = getServiceProvider(windowId), node = provider?.view.fieldNode(request.target.field);
+        if (provider?.entry?.id === request.target.draftId && node?.dataset.serviceEntryId === request.target.draftId)
+          node.value = provider.entry.fields[request.target.field];
+      }
+    }
+    return result;
+  }
+  async function selectServiceSampleMessage(target, payload) {
+    const frame = getServiceFrame(target.windowId, true), item = messagesState.thread.items[target.itemIndex];
+    if (frame?.window.appId !== 'messages' || !serviceSampleAvailable(target.windowId) || servicePending?.appId === 'messages')
+      return rejected('stale_target', 'The requested sample text is not in the original foreground Messages window.');
+    if (item?.kind !== 'text' || payload.end > item.text.length) return rejected('invalid_arguments', 'Use the actual sample text UTF-16 range.');
+    await tick();
+    const node = frame.element.querySelector(`[data-service-message-index="${target.itemIndex}"]`);
+    if (!node?.isConnected || node.textContent !== item.text || !getServiceFrame(target.windowId, true)) return rejected('unavailable', 'The sample text is not rendered.');
+    node.focus({ preventScroll: true });
+    const selection = globalThis.getSelection(), text = node.firstChild;
+    if (!text || text.nodeType !== Node.TEXT_NODE) return rejected('unavailable', 'The sample text has no native text node.');
+    selection.setBaseAndExtent(text, payload.direction === 'backward' ? payload.end : payload.start,
+      text, payload.direction === 'backward' ? payload.start : payload.end);
+    return { status: 'applied', target: { windowId: target.windowId, itemIndex: target.itemIndex, start: payload.start, end: payload.end } };
+  }
+  function retainedServiceOptions(window, extra = {}) {
+    const entry = hasServices && !window.utilityKind && ['contacts', 'mail', 'messages'].includes(window.appId)
+      ? communicationEntry(communicationsState, window.appId) : null;
+    return { noteId: notesState.selectedId, recordId: entry?.id ?? null, fields: entry?.fields ?? null, ...extra };
+  }
+  function serviceContextArea() { return desktopView?.contextArea() ?? { left: 0, top: 28, width: globalThis.innerWidth, height: Math.max(0, globalThis.innerHeight - 28) }; }
+  function serviceContextMenu(event) {
+    if (!servicesAvailable()) return;
+    const node = event.target.closest?.('[data-notes-control],[data-service-field],[data-service-message-index]');
+    if (!node) return;
+    const source = serviceSources.physicalSource();
+    if (source?.node !== node || !services.menuItems().length) return;
+    event.preventDefault(); event.stopPropagation();
+    commands.execute({ command: 'services.context.open', target: { appId: source.appId, sourceId: source.sourceId },
+      payload: { x: event.clientX, y: event.clientY } });
+  }
+  function serviceOutside(event) {
+    if (!hasServices || !foreground || disposed) return;
+    if (serviceContext && !serviceContextView?.contains(event.target)) commands.execute({ command: 'services.context.close',
+      target: { contextId: serviceContext.contextId }, payload: { restoreFocus: false } });
+    if (serviceLookup && !serviceLookupView?.contains(event.target)) commands.execute({ command: 'services.lookup.close',
+      target: { lookupId: serviceLookup.lookupId }, payload: { restoreFocus: false } });
+  }
+  function serviceKeydown(event) {
+    if (!hasServices || event.defaultPrevented || event.isComposing) return;
+    const lookup = serviceLookupView?.contains(event.target), context = serviceContextView?.contains(event.target);
+    const provider = activeWindowId && serviceViews.get(activeWindowId)?.contains(event.target);
+    if (!lookup && !context && !provider) return;
+    const command = event.metaKey && !event.ctrlKey && !event.altKey;
+    if (lookup && (event.key === 'Escape' || command && event.key.toLowerCase() === 'w')) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      commands.execute({ command: 'services.lookup.close', target: { lookupId: serviceLookup.lookupId } }); return;
+    }
+    if (lookup && command && event.key.toLowerCase() === 'f') {
+      event.preventDefault(); event.stopImmediatePropagation();
+      commands.execute({ command: 'services.lookup.focus', target: { lookupId: serviceLookup.lookupId, control: 'query' } }); return;
+    }
+    if (provider && command && event.key.toLowerCase() === 'w') {
+      event.preventDefault(); event.stopImmediatePropagation();
+      commands.execute({ command: 'window.close', target: { windowId: activeWindowId } }); return;
+    }
+    if (provider && command && ['f', 'g', 'z', 'a', 'c', 'x', 'v'].includes(event.key.toLowerCase())) event.stopImmediatePropagation();
   }
   async function focusApplicationServiceBody(windowId, noteId = notesState.selectedId) {
     await tick(); await tick();
-    if (!applicationServiceSource({ windowId, noteId, control: 'body' })) return false;
+    if (!ownedTextSource({ windowId, noteId, control: 'body' })) return false;
     const body = managedWindowElement(windowId).querySelector('[data-notes-control="body"]');
     body.focus({ preventScroll: true });
     return document.activeElement === body;
@@ -1603,25 +1897,25 @@
     if (offsets.left !== undefined) panel.scrollLeft = offsets.left;
     return { top: panel.scrollTop, left: panel.scrollLeft };
   }
-  function ownedNotesWindow(windowId) {
-    if (!hasEditWorkflows || !windowInteractionsAvailable() || activeAppId !== 'notes' || activeWindowId !== windowId
+  function ownedNotesWindow(windowId, requireForeground = true) {
+    if (!hasEditWorkflows || !windowInteractionsAvailable() || requireForeground && (activeAppId !== 'notes' || activeWindowId !== windowId)
       || isAppHidden('notes') || pendingQuitAppIds.includes('notes')) return null;
     return windows.find(window => window.id === windowId && window.appId === 'notes' && !window.utilityKind
-      && !window.minimized && windowPresented(window)) ?? null;
+      && !window.minimized && (!requireForeground || windowPresented(window))) ?? null;
   }
-  function ownedTextDocument(target) {
-    const window = ownedNotesWindow(target.windowId);
+  function ownedTextDocument(target, requireForeground = true) {
+    const window = ownedNotesWindow(target.windowId, requireForeground);
     if (hasViewWorkflows && window?.notesPresentation?.mode === 'gallery' && !window.notesPresentation.documentVisible) return null;
     const note = window && visibleNotes(notesState).find(note => note.id === target.noteId && note.id === notesState.selectedId);
     return note ? { window, note } : null;
   }
-  function ownedTextSource(target) {
-    if (!ownedNotesWindow(target.windowId) || !['title', 'body', 'search'].includes(target.control)) return null;
-    const note = target.control === 'search' ? null : ownedTextDocument(target)?.note;
+  function ownedTextSource(target, requireForeground = true) {
+    if (!ownedNotesWindow(target.windowId, requireForeground) || !['title', 'body', 'search'].includes(target.control)) return null;
+    const note = target.control === 'search' ? null : ownedTextDocument(target, requireForeground)?.note;
     if (target.control !== 'search' && !note) return null;
     const node = managedWindowElement(target.windowId)?.querySelector(`[data-notes-control="${target.control}"]`);
     const value = target.control === 'search' ? notesState.search.replace(/[\r\n]/g, '') : noteTextControlValue(note, target.control);
-    if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length
+    if (!node?.isConnected || node.disabled || requireForeground && (node.closest('[inert]') || !node.getClientRects().length)
       || node.value !== value || (note && node.dataset.noteId !== note.id)) return null;
     return { note: note ?? undefined, value, readOnly: Boolean(node.readOnly || note?.deleted),
       selection: { start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection ?? 'none' } };
@@ -1913,7 +2207,7 @@
     textToolsState.error = result.status === 'rejected' ? result.error.message : null;
   }
   function applicationMenuTargets() {
-    return { preferences: { notes: { ...notesState.preferences } }, selection: applicationServiceSelection(),
+    return { preferences: { notes: { ...notesState.preferences } },
       panels: windows.filter(window => Object.hasOwn(APPLICATION_MENU_UTILITY_SIZES, window.utilityKind)).map(window => {
         const element = managedWindowElement(window.id)?.querySelector('[data-application-panel-scroll]');
         return { appId: window.appId, windowId: window.id, kind: window.utilityKind, available: Boolean(getApplicationPanel(window.id)),
@@ -2169,10 +2463,16 @@
       ? node.localName + attributes.map(attribute => `[${attribute.name}="${CSS.escape(attribute.value)}"]`).join('')
       : node.id ? `#${CSS.escape(node.id)}` : null;
     const draft = hasEditWorkflows ? nativeDraftTarget(node) : null;
+    const serviceSource = hasServices ? serviceSources.physicalSource() : null;
+    const serviceEntry = node.dataset?.serviceEntryId && communicationEntry(communicationsState, activeAppId, node.dataset.serviceEntryId);
     return { node, selector, windowId: node.closest('[data-window-id]')?.dataset.windowId,
       ...(['title', 'body'].includes(node.dataset?.notesControl) ? { noteId: node.dataset.noteId } : {}),
       ...(hasEditWorkflows ? { toolPanel: node.closest('[data-text-panel-kind]')?.dataset.textPanelKind } : {}),
       ...(draft ? { nativeDraft: { ownerId: draft.ownerId, surface: draft.surface, control: draft.control } } : {}),
+      ...(serviceEntry ? { serviceEntryId: serviceEntry.id, serviceAppId: activeAppId, serviceRevision: serviceEntry.revision } : {}),
+      ...(serviceSource?.itemIndex !== undefined ? { serviceSample: { itemIndex: serviceSource.itemIndex, start: serviceSource.start,
+        end: serviceSource.end, value: serviceSource.value, revision: serviceSource.revision,
+        direction: serviceSources.sampleRange(serviceSource.node)?.direction ?? 'forward' } } : {}),
       ...(hasEditWorkflows && typeof node.selectionStart === 'number' ? { sourceValue: node.value,
         ...(node.dataset.notesControl ? { noteRevision: node.dataset.notesControl === 'search' ? textEditing.targets().searchRevision
           : notesState.notes.find(note => note.id === node.dataset.noteId)?.updatedAt } : {}),
@@ -2192,6 +2492,19 @@
         if (!draft || draft.ownerId !== token.nativeDraft.ownerId || draft.surface !== token.nativeDraft.surface
           || draft.control !== token.nativeDraft.control || draft.value !== token.sourceValue) return false;
       }
+      if (token?.serviceEntryId) {
+        const entry = communicationEntry(communicationsState, token.serviceAppId);
+        if (entry?.id !== token.serviceEntryId || entry.revision !== token.serviceRevision
+          || original?.dataset.serviceEntryId !== token.serviceEntryId || original.value !== token.sourceValue) return false;
+      }
+      if (token?.serviceSample) {
+        const saved = token.serviceSample, item = messagesState.thread.items[saved.itemIndex];
+        if (!hasServices || activeWindowId !== token.windowId || item?.kind !== 'text' || item.text !== saved.value
+          || messagesState.thread.timestamp !== saved.revision) return false;
+        const result = await selectServiceSampleMessage({ windowId: token.windowId, itemIndex: saved.itemIndex },
+          { start: saved.start, end: saved.end, direction: saved.direction });
+        return result.status === 'applied';
+      }
       if (original?.isConnected && typeof original.focus === 'function' && !original.closest('[inert]')
         && original.getClientRects().length && getComputedStyle(original).visibility === 'visible') {
         original.focus({ preventScroll: true });
@@ -2206,12 +2519,15 @@
     } finally { ownedWindowFocus--; }
   }
   function captureSessionDesktop() {
+    // Session Lock/fast switching can interrupt a root-native service queue.
+    // Capture the committed source presentation, never its private candidate.
+    if (servicePreparation) return servicePreparation.snapshot.returnFocus;
     const scroll = [];
     for (const node of sceneRoot.querySelectorAll('*')) {
       if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)
         scroll.push({ node, top: node.scrollTop, left: node.scrollLeft });
     }
-    return { focus: helpViewer?.getReturnFocus() ?? captureNativeFocus(), scroll };
+    return { focus: services?.getReturnFocus() ?? helpViewer?.getReturnFocus() ?? captureNativeFocus(), scroll };
   }
   async function restoreSessionDesktop(snapshot) {
     const focused = await restoreNativeFocus(snapshot?.focus);
@@ -2243,7 +2559,8 @@
   }
   function fileWorkflowOtherTextSize() {
     return persistentStringUnits({ version: 1, notes: null, files: null, printing: null,
-      editing: editingPreferences, viewing, messages: messagesState, appearance: appearanceState, dock: persistentDockData() });
+      editing: editingPreferences, viewing, messages: messagesState, ...(hasServices ? { communications: communicationsState } : {}),
+      appearance: appearanceState, dock: persistentDockData() });
   }
   function workflowTextSize() {
     return fileWorkflowOtherTextSize() + persistentStringUnits(notesState) + persistentStringUnits(printingState)
@@ -2470,7 +2787,7 @@
       { menuId: 'application', kind: 'application', label: app?.name ?? '', appId,
         enabled,
         items: goldenApplicationMenuItems({ state: switching, profile, appId, runningAppIds, pendingQuitAppIds,
-          selection: applicationServiceSelection() }) },
+          services: services?.menuItems() ?? [] }) },
       ...commandMenus.filter(menu => menu.menuId !== 'help'),
       { menuId: 'window', kind: 'window', label: 'Window', appId, enabled, items: [
         { id: 'close', label: 'Close', shortcut: '⌘W', enabled: Boolean(active), request: request('window.close') },
@@ -2860,7 +3177,10 @@
       return () => target.removeEventListener(type, listener, capture);
     }
     const stopListeners = [
+      listen(window, 'keydown', serviceKeydown, true),
       listen(window, 'keydown', event => helpView?.keydown(event), true),
+      listen(sceneRoot, 'contextmenu', serviceContextMenu, true),
+      listen(document, 'pointerdown', serviceOutside, true),
       listen(window, 'keydown', launchpadKeydown, true),
       listen(window, 'keydown', dashboardKeydown, true),
       listen(window, 'keydown', spacesKeydown, true),
@@ -2898,6 +3218,7 @@
       disposed = true; stopScene?.(); unregister(); unregisterSession?.();
       viewWorkflows?.dismissOptions();
       helpViewer?.dispose();
+      services?.dispose(); serviceSources?.dispose();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -3034,7 +3355,7 @@
       if (!closed.utilityKind && !windows.some(window => window.id !== id && window.appId === appId && !window.utilityKind)) {
         closedWindows[appId] = {
           window: { ...$state.snapshot(closed), minimized: false, fullScreen: false },
-          view: captureRetainedView(managedWindowElement(id), { noteId: notesState.selectedId }),
+          view: captureRetainedView(managedWindowElement(id), retainedServiceOptions(closed)),
         };
       }
       pendingWindowViews.delete(id);
@@ -3179,7 +3500,7 @@
   async function restoreSavedViews() {
     await tick();
     for (const window of windows) restoreRetainedView(managedWindowElement(window.id), pendingWindowViews.get(window.id),
-      { noteId: notesState.selectedId });
+      retainedServiceOptions(window));
     return { status: 'applied', target: {} };
   }
 
@@ -3194,13 +3515,13 @@
     return $state.snapshot({
       seed: { version: 1, notes: notesState, files: { files: macFiles.files.filter(file => !file.readOnly),
         nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime }, messages: messagesState, appearance: appearanceState,
-        printing: printingState, editing: editingPreferences, viewing, dock: persistentDockData() },
+        printing: printingState, editing: editingPreferences, viewing, communications: communicationsState, dock: persistentDockData() },
       catalogTimes: Object.fromEntries(macFiles.files.filter(file => file.readOnly).map(file =>
         [file.id, { createdAt: file.createdAt, modifiedAt: file.modifiedAt, addedAt: file.addedAt, lastOpenedAt: file.lastOpenedAt }])),
       dockOrder: { mainOrderAppIds: dock.mainOrderAppIds, secondaryOrderItemIds: dock.secondaryOrderItemIds },
       windows, closedWindows,
       views: Object.fromEntries(windows.map(window => [window.id, captureRetainedView(managedWindowElement(window.id),
-        { noteId: notesState.selectedId, focusElement })])),
+        retainedServiceOptions(window, { focusElement }))])),
       nextWindowId, activeWindowId, activeAppId, runningAppIds,
       switching: { activationAppIds, activationWindowIds, creationWindowIds, hiddenAppIds },
       spaces: { desktops, order, activeSpaceId, lastDesktopId, nextDesktopId }, splitViews: presentation.splitViews,
@@ -3241,11 +3562,19 @@
           <GoldenGateNotesSettings preferences={notesState.preferences} windowId={window.id} execute={commands.execute} />
         {:else if hasFileWorkflows && window.appId === 'printcenter'}
           <GoldenGatePrintCenter printing={printingState} execute={commands.execute} />
+        {:else if hasServices && (window.appId === 'mail' || window.appId === 'contacts')}
+          <GoldenGateServiceProvider appId={window.appId} windowId={window.id} model={serviceProviderModel(window.appId, window.id)}
+            execute={executeServicePresentation} registerView={registerServiceView} active={active && interactive}
+            available={id => Boolean(getServiceFrame(id, true))} />
         {:else if Applications}
           <Applications appId={window.appId} windowId={window.id} {profile} native={adapter.nativeForWindow(nativeState, window.id)} execute={commands.execute} registerView={registerApplicationView} />
         {:else if window.appId === 'messages'}
+          <div style:display={hasServices && (servicePending?.windowId === window.id || communicationsState.selected.messages !== null) ? 'none' : 'contents'}>
           <MessagesWindow
             {...(messagesState ? { scene: messagesState } : {})}
+            {...(hasServices ? { onservices: () => commands.execute({ command: 'services.provider.select', target: { appId: 'messages', windowId: window.id },
+              payload: { entryId: communicationEntries(communicationsState, 'messages')[0]?.id ?? null } }),
+              servicesEntryId: communicationEntries(communicationsState, 'messages')[0]?.id ?? null } : {})}
             assets={profile.assets}
             active={active && interactive}
             zoomed={window.zoomed}
@@ -3260,6 +3589,19 @@
             onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
             onzoom={() => toggleWindowZoom(window.id)}
           />
+          </div>
+          {#if hasServices && (servicePending?.windowId === window.id || communicationsState.selected.messages !== null)}
+            {#snippet serviceChrome()}
+              <WindowControls active={active && interactive} zoomed={window.zoomed} fullScreen={window.fullScreen} revealedTop={fullScreenStage.topRevealed}
+                modernGreenMenu={modernMac} onfullscreen={() => toggleWindowFullScreen(window.id)}
+                onsplitbegin={event => beginSplitView(window.id, event)} onsplitside={event => changeSplitSide(window.id, event)}
+                ongreenmenu={() => windowCommand('window.greenMenu.open', window.id)} onclose={() => windowCommand('window.close', window.id)}
+                onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })} onzoom={() => toggleWindowZoom(window.id)} />
+            {/snippet}
+            <GoldenGateServiceProvider appId="messages" windowId={window.id} model={serviceProviderModel('messages', window.id)}
+              execute={executeServicePresentation} registerView={registerServiceView} active={active && interactive}
+              available={id => Boolean(getServiceFrame(id, true))} windowControls={serviceChrome} />
+          {/if}
         {:else if window.appId === 'notes'}
           <NotesWindow
             state={notesState}
@@ -3344,6 +3686,7 @@
   {activeWindowId}
   {activeApp}
   viewState={desktopState}
+  {...(hasServices ? { contextMenuItems: getDesktopContextMenuItems() } : {})}
   {desktopItems}
   {desktopDetails}
   {desktopStacks}
@@ -3426,6 +3769,16 @@
       {/if}
     </div>
   {/if}
+  {#if serviceLookup}
+    <div class="service-lookup-placement">
+      <GoldenGateServiceLookup pane={serviceLookup} execute={commands.execute} {area} registerView={registerServiceLookupView}
+        available={id => services.lookupAvailable(id)} />
+    </div>
+  {/if}
+  {#if serviceContext}
+    <GoldenGateServicesContext context={serviceContext} items={services.contextItems()} execute={commands.execute}
+      area={serviceContextArea()} registerView={registerServiceContextView} available={id => services.contextAvailable(id)} />
+  {/if}
   {#if helpPane}
     <div class="help-placement" style:top="4px" style:height={`${Math.max(1, Math.min(500, area.height - 8))}px`}>
       <GoldenGateHelpViewer {profile} pane={helpPane} execute={commands.execute} {foreground} bind:this={helpView} />
@@ -3437,6 +3790,7 @@
 <style>
   .scene-root { position: absolute; inset: 0; }
   .help-placement { position:absolute; left:50%; transform:translateX(-50%); width:min(700px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:11500; display:flex; justify-content:center; }
+  .service-lookup-placement { position:absolute; top:4px; left:50%; transform:translateX(-50%); width:min(390px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:12000; display:flex; }
   .file-dialog-backdrop { position: absolute; inset: 0; z-index: 20000; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 8px; background: #0002; overflow: hidden; }
   .stage-backdrop { position: absolute; z-index: 1; background: black; pointer-events: none; }
   .split-divider { position: absolute; width: 4px; background: #171717; cursor: col-resize; touch-action: none; outline: none; }

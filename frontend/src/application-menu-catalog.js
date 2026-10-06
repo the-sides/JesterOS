@@ -5,7 +5,6 @@ const profiles = ['macos-golden-gate-27.0.1'];
 const app = object({ appId: identity });
 const window = object({ windowId: identity });
 const panel = object({ windowId: identity, control: choice('panel', 'sort-by', 'group-by-date', 'text-size') });
-const range = { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
 const available = 'Alive interactive Golden scene; no lock/login/power/global modal or competing window-blocking presentation.';
 const owner = 'The registered, running, visible, nonquitting active application owns the requested utility; closed ordinary documents remain closed.';
 const mounted = 'Exact visible, nonminimized, nonhidden, nonquitting app-owned About/Settings utility and its actual connected, noninert native panel.';
@@ -39,13 +38,4 @@ export const applicationMenuCatalog = Object.fromEntries([
     ['Scroll the single real native panel; preserve omitted left. Return actual DOM-clamped top/left, not requested values.',
       'observe:true records native scrolling without moving the panel or trusting requested offsets. Static About/Settings native view keys participate in saved-session capture.'],
     ['native app-panel scroll offsets'], object({ windowId: identity, top: offset, left: offset })),
-  define('app.service.perform', object({ appId: { const: 'notes' }, serviceId: { const: 'create-note' },
-    windowId: identity, noteId: identity, control: choice('title', 'body') }), object({ start: range, end: range }),
-    [available, owner, 'Exact active ordinary Notes window and currently selected visible source record/control. Read-only Recently Deleted text may be read.',
-      'Explicit UTF-16 range: 0 <= start < end <= actual source field length; at most one Mi UTF-16 units. The source is revalidated after native body focus preparation.'],
-    ['Registered local simulation service Create Note from Selection is not asserted to be a stock Apple service.',
-      'Create one new editable unpinned Notes record containing the exact selected substring, select Notes folder, clear search, retain the source record untouched and focus the retained native body.',
-      'All fallible focus and stale-source checks precede record creation. Wrong/stale source, invalid/empty range or failed focus creates no note. No host clipboard, network, cloud account or filesystem effect.'],
-    ['notes.notes', 'notes.folder', 'notes.search', 'notes.selectedId', 'notesView'],
-    object({ appId: { const: 'notes' }, serviceId: { const: 'create-note' }, windowId: identity, sourceNoteId: identity, noteId: identity })),
 ]);

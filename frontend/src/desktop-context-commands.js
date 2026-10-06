@@ -30,7 +30,7 @@ export function createDesktopContextCommands(state, context, prefix = 'desktop',
   const items = () => context.getItems();
   const item = fileId => items().find(entry => entry.id === fileId);
   const available = () => context.available() && view();
-  const menuItems = () => desktopContextItems(state, items(), family);
+  const menuItems = () => context.getMenuItems ? context.getMenuItems() : desktopContextItems(state, items(), family);
   const selectedIds = () => items().filter(entry => state.selectedFileIds.includes(entry.id)).map(entry => entry.id);
   async function cleanup(fileIds, by) {
     if (!view().itemsAvailable()) return unavailable();
@@ -101,7 +101,8 @@ export function createDesktopContextCommands(state, context, prefix = 'desktop',
       if (!entry.enabled || entry.children) return rejected('disabled', 'Choose an enabled leaf action.');
       const fileId = state.context.fileId, fileIds = selectedIds(), options = state.viewOptions;
       let command, commandTarget = {}, commandPayload = {};
-      if (entry.id === 'use-stacks') { command = 'desktop.stacks.set'; commandPayload.enabled = !state.stacks.enabled; }
+      if (entry.request) { command = entry.request.command; commandTarget = entry.request.target; commandPayload = entry.request.payload ?? {}; }
+      else if (entry.id === 'use-stacks') { command = 'desktop.stacks.set'; commandPayload.enabled = !state.stacks.enabled; }
       else if (entry.id.startsWith('stack-group-')) { command = 'desktop.stacks.group'; commandPayload.by = entry.id.slice(12); }
       else if (entry.id.startsWith('sort-')) { command = state.stacks?.enabled ? 'desktop.stacks.sort' : `${prefix}.sort`; commandPayload.by = entry.id.slice(5); }
       else if (entry.id.startsWith('clean-up-')) { command = `${prefix}.cleanup`; commandPayload.by = entry.id.slice(9); }

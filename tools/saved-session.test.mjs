@@ -10,6 +10,7 @@ import { macDesktopItems } from '../frontend/src/desktop-file-state.js';
 import { spacesDefaults, spacesItems } from '../frontend/src/spaces.js';
 import { applicationBundleId, createMacApplicationFiles } from '../frontend/src/mac-application-files.js';
 import { finderPresentationDefaults, notesPresentationDefaults } from '../frontend/src/viewing-state.js';
+import { draftPreview, createCommunicationDraft, submitCommunicationDraft, communicationEntry } from '../frontend/src/communication-state.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const bounds = () => ({ x: 140, y: 80, width: 848, height: 592, scale: 0.8 });
@@ -93,6 +94,116 @@ function commands({ storage = memoryStorage(), beforeCapture, capture = async ()
   return createSavedSessionCommands({ profile: selectedProfile, available, storage: () => storage, beforeCapture, capture, replace });
 }
 const execute = (handlers, action, target = {}, payload = {}) => handlers[`scene.session.${action}`](target, payload);
+
+function localDraft(scene, kind, fields, attachments = []) {
+  const preview = draftPreview(scene.seed.communications, kind, fields, attachments);
+  expect(preview).not.toBeNull();
+  expect(createCommunicationDraft(scene.seed.communications, preview).status).toBe('applied');
+  return preview.id;
+}
+function serviceView(entry, field, end = entry.fields[field].length) {
+  return { scroll: [{ key: 'service-panel', recordId: entry.id, top: 245, left: 7 }],
+    selections: [{ key: `service-${field}`, noteId: null, recordId: entry.id, start: 0, end, direction: 'backward' }],
+    focusKey: `service-${field}` };
+}
+
+test('service caret, focus and scroll tokens retain exact selected contact/mail/message field ownership', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  localDraft(scene, 'contact', { name: 'Casey \u{1D11E}', email: 'local@example.test', phone: '', notes: ' contact\r\nbytes ' });
+  const contacts = addWindow(scene, 'contacts');
+  scene.views[contacts.id] = serviceView(communicationEntry(scene.seed.communications, 'contacts'), 'name');
+  localDraft(scene, 'mail', { to: 'local@example.test', subject: 'Local', body: ' body\r\n\u{1D11E} bytes ' });
+  const mail = addWindow(scene, 'mail');
+  scene.views[mail.id] = serviceView(communicationEntry(scene.seed.communications, 'mail'), 'body');
+  localDraft(scene, 'message', { to: 'fictional endpoint', body: 'local \u{1D11E} message' });
+  scene.views.messages = serviceView(communicationEntry(scene.seed.communications, 'messages'), 'body');
+  expect(validate(snapshot)).toEqual({ ok: true });
+  const restored = JSON.parse(JSON.stringify(snapshot));
+  expect(restored.locals[0].scene.views).toEqual(scene.views);
+  expect(restored.locals[0].scene.seed.communications).toEqual(scene.seed.communications);
+  expect(validate(restored)).toEqual({ ok: true });
+  const empty = fixture(), emptyScene = empty.locals[0].scene;
+  const emptyMail = addWindow(emptyScene, 'mail');
+  emptyScene.views[emptyMail.id].scroll = [{ key: 'service-panel', recordId: null, top: 0, left: 0 }];
+  expect(validate(empty)).toEqual({ ok: true });
+});
+
+test('service retained views reject mismatched entities, fields, channels, UTF-16 bounds and missing scroll identity', () => {
+  for (const mutate of [
+    view => { delete view.selections[0].recordId; },
+    view => { view.selections[0].recordId = 'service-draft-missing'; },
+    view => { view.selections[0].noteId = 'note-1'; },
+    view => { view.selections[0].key = 'service-email'; },
+    view => { view.selections[0].key = 'notes-body'; },
+    view => { view.selections[0].end++; },
+    view => { view.selections[0].start = view.selections[0].end + 1; },
+    view => { view.focusKey = 'service-subject'; },
+    view => { view.scroll[0].recordId = 'service-draft-missing'; },
+    view => { delete view.scroll[0].recordId; },
+    view => { view.scroll[0].key = 'messages-thread'; },
+  ]) {
+    const snapshot = fixture(), scene = snapshot.locals[0].scene;
+    localDraft(scene, 'mail', { to: 'fictional', subject: '', body: '\u{1D11E} local' });
+    const window = addWindow(scene, 'mail');
+    scene.views[window.id] = serviceView(communicationEntry(scene.seed.communications, 'mail'), 'body');
+    mutate(scene.views[window.id]);
+    const before = structuredClone(snapshot);
+    expect(validate(snapshot).ok).toBe(false); expect(snapshot).toEqual(before);
+  }
+  for (const change of [
+    (_, scene) => { localDraft(scene, 'message', { to: 'fictional', body: 'real' }); },
+    (_, scene) => { scene.views.messages.scroll = [{ key: 'service-panel', recordId: null, top: 0, left: 0 }]; },
+    (_, scene) => { const window = addWindow(scene, 'contacts'); scene.views[window.id].selections = [
+      { key: 'service-name', noteId: null, recordId: 'missing', start: 0, end: 0, direction: 'none' }]; },
+    (_, scene) => { const window = addWindow(scene, 'notes'); scene.views[window.id].selections = [
+      { key: 'notes-title', noteId: 'note-1', recordId: 'service-draft-1', start: 0, end: 1, direction: 'none' }]; },
+    (_, scene) => { scene.views.messages.scroll[0].recordId = null; },
+  ]) rejects(change);
+});
+
+test('closed service windows keep the exact saved entity caret and reject an old token for a new selection', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  const first = localDraft(scene, 'contact', { name: 'First', email: '', phone: '', notes: 'native bytes' });
+  const recordId = submitCommunicationDraft(scene.seed.communications, first).target.recordId;
+  const contact = communicationEntry(scene.seed.communications, 'contacts');
+  remember(scene, 'contacts', {}, serviceView(contact, 'notes'));
+  expect(contact.id).toBe(recordId); expect(validate(snapshot)).toEqual({ ok: true });
+  localDraft(scene, 'contact', { name: 'Second', email: '', phone: '', notes: 'other bytes' });
+  const before = structuredClone(snapshot);
+  expect(validate(snapshot).ok).toBe(false); expect(snapshot).toEqual(before);
+  scene.closedWindows.contacts.view = serviceView(communicationEntry(scene.seed.communications, 'contacts'), 'name');
+  expect(validate(snapshot)).toEqual({ ok: true });
+});
+
+test('saved communication records and snapshot bytes round-trip independently across baseline and both local users', async () => {
+  const snapshot = fixture(true);
+  for (const [index, local] of snapshot.locals.entries()) {
+    const scene = local.scene, source = scene.seed.files.files.find(file => file.kind === 'document');
+    const attachment = { fileId: source.id, name: source.name, revision: source.revision, content: `\ufeff user ${index}\r\n\u{1D11E} exact bytes ` };
+    const draftId = localDraft(scene, 'mail', { to: `local-${index}@example.test`, subject: '', body: ` body ${index}\r\n ` }, [attachment]);
+    expect(submitCommunicationDraft(scene.seed.communications, draftId).status).toBe('applied');
+    source.content = 'Changed after composition'; source.revision++; source.deleted = true;
+    scene.desktop.selectedFileIds = scene.desktop.selectedFileIds.filter(id => id !== source.id);
+    if (scene.desktop.selectionAnchorId === source.id) scene.desktop.selectionAnchorId = null;
+    delete scene.desktop.positions[source.id];
+    const mail = addWindow(scene, 'mail', {}, local.userId);
+    scene.views[mail.id] = serviceView(communicationEntry(scene.seed.communications, 'mail'), 'body');
+  }
+  expect(snapshot.baseline.seed.communications.outbox).toEqual([]);
+  const expected = structuredClone(snapshot), storage = memoryStorage(); let restored;
+  const handlers = commands({ storage, capture: async () => snapshot, replace: async value => { restored = value; } });
+  expect((await execute(handlers, 'save')).status).toBe('applied');
+  const persisted = JSON.parse(storage.values.get(savedSessionStorageKey(profile)));
+  expect(persisted).toEqual(expected); expect(validate(persisted)).toEqual({ ok: true });
+  snapshot.locals[0].scene.seed.communications.outbox[0].attachments[0].content = 'Later current edit';
+  expect((await execute(handlers, 'restore')).status).toBe('applied');
+  expect(restored).toEqual(expected);
+  expect(restored.locals[0].scene.seed.communications.outbox[0].attachments[0].content).toBe('\ufeff user 0\r\n\u{1D11E} exact bytes ');
+  expect(restored.locals[1].scene.seed.communications.outbox[0].attachments[0].content).toBe('\ufeff user 1\r\n\u{1D11E} exact bytes ');
+  const incomplete = structuredClone(expected); delete incomplete.baseline.seed.communications;
+  expect(validate(incomplete).ok).toBe(false);
+  expect(validate(new Proxy(expected, {})).ok).toBe(false);
+});
 
 // Fixtures use the same exported defaults and original App window records as
 // consumers, not schema/source snapshots or private validator helpers.

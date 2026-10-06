@@ -3,6 +3,7 @@ import { notesPreferencesDefaults, notesPreferencesSchema } from './notes-prefer
 import { printingDefaults, printingSchema, validatePrintingState } from './printing-state.js';
 import { editingPreferencesDefaults, editingPreferencesSchema, validateEditingPreferences } from './editing-state.js';
 import { viewingDefaults, viewingSchema, validateViewing } from './viewing-state.js';
+import { communicationDefaults, communicationsSchema, validateCommunications } from './communication-state.js';
 import { createMacDesktopFileStore, validMacDesktopName, liveMacFileRecords } from './desktop-file-state.js';
 import { appearanceDefaults, appearancePresets } from './appearance.js';
 import { macDockDefaults } from './mac-dock-model.js';
@@ -46,6 +47,7 @@ export const sceneSeedSchema = {
     printing: printingSchema,
     editing: editingPreferencesSchema,
     viewing: viewingSchema,
+    communications: communicationsSchema,
     messages: object({ pinned: array(object({ ...avatar, selected: flag }), 128),
       conversations: array(object({ ...avatar, time: string(256), preview: string(4096) })),
       thread: object({ ...avatar, timestampLabel: string(256), timestamp: { ...string(32, 1),
@@ -63,7 +65,7 @@ export const sceneSeedSchema = {
         minimizeIntoApp: flag, showRecent: flag }), folderFileIds: array(identity),
       folderPreferences: { type: 'object', propertyNames: identity, maxProperties: 1024, additionalProperties: folderPreference } }),
   }),
-  description: 'Complete V1 page-local seed; no merging or persistence. Maximum 1024 notes/files/thread items/conversations, 128 pinned conversations, 64 tags per file, 1 Mi UTF-16 units per content string and 4 Mi units total. Safe nonnegative counters and Date-representable timestamps leave room for the next increment. Cross-reference, selection, graph, timestamp and Dock invariants are additionally validated before disposal.',
+  description: 'Complete V1 page-local seed; no merging or persistence. Maximum 1024 notes/files/thread items/conversations, 128 pinned conversations and communications drafts, 1024 real contacts and local sent records, 128 immutable virtual attachments per Mail entry, 64 tags per file, 1 Mi UTF-16 units per content string and 4 Mi units total. Safe nonnegative counters and Date-representable timestamps leave room for the next increment. Cross-reference, channel selection, graph, timestamp and Dock invariants are additionally validated before disposal.',
 };
 
 export function createDefaultSceneSeed(profile) {
@@ -75,6 +77,7 @@ export function createDefaultSceneSeed(profile) {
     printing: printingDefaults(),
     editing: editingPreferencesDefaults(),
     viewing: viewingDefaults(),
+    communications: communicationDefaults(sceneTime),
     messages: {
       pinned: [
         { name: 'Casey', initials: 'CR', tint: '#d39a72', selected: false },
@@ -161,7 +164,11 @@ const invalid = message => ({ ok: false, message });
 
 export function validateSceneSeed(seed, profile) {
   if (!supported(profile)) return invalid('Only the Golden Gate scene.seed profile accepts scene seeds.');
-  if (!plainData(seed) || !matches(seed, sceneSeedSchema)) return invalid('Expected a complete, bounded V1 seed with closed fields and plain serializable data.');
+  try {
+    if (!plainData(seed)) return invalid('Expected a complete, bounded V1 seed with closed fields and plain serializable data.');
+    seed = structuredClone(seed);
+    if (!matches(seed, sceneSeedSchema)) return invalid('Expected a complete, bounded V1 seed with closed fields and plain serializable data.');
+  } catch { return invalid('Seed data must be plain serializable values without invalid proxies.'); }
   const notes = seed.notes;
   if (!unique(notes.notes.map(note => note.id)) || notes.notes.some(note => note.updatedAt < note.createdAt)) return invalid('Note identities must be unique and update times must not precede creation.');
   if (notes.selectedId !== null && !visibleNotes(notes).some(note => note.id === notes.selectedId)) return invalid('The selected note must be visible in the supplied folder and search.');
@@ -171,6 +178,8 @@ export function validateSceneSeed(seed, profile) {
   if (!editing.ok) return editing;
   const viewing = validateViewing(seed.viewing, { notes: seed.notes, files: seed.files }, profile);
   if (!viewing.ok) return viewing;
+  const communications = validateCommunications(seed.communications);
+  if (!communications.ok) return communications;
 
   const store = seed.files, files = new Map(store.files.map(file => [file.id, file]));
   const icons = new Set(['drive', 'folder', 'pdf', ...(profile.capabilities.includes('shell.file-workflows') ? ['document'] : []),
