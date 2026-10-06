@@ -205,7 +205,17 @@
   function suppressContext(event) { event.preventDefault(); event.stopPropagation(); }
 </script>
 
-<div class="menu-popup" bind:this={panel} id={`golden-menu-${menu.menuId}-${level}`}
+{#snippet signal(strength, connected = false)}
+  <svg class="network-signal" class:connected viewBox="0 0 24 20" aria-hidden="true">
+    <path opacity={strength >= 3 ? 1 : .25} fill="currentColor" d="M0 4.5a20 20 0 0 1 24 0l-2.2 2.7a16.5 16.5 0 0 0-19.6 0Z"/>
+    <path opacity={strength >= 2 ? 1 : .25} fill="currentColor" d="M4.2 9.6a13 13 0 0 1 15.6 0l-2.3 2.7a9.4 9.4 0 0 0-11 0Z"/>
+    <path opacity={strength >= 1 ? 1 : .25} fill="currentColor" d="M8.7 14.8a5.7 5.7 0 0 1 6.6 0L12 18Z"/>
+  </svg>
+{/snippet}
+{#snippet lock()}
+  <svg class="lock-icon" viewBox="0 0 12 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M3 6V4a3 3 0 0 1 6 0v2"/><rect x="1.5" y="6" width="9" height="6.5" rx="1.5"/><path d="M6 8.5v2"/></svg>
+{/snippet}
+<div class="menu-popup" class:wifi-popup={menu.kind === 'wifi'} bind:this={panel} id={`golden-menu-${menu.menuId}-${level}`}
   data-menu-popup={level} data-menu-provider={menu.menuId}
   role="menu" aria-label={level === 0 ? `${menu.label} menu` : `${menu.label} submenu`}
   aria-hidden={geometry?.covered ? 'true' : undefined} inert={geometry?.covered ?? false} tabindex="-1"
@@ -227,18 +237,40 @@
       <div class="help-heading">{item.label}</div>
     {:else if item.separator}
       <div class="separator" role="separator"></div>
+    {:else if item.type === 'wifi-network' && item.connected}
+      <div class="connected-network">
+        <button class="disconnect-icon" type="button" role="menuitem" aria-label={`Disconnect from ${item.name ?? item.label}`}
+          data-menu-item-id={item.id} disabled={!item.enabled} tabindex={item.enabled && selection?.itemId === item.id ? 0 : -1}
+          class:selected={selection?.itemId === item.id} title={`Disconnect from ${item.name ?? item.label}`}
+          onpointerenter={() => select(item)} onfocus={() => select(item, true)} onclick={event => activate(event, item)}>
+          {@render signal(item.strength, true)}
+        </button>
+        <span class="label" title={item.name ?? item.label}>{item.name ?? item.label}</span>
+        {#if item.security === 'password'}<span class="network-lock" aria-label="Password protected">{@render lock()}</span>{/if}
+      </div>
     {:else}
-      <button type="button" role={item.radio ? 'menuitemradio' : item.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
-        aria-checked={item.radio || item.checked !== undefined ? Boolean(item.checked) : undefined}
+      <button type="button" role={item.type === 'wifi-disclosure' ? 'menuitem' : item.radio ? 'menuitemradio' : item.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+        aria-checked={item.type !== 'wifi-disclosure' && (item.radio || item.checked !== undefined) ? Boolean(item.checked) : undefined}
         aria-disabled={!item.enabled || item.helpResult?.enabled === false} aria-haspopup={item.children ? 'menu' : undefined}
-        aria-expanded={item.children ? menuState.levels[level + 1]?.parentId === item.id : undefined}
+        aria-expanded={item.type === 'wifi-disclosure' ? Boolean(item.checked) : item.children ? menuState.levels[level + 1]?.parentId === item.id : undefined}
         data-menu-item-id={item.id} disabled={!item.enabled} tabindex={item.enabled && selection?.itemId === item.id ? 0 : -1}
-        class:selected={selection?.itemId === item.id} class:command-unavailable={item.helpResult?.enabled === false} title={item.label}
+        class:selected={selection?.itemId === item.id} class:command-unavailable={item.helpResult?.enabled === false}
+        class:wifi-power={item.type === 'wifi-power'} class:wifi-network={item.type === 'wifi-network'}
+        class:wifi-disclosure={item.type === 'wifi-disclosure'} title={item.label}
         onpointerenter={() => select(item)} onfocus={() => select(item, true)} onclick={event => activate(event, item)}>
-        <span class="check" aria-hidden="true">{item.checked ? item.radio ? '●' : '✓' : ''}</span>
-        <span class="label">{item.label}</span>
-        <span class="shortcut">{item.shortcut ?? ''}</span>
-        <span class="arrow" aria-hidden="true">{item.children ? '›' : ''}</span>
+        {#if item.type === 'wifi-power'}
+          <span class="power-label">{item.label}</span><span class="wifi-switch" class:on={item.checked} aria-hidden="true"><i></i></span>
+        {:else if item.type === 'wifi-network'}
+          {@render signal(item.strength)}<span class="label">{item.name ?? item.label}</span>
+          <span class="network-lock" aria-hidden="true">{#if item.security === 'password'}{@render lock()}{/if}</span>
+        {:else if item.type === 'wifi-disclosure'}
+          <span class="power-label">{item.label}</span><span class="disclosure-arrow" aria-hidden="true">{item.checked ? '⌄' : '›'}</span>
+        {:else}
+          <span class="check" aria-hidden="true">{item.checked ? item.radio ? '●' : '✓' : ''}</span>
+          <span class="label">{item.label}</span>
+          <span class="shortcut">{item.shortcut ?? ''}</span>
+          <span class="arrow" aria-hidden="true">{item.children ? '›' : ''}</span>
+        {/if}
       </button>
     {/if}
   {/each}
@@ -259,4 +291,24 @@
   .help-search input { box-sizing:border-box; width:100%; min-width:0; padding:6px 9px; border:1px solid var(--appearance-menu-border,#9995); border-radius:9px; color:inherit; background:var(--appearance-window-surface,#fff9); font:inherit; }
   .help-heading { padding:4px 8px; font-size:11px; line-height:16px; opacity:.7; white-space:normal; }
   button.command-unavailable { color:var(--appearance-menu-disabled,#8f8b87); }
+  .wifi-popup { width:300px; padding:8px; }
+  .wifi-popup .help-heading { font-weight:600; padding-top:8px; }
+  button.wifi-power, button.wifi-disclosure { grid-template-columns:minmax(0,1fr) auto; min-height:34px; }
+  .wifi-power { font-weight:650; font-size:14px; }
+  .power-label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .wifi-switch { width:30px; height:18px; border-radius:12px; padding:2px; box-sizing:border-box; background:var(--appearance-menu-disabled,#979797); }
+  .wifi-switch i { display:block; width:14px; height:14px; border-radius:50%; background:white; box-shadow:0 1px 3px #0003; }
+  .wifi-switch.on { background:var(--appearance-accent,#0878ef); }
+  .wifi-switch.on i { transform:translateX(12px); }
+  .selected .wifi-switch.on { box-shadow:0 0 0 1px #fff8; }
+  .network-signal { width:20px; height:18px; flex-shrink:0; }
+  button.wifi-network { grid-template-columns:24px minmax(0,1fr) 14px; min-height:32px; }
+  .network-lock { font-size:12px; opacity:.65; text-align:center; }
+  .lock-icon { display:block; width:11px; height:13px; }
+  .connected-network { display:flex; align-items:center; gap:6px; padding:2px 9px; min-height:30px; }
+  .connected-network .label { flex:1; }
+  button.disconnect-icon { display:flex; justify-content:center; width:28px; height:28px; min-height:28px; padding:4px; flex-shrink:0; }
+  .connected { color:var(--appearance-accent,#0878ef); }
+  .selected .connected { color:inherit; }
+  .disclosure-arrow { font-size:20px; line-height:18px; }
 </style>

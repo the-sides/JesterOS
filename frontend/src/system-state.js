@@ -1,6 +1,7 @@
 import { object, flag } from './command-schema.js';
 import { isRecord } from './feature-commands.js';
 import { storagePreferencesDefaults, storagePreferencesSchema, validateStoragePreferences, storageInventory } from './storage-model.js';
+import { wifiDefaults, wifiSchema, validateWifiState } from './wifi-model.js';
 
 const RECENT_LIMIT = 10;
 const forbiddenIds = new Set([...Object.getOwnPropertyNames(Object.prototype), 'prototype']);
@@ -12,9 +13,9 @@ export const validComputerName = name => typeof name === 'string' && name.length
 const serverSchema = object({ id: identity, name: computerNameSchema, folderId: identity, available: flag });
 export const systemStateSchema = object({ computerName: computerNameSchema, reopenWindows: flag,
   recentItems: object({ applications: recentList, documents: recentList, servers: recentList }),
-  servers: { type: 'array', maxItems: 128, items: serverSchema }, storage: storagePreferencesSchema });
+  servers: { type: 'array', maxItems: 128, items: serverSchema }, storage: storagePreferencesSchema, wifi: wifiSchema });
 export const systemDefaults = profile => ({ computerName: profile.defaults.machine.computerName, reopenWindows: true,
-  recentItems: { applications: [], documents: [], servers: [] }, servers: [], storage: storagePreferencesDefaults() });
+  recentItems: { applications: [], documents: [], servers: [] }, servers: [], storage: storagePreferencesDefaults(), wifi: wifiDefaults() });
 
 // Apple-menu history is independent of Dock usage and filesystem metadata.
 // Clearing it must not reset either of those domains or remove their records.
@@ -72,14 +73,14 @@ function validServers(value) {
   return true;
 }
 export function validateSystemState(state, profile) {
-  if (!closedData(state, ['computerName', 'reopenWindows', 'recentItems', 'servers', 'storage']) || !validComputerName(state.computerName)
+  if (!closedData(state, ['computerName', 'reopenWindows', 'recentItems', 'servers', 'storage', 'wifi']) || !validComputerName(state.computerName)
     || typeof state.reopenWindows !== 'boolean'
-    || !validateStoragePreferences(state.storage).ok || !validServers(state.servers)
+    || !validateStoragePreferences(state.storage).ok || !validateWifiState(state.wifi).ok || !validServers(state.servers)
     || !closedData(state.recentItems, ['applications', 'documents', 'servers'])
     || !validList(state.recentItems.applications) || !validList(state.recentItems.documents) || !validList(state.recentItems.servers)
     || state.recentItems.applications.some(id => !Object.hasOwn(profile.applications, id))
     || state.recentItems.servers.some(id => !state.servers.some(server => server.id === id))) {
-    return { ok: false, message: 'System state requires a bounded single-line computer name, a boolean reopen-windows preference, closed fictional-server definitions, and distinct bounded application/document/registered-server history belonging to this profile.' };
+    return { ok: false, message: 'System state requires a bounded single-line computer name, boolean reopen-windows and storage preferences, closed consistent fictional Wi-Fi and server definitions, and distinct bounded application/document/registered-server history belonging to this profile.' };
   }
   return { ok: true };
 }

@@ -14,7 +14,7 @@
   let locationView = $state(null), locationGeometry = $state(null);
   const location = $derived(helpMenuLocation(menus, menuState));
   const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
-  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : menu.kind !== 'users'));
+  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : zone === 'wifi' ? menu.kind === 'wifi' : menu.kind !== 'users' && menu.kind !== 'wifi'));
   const openMenu = $derived(foreground ? rendered.find(menu => menu.menuId === menuState.menuId) : undefined);
   const panes = $derived.by(() => {
     if (!openMenu) return [];
@@ -306,18 +306,25 @@
 </script>
 
 <div class="golden-shared-menu-bar" class:users={zone === 'users'} bind:this={root} data-menu-bar={zone}
-  role="menubar" aria-label={zone === 'users' ? 'User menu' : 'Application menu bar'}>
+  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : 'Application menu bar'}>
   {#each rendered as menu (menu.menuId)}
-    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'}
+    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'}
       bind:this={invokers[menu.menuId]} type="button" role="menuitem" data-menu-invoker={menu.menuId}
       disabled={!menu.enabled || !foreground} aria-disabled={!menu.enabled || !foreground}
       class:located={location?.menuId === menu.menuId}
-      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.label}
+      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.label}
       aria-haspopup="menu" aria-expanded={Boolean(openMenu?.menuId === menu.menuId)} aria-controls={`golden-menu-${menu.menuId}-0`}
       onpointerdown={invokerPointer} onpointerenter={() => hover(menu)} onclick={event => toggle(event, menu)}
       onkeydown={event => invokerKey(event, menu)} oncontextmenu={suppressContext}>
       {#if menu.kind === 'apple'}
         <svg viewBox="0 0 20 24" aria-hidden="true"><path fill="currentColor" d="M13.1 4.1c1-1.1 1.6-2.6 1.4-4.1-1.4.1-3 .9-4 2-1 1.1-1.7 2.6-1.5 4 1.6.1 3.1-.8 4.1-1.9ZM17 12.7c0-2.7 2.2-4 2.3-4.1-1.3-1.9-3.4-2.1-4.1-2.1-1.8-.2-3.5 1.1-4.4 1.1s-2.3-1.1-3.8-1.1C5 6.6 3 7.9 2 9.8c-2.1 3.8-.5 9.3 1.5 12.1 1 1.4 2.1 2.8 3.6 2.7 1.5-.1 2-1 3.8-1s2.3 1 3.9 1c1.6 0 2.6-1.4 3.5-2.8 1.1-1.6 1.6-3.1 1.6-3.2-.1 0-3-1.1-2.9-5.9Z"/></svg>
+      {:else if menu.kind === 'wifi'}
+        <svg class="wifi-signal" viewBox="0 0 24 20" aria-hidden="true">
+          <path opacity={menu.status === 'connected' && menu.strength >= 3 ? 1 : .3} fill="currentColor" d="M0 4.5a20 20 0 0 1 24 0l-2.2 2.7a16.5 16.5 0 0 0-19.6 0Z"/>
+          <path opacity={menu.status === 'connected' && menu.strength >= 2 ? 1 : .3} fill="currentColor" d="M4.2 9.6a13 13 0 0 1 15.6 0l-2.3 2.7a9.4 9.4 0 0 0-11 0Z"/>
+          <path opacity={menu.status === 'connected' ? 1 : .3} fill="currentColor" d="M8.7 14.8a5.7 5.7 0 0 1 6.6 0L12 18Z"/>
+          {#if menu.status === 'off'}<path d="m3 1 18 18" stroke="currentColor" stroke-width="2" />{/if}
+        </svg>
       {:else}
         <span class="invoker-label">{menu.label}</span>
       {/if}
@@ -338,6 +345,8 @@
   .invoker.application { font-weight: 650; }
   .invoker.apple { flex: 0 0 14px; width: 14px; margin: 0 1px 0 0; padding: 0; justify-content: center; }
   .invoker svg { width: 14px; height: 18px; }
+  .invoker.wifi { justify-content:center; width:24px; flex:0 0 24px; max-width:24px; margin:0; padding:0; }
+  .invoker .wifi-signal { width:22px; height:18px; }
   .invoker-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .invoker[aria-expanded='true'] { background: #fff3; box-shadow: inset 0 0 0 1px #fff2; }
   .invoker:focus-visible { outline: 2px solid var(--appearance-focus, #90c6ff); outline-offset: -2px; }
@@ -347,4 +356,5 @@
   @media (max-width: 900px) { .golden-shared-menu-bar { gap: 13px; } }
   @media (max-width: 520px) { .invoker.application { max-width: 105px; } }
   @media (max-width: 520px) { .golden-shared-menu-bar { gap: 6px; } .invoker { margin: 0; padding: 0 1px; } }
+  .invoker.wifi { flex-shrink: 0; }
 </style>

@@ -43,8 +43,9 @@
     registerView,
     onlayout,
   } = $props();
-  const primaryMenus = $derived(menuBarMenus.filter(menu => menu.menuId !== 'users'));
+  const primaryMenus = $derived(menuBarMenus.filter(menu => menu.menuId !== 'users' && menu.menuId !== 'wifi'));
   const userMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'users'));
+  const wifiMenus = $derived(menuBarMenus.filter(menu => menu.menuId === 'wifi'));
 
   const applications = $derived(profile.applications);
   const desktopFiles = $derived(desktopItems);
@@ -511,7 +512,8 @@
           registerView={registerSessionView} {foreground} zone="users" />
       {/if}
       <span class="golden-gate-battery" aria-label={`Battery: ${profile.defaults.batteryPercent} percent`}><svg viewBox="0 0 28 14" aria-hidden="true"><rect x="1" y="2.5" width="23" height="9" rx="2" fill="none" stroke="currentColor"/><path fill="currentColor" d="M3 4.5h17v5H3zm22 0h2v5h-2z"/></svg></span>
-      <span class="golden-gate-wifi" aria-label="Wi-Fi connected"><svg viewBox="0 0 24 18" aria-hidden="true"><path fill="currentColor" d="M0 4.5a20 20 0 0 1 24 0l-2.2 2.7a16.5 16.5 0 0 0-19.6 0Zm4.2 5.1a13 13 0 0 1 15.6 0l-2.3 2.7a9.4 9.4 0 0 0-11 0Zm4.5 5.2a5.7 5.7 0 0 1 6.6 0L12 18Z"/></svg></span>
+      <GoldenGateMenuBar {profile} menus={wifiMenus} state={menuBarState} execute={executeSession}
+        registerView={registerSessionView} {foreground} zone="wifi" />
       <span class="golden-gate-spotlight" aria-label="Spotlight"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg></span>
       <span class="golden-gate-control-center" aria-label="Control Center"><svg viewBox="0 0 22 20" aria-hidden="true"><rect x="2" y="2" width="18" height="6" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="6" cy="5" r="2" fill="currentColor"/><rect x="2" y="12" width="18" height="6" rx="3" fill="currentColor"/><circle cx="16" cy="15" r="2" fill="#707a54"/></svg></span>
       <time datetime={profile.defaults.sceneTime}>{profile.defaults.clockLabel}</time>
@@ -561,6 +563,7 @@
 <style>
   .golden-gate-workspace { outline: none; }
   .golden-gate-file { touch-action: none; user-select: none; }
+  @media (max-width: 745px) { .golden-gate-spotlight, .golden-gate-control-center { display: none; } }
   .mac-desktop-rename { position: absolute; z-index: 1; box-sizing: border-box; padding: 0 3px; border: 1px solid #7f9fca; border-radius: 3px; background: white; color: #111; font: inherit; font-size: 12px; line-height: 16px; text-align: center; outline: none; }
   .mac-desktop-rename:focus { box-shadow: 0 0 0 2px rgb(119 173 240 / 60%); }
   .mac-desktop-marquee { position: absolute; pointer-events: none; box-sizing: border-box; border: 1px solid rgb(255 255 255 / 70%); background: rgb(137 169 218 / 25%); }

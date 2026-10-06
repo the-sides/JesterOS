@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { systemDefaults, recordSystemRecent, clearSystemRecents, validateSystemState, systemStorageSummary } from '../frontend/src/system-state.js';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
+import { setWifiPower, connectWifiNetwork, disconnectWifiNetwork } from '../frontend/src/wifi-model.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 
@@ -59,7 +60,7 @@ test('unrecognized applications, duplicate/overflow history and non-data propert
     expect(validateSystemState(state, profile).ok).toBe(false);
   }
   let reads = 0;
-  const actor = { computerName: valid.computerName, reopenWindows: valid.reopenWindows, storage: valid.storage, servers: valid.servers,
+  const actor = { computerName: valid.computerName, reopenWindows: valid.reopenWindows, storage: valid.storage, wifi: valid.wifi, servers: valid.servers,
     recentItems: { applications: ['notes'], servers: [] } };
   Object.defineProperty(actor.recentItems, 'documents', { enumerable: true, get() { reads++; return []; } });
   expect(validateSystemState(actor, profile).ok).toBe(false);
@@ -76,7 +77,7 @@ test('a saved computer name retains literal Unicode without accepting empty, mul
     expect(validateSystemState(candidate, profile).ok).toBe(false);
   }
   let reads = 0;
-  const candidate = { reopenWindows: state.reopenWindows, recentItems: state.recentItems, servers: state.servers, storage: state.storage };
+  const candidate = { reopenWindows: state.reopenWindows, recentItems: state.recentItems, servers: state.servers, storage: state.storage, wifi: state.wifi };
   Object.defineProperty(candidate, 'computerName', { enumerable: true, get() { reads++; return 'Borrowed name'; } });
   expect(validateSystemState(candidate, profile).ok).toBe(false);
   expect(reads).toBe(0);
@@ -175,4 +176,42 @@ test('only closed unique bounded server definitions and registered history enter
   Object.defineProperty(arrayCandidate.servers, '0', { enumerable: true, get() { reads++; return valid.servers[0]; } });
   expect(validateSystemState(arrayCandidate, profile).ok).toBe(false);
   expect(reads).toBe(0);
+});
+
+test('account Wi-Fi stays isolated and valid across joins, disconnects and power cycles', () => {
+  const alex = systemDefaults(profile), casey = systemDefaults(profile);
+  const other = structuredClone(casey), unrelated = structuredClone(alex);
+  connectWifiNetwork(alex.wifi, 'guest-wifi');
+  expect(alex.wifi.connectedNetworkId).toBe('guest-wifi');
+  expect(validateSystemState(alex, profile)).toEqual({ ok: true });
+  disconnectWifiNetwork(alex.wifi, 'guest-wifi');
+  setWifiPower(alex.wifi, false);
+  setWifiPower(alex.wifi, true);
+  expect(alex.wifi.connectedNetworkId).toBeNull();
+  expect(validateSystemState(alex, profile)).toEqual({ ok: true });
+  expect(casey).toEqual(other);
+  expect({ ...alex, wifi: unrelated.wifi }).toEqual(unrelated);
+});
+
+test('saved accounts require complete Wi-Fi and reject inconsistent or accessor data without upgrading it', () => {
+  const state = systemDefaults(profile), before = structuredClone(state);
+  for (const mutate of [
+    value => { delete value.wifi; },
+    value => { value.wifi = null; },
+    value => { value.wifi.powered = false; },
+    value => { value.wifi.networks[0].known = false; },
+    value => { value.wifi.connectedNetworkId = 'missing'; },
+    value => { value.wifi.extra = true; },
+  ]) {
+    const candidate = structuredClone(state); mutate(candidate);
+    const invalid = structuredClone(candidate);
+    expect(validateSystemState(candidate, profile).ok).toBe(false);
+    expect(candidate).toEqual(invalid);
+  }
+  let reads = 0;
+  const candidate = { ...state };
+  Object.defineProperty(candidate, 'wifi', { enumerable: true, get() { reads++; return state.wifi; } });
+  expect(validateSystemState(candidate, profile).ok).toBe(false);
+  expect(reads).toBe(0);
+  expect(state).toEqual(before);
 });

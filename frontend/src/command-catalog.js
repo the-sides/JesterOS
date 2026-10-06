@@ -32,6 +32,7 @@ import { finderEditingCatalog } from './finder-editing.js';
 import { textToolsCatalog } from './text-tools-commands.js';
 import { nativeClipboardCatalog } from './native-clipboard.js';
 import { viewWorkflowCatalog } from './view-workflow-commands.js';
+import { wifiCatalog } from './wifi-catalog.js';
 
 const MAC_PROFILES = [MOJAVE_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -237,4 +238,5 @@ export const commandCatalog = {
   ...windows11AppCatalog,
   ...fictionalSessionCatalog,
   ...fictionalPowerCatalog,
+  ...wifiCatalog,
 };
