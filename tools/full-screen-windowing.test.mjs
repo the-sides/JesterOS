@@ -31,6 +31,7 @@ function consumer(profile, managed, state = fullScreenDefaults()) {
     competing: { nativeMenu: 'file' }, hidden: [], pending: [], blocked: false };
   const native = createWindowCommands(() => managed, {
     available: () => !controls.blocked,
+    isPresented: () => true,
     focus(id) {
       const index = managed.findIndex(window => window.id === id), window = managed[index];
       window.minimized = false;

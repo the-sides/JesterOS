@@ -30,6 +30,7 @@
     viewState,
     switchingState,
     fullScreenStage = { mode: 'normal', topRevealed: false, launcherRevealed: false },
+    missionControlOpen = false,
     onfullscreenreveal,
     execute,
     registerView,
@@ -556,7 +557,7 @@
 
 <svelte:window onkeydown={escapeKey} />
 <div class="sonoma-desktop" data-os-profile={profile.id} data-os-family={profile.family} style:background-image={`url("${profile.assets.wallpaper}")`}>
-  <header class="sonoma-menu-bar" aria-label="Desktop menu bar" inert={fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed} style:visibility={fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed ? 'hidden' : undefined} style:z-index={fullScreenStage.mode !== 'normal' ? 10000 : undefined}>
+  <header class="sonoma-menu-bar" aria-label="Desktop menu bar" inert={missionControlOpen || (fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed)} style:visibility={missionControlOpen || (fullScreenStage.mode !== 'normal' && !fullScreenStage.topRevealed) ? 'hidden' : undefined} style:z-index={fullScreenStage.mode !== 'normal' ? 10000 : undefined}>
     <div class="sonoma-menu-headings">
       <span class="sonoma-apple" aria-label="Apple menu"><svg viewBox="0 0 20 24" aria-hidden="true"><path fill="currentColor" d="M13.1 4.1c1-1.1 1.6-2.6 1.4-4.1-1.4.1-3 .9-4 2-1 1.1-1.7 2.6-1.5 4 1.6.1 3.1-.8 4.1-1.9ZM17 12.7c0-2.7 2.2-4 2.3-4.1-1.3-1.9-3.4-2.1-4.1-2.1-1.8-.2-3.5 1.1-4.4 1.1s-2.3-1.1-3.8-1.1C5 6.6 3 7.9 2 9.8c-2.1 3.8-.5 9.3 1.5 12.1 1 1.4 2.1 2.8 3.6 2.7 1.5-.1 2-1 3.8-1s2.3 1 3.9 1c1.6 0 2.6-1.4 3.5-2.8 1.1-1.6 1.6-3.1 1.6-3.2-.1 0-3-1.1-2.9-5.9Z"/></svg></span>
       <button type="button" class="sonoma-window-menu-button sonoma-app-menu"
@@ -595,7 +596,7 @@
   <main class="sonoma-workspace" bind:this={workspace} tabindex="-1" aria-label="macOS Sonoma desktop" onpointerdown={focusDesktop}
     oncontextmenu={(event) => { if (event.target === workspace || event.target === filesPanel) openContext(event); }}>
     <section class="sonoma-files" bind:this={filesPanel} class:custom-view={customView} class:right-label={options.labelPosition === 'right'} class:wrapped-grid={wrappedGrid !== null} aria-label="Desktop files"
-      inert={fullScreenStage.mode !== 'normal'}
+      inert={missionControlOpen || fullScreenStage.mode !== 'normal'}
       style:max-height={filesHeight !== undefined ? `${filesHeight}px` : undefined}
       style:--grid-height={filesHeight !== undefined ? `${filesHeight}px` : undefined} style:--grid-rows={wrappedGrid?.rows}
       style:--grid-item-height={wrappedGrid ? `${wrappedGrid.height}px` : undefined} style:--grid-item-width={wrappedGrid ? `${wrappedGrid.width}px` : undefined}
@@ -630,7 +631,7 @@
     {@render children()}
   </main>
   <MacDock {profile} state={viewState.dock} applications={dockApplications} tiles={dockTiles} folders={dockFolders} trash={dockTrash} {runningAppIds}
-    activeAppId={activeApp.id} {execute} {renderWindowTile} presentationVisible={fullScreenStage.mode === 'normal' ? undefined : fullScreenStage.launcherRevealed} bind:element={dock} bind:this={dockControls} />
+    activeAppId={activeApp.id} {execute} {renderWindowTile} {missionControlOpen} presentationVisible={fullScreenStage.mode === 'normal' ? undefined : fullScreenStage.launcherRevealed} bind:element={dock} bind:this={dockControls} />
 </div>
 
 <style>

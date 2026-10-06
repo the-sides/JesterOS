@@ -7,7 +7,7 @@
 
   let {
     profile, state: dockState, applications, tiles = [], folders = [], trash, runningAppIds = [], activeAppId,
-    execute, renderWindowTile, presentationVisible, element = $bindable(),
+    execute, renderWindowTile, presentationVisible, missionControlOpen = false, element = $bindable(),
   } = $props();
 
   const modern = $derived(profile.renderer === 'sonoma');
@@ -22,7 +22,7 @@
       ...tiles.map(tile => [`window:${tile.id}`, { id: `window:${tile.id}`, tile }])]);
     return dockState.secondaryOrderItemIds.filter(id => items.has(id)).map(id => items.get(id));
   });
-  const visible = $derived(presentationVisible ?? (!preferences.autoHide || dockState.revealed || Boolean(dockState.context || dockState.folderStack || dockState.drag || dockState.focusedItemId)));
+  const visible = $derived(missionControlOpen || (presentationVisible ?? (!preferences.autoHide || dockState.revealed || Boolean(dockState.context || dockState.folderStack || dockState.drag || dockState.focusedItemId))));
   const keys = $derived([...main.map(app => `app:${app.id}`), ...recent.map(app => `app:${app.id}`),
     'separator', ...secondary.map(item => item.id), 'trash']);
   const iconKeys = $derived(keys.filter(key => key !== 'separator'));
@@ -459,7 +459,7 @@
   class:modern class:hidden-dock={!visible} data-dock-root data-dock-visible={visible}
   data-dock-base-height={layout.height} data-dock-auto-hide={preferences.autoHide}
   aria-label="Application Dock" aria-hidden={!visible} inert={!visible}
-  style:visibility={presentationVisible === false ? 'hidden' : undefined} style:z-index={presentationVisible === true ? 10000 : undefined}
+  style:visibility={!missionControlOpen && presentationVisible === false ? 'hidden' : undefined} style:z-index={missionControlOpen ? 12003 : presentationVisible === true ? 10000 : undefined}
   style:--base-size={`${layout.base}px`} style:--item-gap={`${layout.gap}px`}
   style:--base-height={`${layout.height}px`} style:--separator-width={`${layout.separatorWidth}px`}
   style:--padding-x={`${layout.paddingX}px`} style:--padding-top={`${layout.paddingTop}px`}

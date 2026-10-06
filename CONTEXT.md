@@ -96,3 +96,13 @@ A page-contained projection of an original managed window, independent of normal
 
 **Split View pair**:
 A macOS presentation group of two original full-screen managed windows with left/right identities and a retained divider ratio. Background groups survive activation changes. The candidate picker selects existing windows, not duplicate application instances; cancellation restores prior membership.
+
+**Ordinary desktop HOME**:
+A stable scene-local desktop ID owned by every macOS managed window independently of its normal/restore geometry, visibility, minimized state and full-screen membership. Moving HOME neither activates the destination nor copies a document.
+
+**Presentation Space**:
+An ordinary desktop or a derived solo-full-screen/Split View entry in the Mac Spaces strip. Full-screen groups derive exclusively from retained window flags and `presentation.splitViews`; they do not own a second membership model.
+
+**Mission Control**:
+A page-contained current-desktop overview of original inert managed windows and a Spaces strip. Its preview desktop, frozen survivor order, selected control and independent physical scroll are distinct from foreground ownership and active Space. Cancellation restores connected original focus/caret; desktop deletion migrates HOME owners rather than closing them.
+

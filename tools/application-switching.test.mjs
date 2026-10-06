@@ -24,6 +24,7 @@ function cyclingConsumer(profile, managed, running, activeWindowId) {
   for (const entry of managed) recordApplicationActivation(state, entry.appId, entry.id, true);
   const native = createWindowCommands(() => managed, {
     available: () => true,
+    isPresented: () => true,
     focus(id) {
       const index = managed.findIndex(entry => entry.id === id), entry = managed[index];
       entry.minimized = false;
