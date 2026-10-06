@@ -64,6 +64,8 @@
   import { validateViewing, notesViewProjection, finderPresentationDefaults, notesPresentationDefaults } from './viewing-state.js';
   import { createViewWorkflowCommands } from './view-workflow-commands.js';
   import { createWindowExtensionCommands } from './window-extension-commands.js';
+  import { createHelpViewerCommands } from './help-viewer-commands.js';
+  import GoldenGateHelpViewer from './GoldenGateHelpViewer.svelte';
   import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
@@ -89,6 +91,7 @@
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
   const hasViewWorkflows = profile.capabilities.includes('shell.view-workflows');
   const hasWindowExtensions = profile.capabilities.includes('shell.window-extensions');
+  const hasHelpWorkflows = profile.capabilities.includes('shell.help-workflows');
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
@@ -125,6 +128,8 @@
   let textTools = $state.raw(null);
   let viewWorkflows = $state.raw(null);
   let viewPresentation = $state({ options: null, nextOptionsId: 1, error: null });
+  let helpPane = $state(null), helpView = $state(null), helpViewer = $state.raw(null);
+  $effect(() => { if (helpViewer) { foreground; activeAppId; switching.switcher; presentation.pairing; fileDialogState.current; helpViewer.reconcile(); } });
   let editingPreferenceRevision = 0, fileHistoryBatch = 0;
   const textAssistance = hasEditWorkflows ? createTextAssistance() : null;
   const textInputSelections = new WeakMap();
@@ -847,6 +852,19 @@
     });
     Object.assign(handlers, windowExtensions.handlers);
   }
+  if (hasHelpWorkflows) {
+    const ownedHelpViewer = createHelpViewerCommands({
+      profile, namespace: untrack(() => windowNamespace || 'local'),
+      getPane: () => helpPane, setPane: pane => { helpPane = pane; },
+      getActiveAppId: () => activeAppId,
+      available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
+      getView: () => helpView,
+      captureFocus: captureNativeFocus, restoreFocus: (token, guard) => (!guard || guard()) && sceneInteractionsAvailable() ? restoreNativeFocus(token) : false,
+      settle: async () => { await tick(); await tick(); },
+    });
+    helpViewer = ownedHelpViewer;
+    Object.assign(handlers, ownedHelpViewer.handlers);
+  }
   if (hasApplicationMenu) Object.assign(handlers, createApplicationMenuCommands({
     profile, notes: notesState,
     available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
@@ -895,6 +913,7 @@
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
       ...(hasViewWorkflows ? { viewing, viewPresentation: viewingTargets() } : {}),
       ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
+      ...(hasHelpWorkflows ? { helpViewer: helpViewer.targets() } : {}),
       ...(nativeState ? { native: nativeState } : {}),
       ...(hasRetention ? { retention: { closedWindows, automaticPersistence: false, reopen: 'last-ordinary-window-current-desktop' } } : {}),
     }),
@@ -1049,6 +1068,7 @@
       ...(hasEditWorkflows ? { editing: editingTargets() } : {}),
       ...(hasViewWorkflows ? { viewing: viewingTargets() } : {}),
       ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
+      ...(hasHelpWorkflows ? { helpViewer: helpViewer.targets() } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
 
@@ -2191,7 +2211,7 @@
       if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth)
         scroll.push({ node, top: node.scrollTop, left: node.scrollLeft });
     }
-    return { focus: captureNativeFocus(), scroll };
+    return { focus: helpViewer?.getReturnFocus() ?? captureNativeFocus(), scroll };
   }
   async function restoreSessionDesktop(snapshot) {
     const focused = await restoreNativeFocus(snapshot?.focus);
@@ -2284,6 +2304,11 @@
       request = { command: 'finder.view.options.close', target: { windowId: pane.dataset.viewOptionsWindowId,
         optionsId: pane.dataset.viewOptionsId }, payload: {} };
     } else if (!event.metaKey) return;
+    else if (hasHelpWorkflows && event.shiftKey && !event.ctrlKey && !event.altKey && (event.code === 'Slash' || key === '?')) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      void executeSession({ command: 'app.commandMenu.open', target: { appId: activeAppId, menuId: 'help' }, payload: {} });
+      return;
+    }
     else if (hasWindowExtensions && activeAppId === 'notes' && !event.altKey && !event.ctrlKey && !event.shiftKey
       && (event.code === 'Digit0' || key === '0'))
       request = { command: 'app.open', target: { appId: 'notes' }, payload: {} };
@@ -2835,6 +2860,7 @@
       return () => target.removeEventListener(type, listener, capture);
     }
     const stopListeners = [
+      listen(window, 'keydown', event => helpView?.keydown(event), true),
       listen(window, 'keydown', launchpadKeydown, true),
       listen(window, 'keydown', dashboardKeydown, true),
       listen(window, 'keydown', spacesKeydown, true),
@@ -2871,6 +2897,7 @@
     return () => {
       disposed = true; stopScene?.(); unregister(); unregisterSession?.();
       viewWorkflows?.dismissOptions();
+      helpViewer?.dispose();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -3399,11 +3426,17 @@
       {/if}
     </div>
   {/if}
+  {#if helpPane}
+    <div class="help-placement" style:top="4px" style:height={`${Math.max(1, Math.min(500, area.height - 8))}px`}>
+      <GoldenGateHelpViewer {profile} pane={helpPane} execute={commands.execute} {foreground} bind:this={helpView} />
+    </div>
+  {/if}
 </Desktop>
 </div>
 
 <style>
   .scene-root { position: absolute; inset: 0; }
+  .help-placement { position:absolute; left:50%; transform:translateX(-50%); width:min(700px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:11500; display:flex; justify-content:center; }
   .file-dialog-backdrop { position: absolute; inset: 0; z-index: 20000; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 8px; background: #0002; overflow: hidden; }
   .stage-backdrop { position: absolute; z-index: 1; background: black; pointer-events: none; }
   .split-divider { position: absolute; width: 4px; background: #171717; cursor: col-resize; touch-action: none; outline: none; }

@@ -9,8 +9,10 @@
   const canonicalScroll = $derived(menuState.levels[level]?.scrollTop ?? 0);
   const parentRow = $derived(menuState.levels[level]?.parentId);
   const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+  let searchInput = $state(null);
 
   function request(action, args = {}) {
+    if (!mounted()) return null;
     return execute(menuBarRequest(action, menu.menuId, menus, args));
   }
   function rectOf(node) {
@@ -19,7 +21,7 @@
       bottom: rect.bottom, width: rect.width, height: rect.height };
   }
   function mounted() {
-    return Boolean(available(menu.menuId) && menuState.menuId === menu.menuId && selection && geometry
+    return Boolean(menu && available?.(menu.menuId) && menuState.menuId === menu.menuId && selection && geometry
       && !geometry.covered && panel?.isConnected && !panel.closest('[inert]')
       && panel.getClientRects().length && getComputedStyle(panel).visibility === 'visible'
       && panel.clientWidth > 0 && panel.clientHeight > 0);
@@ -115,6 +117,36 @@
     });
   }
 
+  export function searchFocused() { return mounted() && document.activeElement === searchInput && ownsClip(searchInput); }
+  export async function focusSearch() {
+    if (!await stable() || !mounted() || !searchInput) return false;
+    return suppress(async () => {
+      panel.scrollTop = 0;
+      searchInput.focus({ preventScroll: true });
+      await tick();
+      return searchFocused();
+    });
+  }
+  function searchFocus() {
+    if (!observing && mounted()) void execute({ command: 'menu.help.focus', target: { appId: menu.appId }, payload: { observe: true } });
+  }
+  function searchInputChanged(event) {
+    if (mounted()) void execute({ command: 'menu.help.search', target: { appId: menu.appId }, payload: { query: event.currentTarget.value } });
+  }
+  async function searchKey(event) {
+    event.stopPropagation();
+    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (!['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(event.key)) return;
+    event.preventDefault();
+    if (!mounted()) return;
+    const root = panel, menuId = menu.menuId, appId = menu.appId, query = menuState.helpSearch?.query;
+    if (event.key === 'Escape' || event.key === 'Tab') { await request('navigate', { key: event.key }); return; }
+    const moved = await request('navigate', { key: event.key === 'ArrowUp' ? 'End' : 'Home' });
+    if (event.key === 'Enter' && moved?.status === 'applied' && mounted() && panel === root
+      && menu.menuId === menuId && menu.appId === appId && menuState.helpSearch?.query === query)
+      await request('navigate', { key: 'Enter' });
+  }
+
   $effect(() => {
     const root = panel;
     const top = canonicalScroll;
@@ -135,6 +167,11 @@
   }
   function select(item, observe = false) {
     if (!item.enabled || item.separator || !mounted() || (observe && observing)) return;
+    if (item.helpResult) {
+      if (observe && selection?.itemId === item.id) return;
+      void execute({ command: 'menu.help.locate', target: { appId: menu.appId, resultId: item.id }, payload: { observe } });
+      return;
+    }
     if (observe) {
       if (selection?.itemId !== item.id) request('select', { itemId: item.id, observe: true });
     } else if (item.children) {
@@ -144,7 +181,7 @@
     }
   }
   function pointerdown(event) {
-    event.preventDefault();
+    if (!event.target.closest('[data-help-search]')) event.preventDefault();
     event.stopPropagation();
   }
   function activate(event, item) {
@@ -178,17 +215,25 @@
   style:max-height={`${geometry?.height ?? Math.max(1, typeof window === 'undefined' ? 232 : window.innerHeight - 8)}px`}
   style:z-index={12000 + level} style:visibility={geometry ? 'visible' : 'hidden'}
   onkeydown={keydown} onpointerdown={pointerdown} oncontextmenu={suppressContext} onscroll={observeScroll}>
+  {#if menu.search && level === 0}
+    <div class="help-search" data-help-search>
+      <input bind:this={searchInput} type="search" aria-label="Search menu commands and help" maxlength="256"
+        placeholder="Search" value={menu.search.query} oninput={searchInputChanged} onfocus={searchFocus} onkeydown={searchKey} />
+    </div>
+  {/if}
   {#each items as item (item.id)}
     {#if item.separatorBefore}<div class="separator" role="separator"></div>{/if}
-    {#if item.separator}
+    {#if item.heading}
+      <div class="help-heading">{item.label}</div>
+    {:else if item.separator}
       <div class="separator" role="separator"></div>
     {:else}
       <button type="button" role={item.radio ? 'menuitemradio' : item.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
         aria-checked={item.radio || item.checked !== undefined ? Boolean(item.checked) : undefined}
-        aria-disabled={!item.enabled} aria-haspopup={item.children ? 'menu' : undefined}
+        aria-disabled={!item.enabled || item.helpResult?.enabled === false} aria-haspopup={item.children ? 'menu' : undefined}
         aria-expanded={item.children ? menuState.levels[level + 1]?.parentId === item.id : undefined}
         data-menu-item-id={item.id} disabled={!item.enabled} tabindex={item.enabled && selection?.itemId === item.id ? 0 : -1}
-        class:selected={selection?.itemId === item.id} title={item.label}
+        class:selected={selection?.itemId === item.id} class:command-unavailable={item.helpResult?.enabled === false} title={item.label}
         onpointerenter={() => select(item)} onfocus={() => select(item, true)} onclick={event => activate(event, item)}>
         <span class="check" aria-hidden="true">{item.checked ? item.radio ? '●' : '✓' : ''}</span>
         <span class="label">{item.label}</span>
@@ -210,4 +255,8 @@
   .arrow { width: 10px; font-size: 21px; line-height: 20px; text-align: right; }
   .separator { height: 1px; margin: 5px 8px; background: var(--appearance-menu-separator, #0002); }
   .menu-popup[inert] { pointer-events: none; }
+  .help-search { position:sticky; top:-6px; z-index:1; padding:5px 2px 7px; background:var(--appearance-menu-bg,#f4f0ea); }
+  .help-search input { box-sizing:border-box; width:100%; min-width:0; padding:6px 9px; border:1px solid var(--appearance-menu-border,#9995); border-radius:9px; color:inherit; background:var(--appearance-window-surface,#fff9); font:inherit; }
+  .help-heading { padding:4px 8px; font-size:11px; line-height:16px; opacity:.7; white-space:normal; }
+  button.command-unavailable { color:var(--appearance-menu-disabled,#8f8b87); }
 </style>

@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
 import { createMenuBarCommands, menuBarDefaults, menuBarRequest, menuBarTargets } from '../frontend/src/menu-bar.js';
+import { helpMenuProviders } from '../frontend/src/help-menu-model.js';
+import { createHelpViewerCommands } from '../frontend/src/help-viewer-commands.js';
+import { goldenGateProfile } from '../frontend/src/golden-gate-profile.js';
 
 const leaf = (id, command = 'window.focus') => ({ id, label: id, enabled: true,
   request: { command, target: command.startsWith('session.') || command.startsWith('power.') ? {} : { windowId: id }, payload: {} } });
@@ -7,15 +10,17 @@ const provider = (menuId, items, extra = {}) => ({ menuId, kind: menuId, label: 
 
 // A retained-focus consumer, not a mock of the command implementation: the view
 // owns independent focus/scroll/availability and actions consume its real focus.
-function consumer(definitions, profileId = 'macos-golden-gate-27.0.1') {
+function consumer(definitions, profileId = 'macos-golden-gate-27.0.1', extension = {}) {
   const state = menuBarDefaults(), menus = structuredClone(definitions);
   const editor = { caret: 7, scrollTop: 96, text: 'Original document' };
   let focus = { kind: 'editor', editor }, presentation = 'switcher', available = true;
   let focusFailure = null, scrollFailure = false, restoreFailure = false, actionError = null, actionResult = { status: 'applied', target: {} };
   const hidden = new Set(), covered = new Set(), offsets = new Map(), actions = [];
   let captures = 0, lifecycle, restoreHook;
+  const profile = extension.profile ?? { id: profileId, capabilities: ['shell.menu-bar', 'shell.window-menu', 'app.visibility', 'session.fictional'], applications: { notes: {}, safari: {} } };
+  const readMenus = () => extension.projectMenus ? extension.projectMenus(menus, state, profile) : menus;
   const items = (menuId, level) => {
-    let rows = menus.find(menu => menu.menuId === menuId)?.items ?? [];
+    let rows = readMenus().find(menu => menu.menuId === menuId)?.items ?? [];
     for (let index = 1; index <= level; index += 1) rows = rows.find(row => row.id === state.levels[index]?.parentId)?.children ?? [];
     return rows;
   };
@@ -47,8 +52,8 @@ function consumer(definitions, profileId = 'macos-golden-gate-27.0.1') {
       const actual = Math.min(120, top); offsets.set(level, actual); return actual;
     },
   };
-  const commands = createMenuBarCommands({ profile: { id: profileId, capabilities: ['shell.menu-bar', 'shell.window-menu', 'app.visibility', 'session.fictional'], applications: { notes: {}, safari: {} } },
-    state, getMenus: () => menus, getView: () => view, available: () => available, settle: async () => {},
+  const commands = createMenuBarCommands({ profile,
+    state, getMenus: readMenus, getView: () => view, available: () => available, settle: async () => {},
     registerLifecycle: value => { lifecycle = value; },
     captureFocus: () => { captures += 1; return focus; },
     restoreFocus: async token => { await restoreHook?.(token); if (restoreFailure) { focus = { kind: 'lost' }; return false; } focus = token; return true; },
@@ -57,7 +62,7 @@ function consumer(definitions, profileId = 'macos-golden-gate-27.0.1') {
     invoke: async request => {
       if (actionError) throw actionError;
       actions.push({ request: structuredClone(request), focus, state: structuredClone(state) });
-      return actionResult;
+      return extension.invoke ? extension.invoke(request) : actionResult;
     },
   });
   return { state, menus, editor, view, actions, hidden, covered, offsets, lifecycle,
@@ -379,4 +384,70 @@ test('canonical preparation rechecks current document enablement after restoring
   s.setRestoreHook(() => { s.menus[0].items[1].enabled = false; });
   expect((await unchanged(s, 'app.commandMenu.execute', { menuId: 'file', appId: 'notes', itemId: 'delete-note' })).error.code).toBe('disabled');
   expect(s.actions).toEqual([]); expect(s.editor.text).toBe('Original document');
+});
+
+test('Help result cannot borrow a replacement command target during original focus restoration', async () => {
+  const request = { command: 'window.close', target: { windowId: 'original' }, payload: {} };
+  const helpResult = { resultId: 'help-menu:["file","close"]', menuId: 'file', itemId: 'close',
+    label: 'Close', pathIds: ['close'], enabled: true, request };
+  const s = consumer([provider('file', [{ id: 'close', label: 'Close', enabled: true, request }], { appId: 'notes' }),
+    provider('help', [{ id: helpResult.resultId, label: 'Close', enabled: true, request, helpResult },
+      leaf('app-help')], { appId: 'notes', search: { query: 'Close' } })]);
+  s.view.prepareLocation = async () => true;
+  await s.request('open', 'help', { position: 'last' });
+  await s.request('select', 'help', { itemId: helpResult.resultId });
+  const before = structuredClone(s.state);
+  s.setRestoreHook(() => { s.menus[0].items[0].request.target.windowId = 'replacement'; });
+  const result = await s.request('execute', 'help', { itemId: helpResult.resultId });
+  expect(result.status).toBe('rejected'); expect(s.actions).toEqual([]);
+  expect(s.state).toEqual(before);
+  expect(s.focus().itemId).toBe(helpResult.resultId);
+});
+
+test('Failed physical Help location preparation restores the prior query, highlight and native row', async () => {
+  const request = { command: 'window.close', target: { windowId: 'original' }, payload: {} };
+  const helpResult = { resultId: 'help-menu:["file","close"]', menuId: 'file', itemId: 'close',
+    label: 'Close', pathIds: ['close'], enabled: true, request };
+  const s = consumer([provider('file', [{ id: 'close', label: 'Close', enabled: true, request }], { appId: 'notes' }),
+    provider('help', [{ id: helpResult.resultId, label: 'Close', enabled: true, request, helpResult },
+      leaf('app-help')], { appId: 'notes', search: { query: 'Close' } })]);
+  s.view.prepareLocation = async () => false;
+  await s.request('open', 'help', { position: 'last' });
+  const before = structuredClone(s.state);
+  const result = await s.request('select', 'help', { itemId: helpResult.resultId });
+  expect(result.status).toBe('rejected'); expect(s.state).toEqual(before);
+  expect(s.focus().itemId).toBe('app-help'); expect(s.actions).toEqual([]);
+});
+
+test('a searched Help topic opens its real reader after menu query teardown and returns the invoking editor', async () => {
+  let pane = null, viewer;
+  const s = consumer([provider('help', [{ id: 'app-help', label: 'Notes Help', enabled: true,
+    request: { command: 'help.viewer.open', target: { appId: 'notes' }, payload: {} } }], { appId: 'notes' })],
+    undefined, { profile: goldenGateProfile, projectMenus: helpMenuProviders,
+      invoke: request => viewer.handlers[request.command](request.target, request.payload) });
+  const reader = {
+    available: () => pane !== null,
+    prepare: async () => true,
+    controlIds: () => ['search', 'reader', 'contents', 'close'],
+    focusedControl: () => s.focus().kind === 'help' ? s.focus().controlId : null,
+    focus: async controlId => { s.setFocus({ kind: 'help', controlId }); return true; },
+    scrollPosition: () => ({ top: 0, left: 0 }),
+    scroll: async () => ({ top: 0, left: 0 }),
+  };
+  viewer = createHelpViewerCommands({ profile: goldenGateProfile, namespace: 'topic-consumer',
+    getPane: () => pane, setPane: value => { pane = value; }, getActiveAppId: () => 'notes',
+    available: () => true, getView: () => reader, captureFocus: () => s.focus(),
+    restoreFocus: async token => { s.setFocus(token); return true; }, settle: async () => {} });
+  await s.request('open', 'help', { position: 'last' });
+  await s.run('menu.help.search', { appId: 'notes' }, { query: '  pDf  Export  ' });
+  const result = await s.run('app.commandMenu.execute', { appId: 'notes', menuId: 'help', itemId: 'help-topic:notes-files' });
+  expect(result.status).toBe('applied');
+  expect(pane.articleId).toBe('notes-files');
+  expect(s.state.menuId).toBeNull();
+  expect(s.state.helpSearch).toBeNull();
+  expect(s.focus()).toEqual({ kind: 'help', controlId: 'search' });
+  await viewer.handlers['help.viewer.close']({ helpId: pane.helpId }, {});
+  expect(pane).toBeNull();
+  expect(s.focus()).toEqual({ kind: 'editor', editor: s.editor });
+  expect(s.editor.caret).toBe(7);
 });

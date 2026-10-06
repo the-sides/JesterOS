@@ -1,5 +1,5 @@
 // Golden Gate represented app menus. Launch-only apps expose shell/window rows,
-// File uses real represented document/location operations; broader Edit/View/Help have their own backlog items.
+// File/Edit/View/Help use real represented operations; launch-only document interiors stay unavailable.
 import { controlDocumentOffset } from './text-native-selection.js';
 import { FINDER_VIEW_FIELDS } from './finder-view-model.js';
 import { STACK_GROUPS, STACK_SORTS, STACK_LABELS } from './desktop-stacks-model.js';
@@ -259,7 +259,9 @@ export function appCommandMenuProviders({ profile, appId, enabled, activeWindow,
     conversation: [unavailable('new-conversation', 'New Conversation'), unavailable('details', 'Details')],
     history: [unavailable('back', 'Back', '⌘['), unavailable('forward', 'Forward', '⌘]')],
     bookmarks: [unavailable('add-bookmark', 'Add Bookmark…', '⌘D')],
-    help: [unavailable('app-help', `${app.name} Help`)],
+    help: profile.capabilities.includes('shell.help-workflows')
+      ? [leaf('app-help', `${app.name} Help`, enabled, request('help.viewer.open', { appId }))]
+      : [unavailable('app-help', `${app.name} Help`)],
   };
   return (appHeadings[appId] ?? commonHeadings).map(menuId => ({ menuId, kind: menuId,
     label: label(menuId), appId, enabled: Boolean(enabled), items: rows[menuId] }));

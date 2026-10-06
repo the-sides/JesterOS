@@ -1,5 +1,7 @@
 import { isRecord, rejected } from './feature-commands.js';
 import { APP_COMMAND_MENU_IDS } from './app-command-menus.js';
+import { helpMenuProviders, helpMenuResults, helpMenuLocation } from './help-menu-model.js';
+import { searchHelpArticles } from './help-content.js';
 
 const MENU_IDS = ['apple', 'application', 'window', 'users', ...APP_COMMAND_MENU_IDS];
 const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Space', 'Escape', 'Tab'];
@@ -16,12 +18,13 @@ const unavailable = () => rejected('unavailable', 'The requested native menu, po
 const missing = () => rejected('not_found', 'The menu provider, owner, item or child path is no longer current.');
 const disabled = () => rejected('disabled', 'Choose an enabled native menu provider or item.');
 const cloneLevels = levels => levels.map(level => ({ parentId: level.parentId, itemId: level.itemId, scrollTop: level.scrollTop }));
-const snapshot = state => ({ menuId: state.menuId, appId: state.appId, levels: cloneLevels(state.levels) });
+const snapshot = state => ({ menuId: state.menuId, appId: state.appId, levels: cloneLevels(state.levels),
+  helpSearch: state.helpSearch ? { ...state.helpSearch } : null });
 const own = (object, key) => Object.hasOwn(object, key);
 
 /** Host-owned transient state. Focus/presentation return tokens never enter it. */
 export function menuBarDefaults() {
-  return { menuId: null, appId: null, levels: [] };
+  return { menuId: null, appId: null, levels: [], helpSearch: null };
 }
 
 function checkedMenus(menus) {
@@ -101,6 +104,7 @@ export function createMenuBarCommands(ctx) {
   const view = menuId => ctx.getView(menuId);
   const writeState = value => {
     state.menuId = value.menuId; state.appId = value.appId; state.levels = cloneLevels(value.levels);
+    state.helpSearch = value.helpSearch ? { ...value.helpSearch } : null;
     return state.levels;
   };
   ctx.registerLifecycle?.({
@@ -115,8 +119,10 @@ export function createMenuBarCommands(ctx) {
   const navigationTarget = () => ({ menuId: state.menuId, itemId: state.levels.at(-1)?.itemId ?? null,
     level: state.menuId === null ? null : state.levels.length - 1 });
 
-  function provider(menuId) {
-    const menu = menus().find(menu => menu.menuId === menuId);
+  function provider(menuId, helpProjection = null) {
+    const definitions = menus();
+    const menu = (helpProjection ? helpMenuProviders(definitions, helpProjection, profile) : definitions)
+      .find(menu => menu.menuId === menuId);
     if (!menu) return { error: missing() };
     if (!menu.enabled) return { error: disabled() };
     if (!ctx.available() || !view(menuId)?.available(menuId)) return { error: unavailable() };
@@ -161,6 +167,7 @@ export function createMenuBarCommands(ctx) {
   async function restoreNative(previous, fallbackFocus) {
     if (previous.menuId === null) return await ctx.restoreFocus(fallbackFocus);
     const menuId = previous.menuId, level = previous.levels.length - 1;
+    if (previous.helpSearch?.searchFocused) return await view(menuId).focusSearch();
     if (!mounted(menuId, level)) return false;
     if (!await view(menuId).focus(menuId, level, previous.levels[level].itemId)) return false;
     for (let index = 0; index < previous.levels.length; index += 1) {
@@ -222,8 +229,15 @@ export function createMenuBarCommands(ctx) {
     if (own(payload, 'itemId') && !selected) return missing();
     if (selected && !enabled(selected)) return disabled();
     const next = { menuId, appId: menu.appId ?? null,
-      levels: [{ parentId: null, itemId: selected?.id ?? null, scrollTop: 0 }] };
-    const opened = await transition(next, () => focusLevel(menuId, 0, next.levels[0].itemId), true, state.menuId === null);
+      levels: [{ parentId: null, itemId: selected?.id ?? null, scrollTop: 0 }],
+      helpSearch: menu.search ? { query: menu.search.query, locationId: null, searchFocused: false } : null };
+    const searchFocus = menu.search && !own(payload, 'itemId') && !own(payload, 'position');
+    const opened = await transition(next, async () => {
+      if (!searchFocus) return await focusLevel(menuId, 0, next.levels[0].itemId);
+      if (!await view(menuId).focusSearch() || !view(menuId).searchFocused()) return unavailable();
+      state.helpSearch.searchFocused = true;
+      return applied();
+    }, true, state.menuId === null);
     if (opened.status !== 'applied') return opened;
     if (menuId === 'application') return applied({ appId: menu.appId, itemId: state.levels[0].itemId });
     if (menuId === 'window') return applied({ menuId, itemId: state.levels[0].itemId });
@@ -248,12 +262,21 @@ export function createMenuBarCommands(ctx) {
     if (observe && native.focusedItem(menuId, level) !== itemId) return unavailable();
     const next = snapshot(state);
     next.levels = next.levels.slice(0, level + 1); next.levels[level].itemId = itemId;
+    if (next.helpSearch) {
+      next.helpSearch.locationId = result.item?.helpResult?.resultId ?? null;
+      next.helpSearch.searchFocused = false;
+    }
     return transition(next, async () => {
-      if (!observe) return focusLevel(menuId, level, itemId);
+      if (!observe) {
+        const focused = await focusLevel(menuId, level, itemId);
+        if (focused.status !== 'applied') return focused;
+        return !next.helpSearch?.locationId || await native.prepareLocation(next.helpSearch.locationId) ? applied() : unavailable();
+      }
       if (row(menuId, itemId).error || native.focusedItem(menuId, level) !== itemId) return unavailable();
       const top = native.scrollTop(menuId, level);
       if (!offset(top)) return unavailable();
-      state.levels[level].scrollTop = top; return applied();
+      state.levels[level].scrollTop = top;
+      return !next.helpSearch?.locationId || await native.prepareLocation(next.helpSearch.locationId) ? applied() : unavailable();
     });
   }
 
@@ -296,16 +319,23 @@ export function createMenuBarCommands(ctx) {
     const { item } = result;
     if (!item || item.children || !item.request) return disabled();
     const wasOpen = state.menuId !== null, version = lifecycleVersion, appId = result.menu.appId;
+    const helpResult = item.helpResult;
+    // Closing clears the search UI, not the query that produced this leased action.
+    const helpProjection = menuId === 'help' && state.helpSearch ? snapshot(state) : null;
+    const originalRequest = helpResult || helpProjection ? JSON.stringify(item.request) : null;
     const invoke = async () => {
       if (wasOpen && (!hasReturnFocus || !await ctx.restoreFocus(returnFocus))) return unavailable();
       if (version !== lifecycleVersion) return unavailable();
       // Revalidate ownership and enablement after physical return focus settles.
-      const live = provider(menuId);
+      const live = provider(helpResult?.menuId ?? menuId, helpProjection);
       if (live.error) return live.error;
-      const currentItem = findItem(live.menu.items, itemId);
+      const currentItem = findItem(live.menu.items, helpResult?.itemId ?? itemId);
       if (!currentItem) return missing();
       if (!enabled(currentItem) || currentItem.children || !currentItem.request) return disabled();
       if (live.menu.appId !== appId) return missing();
+      if (originalRequest !== null && JSON.stringify(currentItem.request) !== originalRequest) return missing();
+      if (helpResult && !helpMenuResults(menus(), appId, helpResult.label).some(entry =>
+        entry.resultId === helpResult.resultId && entry.enabled)) return missing();
       const downstream = await ctx.invoke(currentItem.request);
       if (downstream.status !== 'applied') return downstream;
       return applied(menuId === 'window' ? { menuId, itemId, windowId: currentItem.request.target?.windowId ?? downstream.target?.windowId }
@@ -399,8 +429,63 @@ export function createMenuBarCommands(ctx) {
       itemId: action === 'execute' ? target.itemId : action === 'close' ? null : state.levels.at(-1)?.itemId ?? null }) : result;
   }
 
+  function helpOwner(target) {
+    if (!fields(target, ['appId']) || !identity(target.appId)) return { error: invalid() };
+    if (!profile.capabilities.includes('shell.help-workflows')) return { error: rejected('unsupported_profile', 'Help search is available only in Golden Gate.') };
+    const owned = current('help');
+    if (owned.error) return owned;
+    if (state.appId !== target.appId) return { error: missing() };
+    if (!state.helpSearch || !mounted('help', 0)) return { error: unavailable() };
+    return owned;
+  }
+
 
   const handlers = {
+    'menu.help.search': async (target, payload) => {
+      if (!fields(payload, ['query']) || typeof payload.query !== 'string' || payload.query.length > 256) return invalid();
+      const owned = helpOwner(target);
+      if (owned.error) return owned.error;
+      const next = snapshot(state);
+      next.helpSearch.query = payload.query; next.helpSearch.locationId = null;
+      next.levels = [{ parentId: null, itemId: 'app-help', scrollTop: 0 }];
+      return await transition(next, () => {
+        const live = helpOwner(target);
+        if (live.error) return live.error;
+        return applied({ appId: target.appId, query: payload.query,
+          menuResultIds: helpMenuResults(menus(), target.appId, payload.query).map(result => result.resultId),
+          articleIds: searchHelpArticles(profile, target.appId, payload.query).map(article => article.articleId) });
+      });
+    },
+    'menu.help.focus': async (target, payload) => {
+      if (!observePayload(payload)) return invalid();
+      const owned = helpOwner(target);
+      if (owned.error) return owned.error;
+      const next = snapshot(state); next.helpSearch.locationId = null; next.helpSearch.searchFocused = true;
+      return await transition(next, async () => {
+        if (payload.observe !== true && !await view('help').focusSearch()) return unavailable();
+        if (!helpOwner(target).error && view('help').searchFocused()) {
+          state.levels[0].scrollTop = view('help').scrollTop('help', 0);
+          return applied({ appId: target.appId });
+        }
+        return unavailable();
+      });
+    },
+    'menu.help.locate': async (target, payload) => {
+      if (!fields(target, ['appId', 'resultId']) || !identity(target.appId)
+        || !(target.resultId === null || identity(target.resultId)) || !observePayload(payload)) return invalid();
+      const owned = helpOwner({ appId: target.appId });
+      if (owned.error) return owned.error;
+      if (target.resultId === null) {
+        const focused = await handlers['menu.help.focus']({ appId: target.appId }, {});
+        return focused.status === 'applied' ? applied({ appId: target.appId, resultId: null, menuId: null, itemId: null, pathIds: [] }) : focused;
+      }
+      const result = helpMenuResults(menus(), target.appId, state.helpSearch.query).find(result => result.resultId === target.resultId);
+      if (!result) return missing();
+      const selected = await select('help', result.resultId, payload.observe === true);
+      if (selected.status !== 'applied') return selected;
+      return applied({ appId: target.appId, resultId: result.resultId, menuId: result.menuId,
+        itemId: result.itemId, pathIds: result.pathIds });
+    },
     'desktop.scroll': async (target, payload) => {
       if (!fields(target, ['region']) || target.region !== 'window-menu' || !fields(payload, ['top']) || !offset(payload.top)) return invalid();
       const result = await scroll('window', { top: payload.top, level: 0 });
@@ -478,7 +563,13 @@ function detached(value) {
 
 /** Detached semantic discovery; native availability/bounds are null-safe. */
 export function menuBarTargets(state, menus, getView) {
-  return { ...snapshot(state), providers: checkedMenus(menus).map(menu => {
+  const location = helpMenuLocation(menus, state);
+  return { ...snapshot(state), help: state.helpSearch ? {
+    query: state.helpSearch.query, menuResults: helpMenuResults(menus, state.appId, state.helpSearch.query),
+    location: location ? { resultId: location.resultId, menuId: location.menuId, itemId: location.itemId,
+      pathIds: location.pathIds, pathLabels: location.pathLabels, enabled: location.enabled,
+      bounds: getView?.('help')?.locationBounds?.() ?? null } : null,
+  } : null, providers: checkedMenus(menus).map(menu => {
     const native = getView?.(menu.menuId), available = menu.enabled && native?.available(menu.menuId) === true;
     const bounds = available ? native.bounds(menu.menuId) : null;
     return { menuId: menu.menuId, kind: menu.kind, label: menu.label, enabled: menu.enabled,

@@ -2,6 +2,8 @@
   import { onMount, tick, untrack } from 'svelte';
   import { menuBarRequest } from './menu-bar.js';
   import GoldenGateMenuPopup from './GoldenGateMenuPopup.svelte';
+  import GoldenGateHelpLocation from './GoldenGateHelpLocation.svelte';
+  import { helpMenuLocation } from './help-menu-model.js';
 
   let { profile, menus, state: menuState, execute, registerView, foreground = true, zone = 'primary' } = $props();
   let root = $state(null);
@@ -9,6 +11,8 @@
   let popups = $state([]);
   let geometry = $state([]);
   let nativeWrites = 0;
+  let locationView = $state(null), locationGeometry = $state(null);
+  const location = $derived(helpMenuLocation(menus, menuState));
   const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
   const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : menu.kind !== 'users'));
   const openMenu = $derived(foreground ? rendered.find(menu => menu.menuId === menuState.menuId) : undefined);
@@ -126,6 +130,14 @@
     });
   }
   export function scrollTop(menuId, level) { return popupFor(menuId, level)?.scrollTop() ?? null; }
+  export function searchFocused() { return popupFor('help', 0)?.searchFocused() ?? false; }
+  export async function focusSearch() {
+    return writing(async () => { await tick(); measure(); await tick(); return await popupFor('help', 0)?.focusSearch() === true; });
+  }
+  export function locationBounds() { return locationView?.bounds() ?? null; }
+  export async function prepareLocation(resultId) {
+    return writing(async () => { await tick(); measure(); await tick(); return await locationView?.prepare(resultId) === true; });
+  }
 
   function measure() {
     if (!root?.isConnected || !openMenu || !available(openMenu.menuId)) {
@@ -146,7 +158,8 @@
         if (rootAbove) clip.bottom = Math.min(clip.bottom, source.top - 2);
         else clip.top = Math.max(clip.top, source.bottom + 2);
       }
-      const width = Math.max(1, Math.min(264, clip.right - clip.left));
+      const split = location && pane.level === 0 && clip.right - clip.left < 540;
+      const width = Math.max(1, Math.min(264, split ? (clip.right - clip.left - 6) / 2 : clip.right - clip.left));
       let height = Math.max(1, clip.bottom - clip.top);
       const invokerRect = pane.level === 0 ? anchor.getBoundingClientRect() : null;
       let above = false;
@@ -164,6 +177,7 @@
       let x, y;
       if (pane.level === 0) {
         x = openMenu.kind === 'users' ? invokerRect.right - size.width : invokerRect.left;
+        if (location && clip.right - clip.left < 540) x = clip.left;
         y = above ? invokerRect.top - size.height - 2 : invokerRect.bottom + 2;
       } else {
         const parent = rectangles[pane.level - 1];
@@ -194,19 +208,27 @@
     }
     if (next.length !== geometry.length || next.some((rect, index) =>
       Object.keys(rect).some(key => rect[key] !== geometry[index]?.[key]))) geometry = next;
+    if (location && rectangles[0]) {
+      const main = rectangles[0], clip = clipOf(popups[0].element(), 4);
+      const width = Math.max(1, Math.min(264, clip.right - clip.left - (main.right - main.left) - 6));
+      const x = main.left - width - 6 >= clip.left ? main.left - width - 6 : main.right + 6;
+      const nextLocation = { x, y: main.top, width, height: Math.max(1, clip.bottom - main.top) };
+      if (!locationGeometry || Object.keys(nextLocation).some(key => nextLocation[key] !== locationGeometry[key])) locationGeometry = nextLocation;
+    } else if (locationGeometry) locationGeometry = null;
   }
 
   $effect(() => {
     const menuIds = rendered.map(menu => menu.menuId);
     if (!root || !registerView) return;
     const unregister = registerView({ kind: 'menu-bar', menuIds, available, focusInvoker, focus,
-      itemIds, focusedItem, bounds, scroll, scrollTop });
+      itemIds, focusedItem, bounds, scroll, scrollTop, focusSearch, searchFocused, prepareLocation, locationBounds });
     return () => unregister?.();
   });
   $effect(() => {
     const nodes = panes.map(pane => popups[pane.level]?.element()).filter(Boolean);
     const anchor = openMenu ? invokers[openMenu.menuId] : null;
     panes.map(pane => pane.items.map(item => `${item.id}:${item.label}:${item.shortcut ?? ''}`).join('|')).join(';');
+    location?.resultId;
     if (!nodes.length || !anchor) { untrack(measure); return; }
     let cancelled = false, scheduled = 0;
     function update() {
@@ -289,6 +311,7 @@
     <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'}
       bind:this={invokers[menu.menuId]} type="button" role="menuitem" data-menu-invoker={menu.menuId}
       disabled={!menu.enabled || !foreground} aria-disabled={!menu.enabled || !foreground}
+      class:located={location?.menuId === menu.menuId}
       aria-label={menu.kind === 'apple' ? 'Apple menu — session controls' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.label}
       aria-haspopup="menu" aria-expanded={Boolean(openMenu?.menuId === menu.menuId)} aria-controls={`golden-menu-${menu.menuId}-0`}
       onpointerdown={invokerPointer} onpointerenter={() => hover(menu)} onclick={event => toggle(event, menu)}
@@ -304,6 +327,9 @@
     <GoldenGateMenuPopup bind:this={popups[pane.level]} menu={openMenu} {menus} state={menuState} level={pane.level}
       items={pane.items} geometry={geometry[pane.level] ?? null} {execute} {available} onLayout={measure} />
   {/each}
+  {#if location && zone === 'primary'}
+    <GoldenGateHelpLocation bind:this={locationView} {location} geometry={locationGeometry} />
+  {/if}
 </div>
 
 <style>
@@ -315,6 +341,7 @@
   .invoker-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .invoker[aria-expanded='true'] { background: #fff3; box-shadow: inset 0 0 0 1px #fff2; }
   .invoker:focus-visible { outline: 2px solid var(--appearance-focus, #90c6ff); outline-offset: -2px; }
+  .invoker.located { box-shadow:inset 0 -2px var(--appearance-accent,#0878ef); }
   .invoker:disabled { opacity: .4; }
   .users .invoker { max-width: min(150px, 24vw); }
   @media (max-width: 900px) { .golden-shared-menu-bar { gap: 13px; } }

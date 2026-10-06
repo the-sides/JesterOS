@@ -12,7 +12,7 @@ const selection = object({ menuId: nullable(menuId), itemId: nullable(identity),
 const mounted = 'Matching current provider/owner and available native presentation: live invoker for opening/idempotent close, owned popup for selection/execution/scroll. Hidden, inert, stale, disabled or wrong-provider targets reject before mutation.';
 const define = (name, requestTarget, payload, requires, effects, result) => {
   const entry = defineCommand(profiles, name, 'shell.menu-bar', requestTarget, payload, requires, effects,
-    ['Only transient host-owned menuBar selection/path/actual scroll; no authentication, retained document, application or window changes except a selected existing canonical leaf action.'], NONE, result);
+    ['Only transient host-owned menuBar selection/path/actual scroll/Help query and location; no authentication, retained document, application or window changes except a selected existing canonical leaf action.'], NONE, result);
   entry[1].resultSchema.additionalProperties = false;
   return entry;
 };
@@ -39,7 +39,7 @@ export const menuBarCatalog = Object.fromEntries([
     ...object({ position: choice('first', 'last'), itemId: identity }, []),
     not: match({ position: true, itemId: true }),
   }, [mounted, 'appId must be the actual active app that supplies this represented command heading; position and itemId are mutually exclusive.'],
-  ['Open the real app-owned File/Edit/Format/View/Go/Conversation/History/Bookmarks/Help provider at its native heading; select first/last/exact enabled root row, or null for an empty enabled set.'],
+  ['Open the real app-owned File/Edit/Format/View/Go/Conversation/History/Bookmarks/Help provider at its native heading; select first/last/exact enabled root row, or null for an empty enabled set. Help without explicit position/itemId instead focuses its actual search input while retaining app-help as semantic selection.'],
   commandSelection),
   define('app.commandMenu.close', commandOwner, object({ restoreFocus: flag }, []),
     [mounted, 'The requested app still owns this provider; a different open provider rejects.'],
@@ -50,4 +50,17 @@ export const menuBarCatalog = Object.fromEntries([
   define('app.commandMenu.execute', object({ menuId: commandMenuId, appId: identity, itemId: identity }), empty,
     [mounted, 'Exact enabled leaf has a real existing canonical request, not a queued workflow; app owner must remain current after original focus is restored.'],
     ['Dismiss and restore original focus before invoking the selected current request. Re-read selected record, document/window availability and owner after settling; disabled/stale rows reject without dispatch. Canonical failure restores the popup/native focus. Keep the real action’s focus on applied.'], commandSelection),
+  define('menu.help.search', object({ appId: identity }), object({ query: { type: 'string', maxLength: 256 } }),
+    [mounted, 'Matching active-app Help popup with its actual search field.'],
+    ['Set the bounded literal query; derive current-app nested and disabled menu matches from the live canonical provider trees plus matching original offline articles. Preserve reader/document data and native input focus; clear old location.'],
+    object({ appId: identity, query: { type: 'string', maxLength: 256 },
+      menuResultIds: { type: 'array', items: identity }, articleIds: { type: 'array', items: identity } })),
+  define('menu.help.focus', object({ appId: identity }), object({ observe: flag }, []),
+    [mounted, 'Matching active-app Help popup; observe additionally requires actual native search focus.'],
+    ['Focus the actual Help search field, or observe its owned native focus; clear location without changing query or documents.'], object({ appId: identity })),
+  define('menu.help.locate', object({ appId: identity, resultId: nullable(identity) }), object({ observe: flag }, []),
+    [mounted, 'Current query result ID belongs to this active app; disabled underlying commands may still be located.'],
+    ['Reveal/select the actual search result and show its live menu/provider/path with a command-location pointer, without executing. Null clears location and returns search focus.'],
+    object({ appId: identity, resultId: nullable(identity), menuId: nullable(menuId), itemId: nullable(identity),
+      pathIds: { type: 'array', items: identity } })),
 ]);

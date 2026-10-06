@@ -10,6 +10,7 @@
   import { createSceneSeedCommands } from './scene-seed.js';
   import { createSavedSessionCommands, clearSavedSession, savedSessionStorageKey } from './saved-session.js';
   import { menuBarDefaults, createMenuBarCommands, menuBarTargets, menuBarRequest } from './menu-bar.js';
+  import { helpMenuProviders } from './help-menu-model.js';
 
   let { profile: profileInput, adapter: adapterInput, seed: seedInput, seedSource = 'default', savedSession: savedSessionInput,
     resetScene, restoreScene, registerCommands, selectProfile } = $props();
@@ -110,11 +111,11 @@
         : item.id === 'guest-end' ? { command: 'session.guest.end' }
         : { command: 'session.user.select', target: { userId: item.id.slice(5) } },
     }));
-    return [
+    return helpMenuProviders([
       { menuId: 'apple', kind: 'apple', label: 'Apple menu', enabled: true, items: items('apple') },
       ...local,
       { menuId: 'users', kind: 'users', label: activeName, enabled: session.fastUserSwitching, items: items('users') },
-    ];
+    ], menuBar, profile);
   }
   async function invokeMenuRequest(request) {
     const { command, target = {}, payload = {} } = request;
