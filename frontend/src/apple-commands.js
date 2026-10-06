@@ -88,6 +88,15 @@ export function createAppleCommands(ctx) {
       const error = currentApp(target.appId); if (error) return error;
       return ctx.relaunchDesktop();
     },
+    'system.recents.open': (target, payload) => {
+      if (!fields(target, ['category', 'itemId']) || !['applications', 'documents', 'servers'].includes(target.category)
+        || !identity(target.itemId) || !fields(payload, [])) return invalid();
+      return ctx.openRecent(target.category, target.itemId);
+    },
+    'system.server.open': (target, payload) => {
+      if (!fields(target, ['serverId']) || !identity(target.serverId) || !fields(payload, [])) return invalid();
+      return ctx.openServer(target.serverId);
+    },
     'system.recents.clear': (target, payload) => {
       if (!empty(target, payload)) return invalid();
       ctx.clearRecents();

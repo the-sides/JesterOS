@@ -216,6 +216,11 @@ export function validateSceneSeed(seed, profile) {
     if (file.localResident === false && file.inCloud !== true && !visited.has('icloud-drive') && !visited.has('mail-cache'))
       return invalid('A nonresident payload requires actual retained cloud backing or a Mail-cache ancestor.');
   }
+  for (const server of seed.system.servers) {
+    const folder = files.get(server.folderId);
+    if (folder && folder.kind !== 'folder')
+      return invalid('A fictional server backing record must be a virtual folder; missing or trashed folders remain unavailable.');
+  }
   if (store.nextFileId <= maxFileNumber) return invalid('nextFileId must exceed every generated file-N identity.');
   const liveFiles = liveMacFileRecords(store), liveIds = new Set(liveFiles.map(file => file.id));
   const siblingNames = new Set();

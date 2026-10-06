@@ -49,7 +49,7 @@
   import { APPLICATION_MENU_UTILITY_SIZES, goldenApplicationMenuItems, createApplicationMenuCommands } from './application-menu.js';
   import { SYSTEM_UTILITY_SIZES } from './apple-menu.js';
   import { createAppleCommands } from './apple-commands.js';
-  import { recordSystemRecent, clearSystemRecents, systemStorageSummary } from './system-state.js';
+  import { recordSystemRecent, clearSystemRecents, systemRecentTextDelta, systemStorageSummary } from './system-state.js';
   import { createStorageCommands } from './storage-commands.js';
   import { storageInventory, storageRows, trashStorageFiles, restoreStorageFiles, purgeStorageFiles,
     setStorageRecommendation, maintainStorage, downloadStorageFile } from './storage-model.js';
@@ -362,12 +362,12 @@
   const storageManagement = $derived(hasAppleMenu ? storageInventory(profile, macFiles) : null);
   const systemStorage = $derived(hasAppleMenu ? systemStorageSummary(profile, macFiles, storageManagement) : null);
   let recentDocumentCursor = hasAppleMenu ? macFiles.files.reduce((latest, file) =>
-    file.kind === 'document' && Number.isFinite(file.lastOpenedAt) ? Math.max(latest, file.lastOpenedAt) : latest, 0) : 0;
+    recentDocument(file) && Number.isFinite(file.lastOpenedAt) ? Math.max(latest, file.lastOpenedAt) : latest, 0) : 0;
   $effect(() => {
     if (!hasAppleMenu) return;
     // All actual document-open workflows advance this existing file clock.
     // Start beyond restored timestamps so a previously cleared menu stays clear.
-    const opened = macFiles.files.filter(file => file.kind === 'document'
+    const opened = macFiles.files.filter(file => recentDocument(file)
       && Number.isFinite(file.lastOpenedAt) && file.lastOpenedAt > recentDocumentCursor)
       .sort((left, right) => left.lastOpenedAt - right.lastOpenedAt);
     for (const file of opened) {
@@ -729,6 +729,11 @@
         if (macFiles.sceneTime >= 8_640_000_000_000_000 - 1
           || record.localResident === false && record.revision >= Number.MAX_SAFE_INTEGER - 1)
           return rejected('limit_exceeded', 'Opening this file exceeds the scene clock or residency revision budget.');
+        const historyUnits = systemRecentTextDelta(systemState, 'applications', file.appId)
+          + (recentDocument(file) ? systemRecentTextDelta(systemState, 'documents', file.id) : 0);
+        const metadataUnits = !record.readOnly && !Object.hasOwn(record, 'lastOpenedAt') ? 'lastOpenedAt'.length : 0;
+        if (workflowTextSize() + historyUnits + metadataUnits > 4 * 1024 * 1024)
+          return rejected('limit_exceeded', 'Opening this file exceeds the complete-scene history and text budget.');
         return null;
       },
       openedFile: (windowId, file) => {
@@ -740,7 +745,7 @@
           record.localResident = true; record.revision++;
           finderEditing?.invalidateFiles([record.id]);
         }
-        if (hasAppleMenu && file.kind === 'document') recordSystemRecent(systemState, 'documents', file.id);
+        if (hasAppleMenu && recentDocument(file)) recordSystemRecent(systemState, 'documents', file.id);
         if (file.kind === 'application') return;
         if (file.kind === 'folder') setFinderFolder(window, file.id);
         else window.fileId = file.id;
@@ -1011,6 +1016,7 @@
     getComputerName: () => systemState.computerName,
     forceQuit: appId => quitApplication(appId, true), relaunchDesktop: relaunchFinder,
     clearRecents: () => clearSystemRecents(systemState),
+    openRecent: openRecentItem, openServer: openFictionalServer,
   }));
   if (adapter.createCommands) Object.assign(handlers, adapter.createCommands(nativeState, {
     native: nativeState,
@@ -2388,26 +2394,68 @@
           scroll: element ? { top: element.scrollTop, left: element.scrollLeft } : null };
       }) };
   }
+  function recentDocument(file) { return file?.kind === 'document' || file?.kind === 'image'; }
+  function availableServerFolder(server) {
+    const folder = liveFile(macFiles, server.folderId);
+    return server.available && folder?.kind === 'folder' && !isTrashed(macFiles, folder) ? folder : null;
+  }
+  async function openFictionalServer(serverId) {
+    const server = systemState.servers.find(server => server.id === serverId);
+    if (!server) return rejected('not_found', 'This account has no such fictional server.');
+    const folder = availableServerFolder(server);
+    if (!folder) return rejected('unavailable', 'This fictional server is offline or its backing virtual folder is missing or in Trash.');
+    const historyUnits = systemRecentTextDelta(systemState, 'servers', serverId)
+      + systemRecentTextDelta(systemState, 'applications', 'finder');
+    const metadataUnits = !folder.readOnly && !Object.hasOwn(folder, 'lastOpenedAt') ? 'lastOpenedAt'.length : 0;
+    if (workflowTextSize() + historyUnits + metadataUnits > 4 * 1024 * 1024)
+      return rejected('limit_exceeded', 'Opening this fictional server exceeds the complete-scene history and text budget.');
+    const result = await handlers['desktop.open']({ fileId: folder.id }, {});
+    if (result.status !== 'applied') return result;
+    recordSystemRecent(systemState, 'servers', serverId);
+    return { status: 'applied', target: { serverId, folderId: folder.id, appId: 'finder', windowId: result.target.windowId } };
+  }
+  async function openRecentItem(category, itemId) {
+    if (!systemState.recentItems[category].includes(itemId))
+      return rejected('not_found', 'The item does not belong to this account’s current Recent Items history.');
+    let result;
+    if (category === 'applications') {
+      if (workflowTextSize() + systemRecentTextDelta(systemState, 'applications', itemId) > 4 * 1024 * 1024)
+        return rejected('limit_exceeded', 'Opening this application exceeds the complete-scene history and text budget.');
+      result = await handlers['app.open']({ appId: itemId }, {});
+    } else if (category === 'servers') result = await openFictionalServer(itemId);
+    else {
+      const file = liveFile(macFiles, itemId);
+      if (!recentDocument(file) || isTrashed(macFiles, file))
+        return rejected('unavailable', 'The recent document is no longer a live virtual document.');
+      result = await handlers['desktop.open']({ fileId: itemId }, {});
+    }
+    return result.status === 'applied' ? { status: 'applied',
+      target: { category, itemId, appId: result.target.appId, windowId: result.target.windowId } } : result;
+  }
   function appleMenuContext() {
     const desktopAvailable = windowInteractionsAvailable() && !switching.switcher && !presentation.pairing;
     const heading = (id, label) => ({ id, label, heading: true, enabled: false });
     const applicationItems = systemState.recentItems.applications.map(appId => ({ id: `recent-app:${appId}`,
       label: applications[appId].name, enabled: desktopAvailable && !pendingQuitAppIds.includes(appId),
-      request: { command: 'app.open', target: { appId } } }));
+      request: { command: 'system.recents.open', target: { category: 'applications', itemId: appId } } }));
     const documentItems = systemState.recentItems.documents.map(id => liveFile(macFiles, id))
-      .filter(file => file?.kind === 'document' && !isTrashed(macFiles, file)).map(file => ({
+      .filter(file => recentDocument(file) && !isTrashed(macFiles, file)).map(file => ({
         id: `recent-document:${file.id}`, label: file.name, enabled: desktopAvailable,
-        request: { command: 'desktop.open', target: { fileId: file.id } },
+        request: { command: 'system.recents.open', target: { category: 'documents', itemId: file.id } },
       }));
+    const serverItems = systemState.recentItems.servers.map(id => systemState.servers.find(server => server.id === id))
+      .filter(Boolean).map(server => ({ id: `recent-server:${server.id}`, label: server.name,
+        enabled: desktopAvailable && Boolean(availableServerFolder(server)),
+        request: { command: 'system.recents.open', target: { category: 'servers', itemId: server.id } } }));
     return { desktopAvailable, recentItems: [
       heading('recent-applications', 'Applications'),
       ...(applicationItems.length ? applicationItems : [{ id: 'no-recent-applications', label: 'No Recent Applications', enabled: false }]),
       { ...heading('recent-documents', 'Documents'), separatorBefore: true },
       ...(documentItems.length ? documentItems : [{ id: 'no-recent-documents', label: 'No Recent Documents', enabled: false }]),
       { ...heading('recent-servers', 'Servers'), separatorBefore: true },
-      { id: 'no-recent-servers', label: 'No Recent Servers', enabled: false },
+      ...(serverItems.length ? serverItems : [{ id: 'no-recent-servers', label: 'No Recent Servers', enabled: false }]),
       { id: 'clear-recent-items', label: 'Clear Menu', separatorBefore: true,
-        enabled: desktopAvailable && Boolean(systemState.recentItems.applications.length || systemState.recentItems.documents.length),
+        enabled: desktopAvailable && Object.values(systemState.recentItems).some(items => items.length),
         request: { command: 'system.recents.clear' } },
     ] };
   }
@@ -2416,6 +2464,8 @@
       profileId: profile.id, version: profile.version }, storage: systemStorage, runningAppIds: [...runningAppIds],
       storageManagement: $state.snapshot({ preferences: systemState.storage, inventory: storageManagement,
         confirmation: storageConfirmation, maintenanceError: storageMaintenanceError }),
+      recentItems: $state.snapshot(systemState.recentItems),
+      servers: systemState.servers.map(server => ({ ...server, available: Boolean(availableServerFolder(server)) })),
       panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
         || window.appId === 'systeminformation' && !window.utilityKind
         || window.appId === 'settings' && !window.utilityKind
@@ -2431,7 +2481,7 @@
           focusedControl: element?.contains(document.activeElement)
             ? document.activeElement === element ? 'panel' : document.activeElement.dataset.applicationSettingsControl ?? null : null,
           scroll: element ? { top: element.scrollTop, left: element.scrollLeft } : null };
-      }), boundaries: { hostHardware: false, hostProcesses: false, localDocumentRecovery: true, fictionalServers: false,
+      }), boundaries: { hostHardware: false, hostProcesses: false, localDocumentRecovery: true, fictionalServers: true,
         hostDisplayConfiguration: false, hostDiskInspection: false, warrantyLookup: false, repairBooking: false } };
   }
   function cancelStorageConfirmation(windowId) {

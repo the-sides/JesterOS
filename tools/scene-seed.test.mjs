@@ -257,3 +257,16 @@ test('maximum nested seed remains discoverable and ancestor deletion/reparenting
   store.files.find(file => file.id === 'fixture-10').deleted = false;
   expect(liveMacFileRecords(store).some(file => file.id === 'fixture-11')).toBe(true);
 });
+
+test('fictional server locations remain serializable when unavailable but never point at a payload record', () => {
+  const seed = fixture();
+  seed.system.servers = [{ id: 'studio', name: 'Studio 🎬', folderId: 'personal', available: true }];
+  seed.system.recentItems.servers = ['studio'];
+  expect(validate(seed)).toEqual({ ok: true });
+  seed.files.files.find(file => file.id === 'personal').deleted = true;
+  expect(validate(seed)).toEqual({ ok: true });
+  seed.system.servers[0].folderId = 'missing-share';
+  expect(validate(seed)).toEqual({ ok: true });
+  seed.system.servers[0].folderId = 'itinerary';
+  expect(validate(seed).ok).toBe(false);
+});
