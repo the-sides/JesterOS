@@ -324,6 +324,7 @@ export function createApplicationSwitchingCommands(switching, ctx) {
       const eligible = orderedIds(switching.creationWindowIds, managed.map(window => window.id)).filter(id => {
         const window = byId.get(id);
         return !window.minimized && !ctx.getPendingQuitAppIds().includes(window.appId)
+          && (!profile.capabilities.includes('shell.window-extensions') || !window.utilityKind)
           && (profile.family !== 'macos' || (window.appId === ctx.getActiveAppId() && !switching.hiddenAppIds.includes(window.appId)));
       });
       if (!eligible.length) return rejected('disabled', 'There are no eligible visible, nonminimized windows to cycle.');

@@ -63,6 +63,7 @@
   import { createNativeClipboardCommands } from './native-clipboard.js';
   import { validateViewing, notesViewProjection, finderPresentationDefaults, notesPresentationDefaults } from './viewing-state.js';
   import { createViewWorkflowCommands } from './view-workflow-commands.js';
+  import { createWindowExtensionCommands } from './window-extension-commands.js';
   import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
@@ -87,6 +88,7 @@
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
   const hasViewWorkflows = profile.capabilities.includes('shell.view-workflows');
+  const hasWindowExtensions = profile.capabilities.includes('shell.window-extensions');
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
   const hasWindowResize = profile.capabilities.includes('shell.window-resize');
   const hasDesktopStacks = profile.capabilities.includes('shell.desktop-stacks');
@@ -119,7 +121,7 @@
   let clipboardState = $state({ kind: 'empty', text: '', fileIds: [] });
   let textToolsState = $state({ find: null, panel: null, spelling: null, liveSpelling: null, error: null });
   let editingEpoch = $state(0), dictionaryStatus = $state('idle');
-  let textEditing, finderEditing, nativeClipboard;
+  let textEditing, finderEditing, nativeClipboard, windowExtensions;
   let textTools = $state.raw(null);
   let viewWorkflows = $state.raw(null);
   let viewPresentation = $state({ options: null, nextOptionsId: 1, error: null });
@@ -823,6 +825,28 @@
     viewWorkflows = ownedViewWorkflows;
     Object.assign(handlers, ownedViewWorkflows.handlers);
   }
+  if (hasWindowExtensions) {
+    windowExtensions = createWindowExtensionCommands({
+      available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
+      getWindows: () => windows, getActiveAppId: () => activeAppId,
+      getActiveWindowId: () => activeWindowId, getActiveSpaceId: () => spaceState.activeSpaceId,
+      isRegistered: appId => Boolean(applications[appId] && runningAppIds.includes(appId)),
+      isHidden: isAppHidden, isQuitting: appId => pendingQuitAppIds.includes(appId), isPresented: windowPresented,
+      captureFocus: captureNativeFocus,
+      prepare: async () => { await tick(); await tick(); return windowInteractionsAvailable(); },
+      setWindows: next => { dismissMenuBar?.(); windows = next; },
+      activate: focusWindow,
+      finish: async (windowId, focus) => {
+        await tick(); await tick();
+        if (!windowInteractionsAvailable() || activeWindowId !== windowId) return;
+        const element = managedWindowElement(windowId);
+        if (element && focus?.node?.isConnected && element.contains(focus.node))
+          await restoreNativeFocus(focus);
+        else await focusKeyboardWindow(windowId);
+      },
+    });
+    Object.assign(handlers, windowExtensions.handlers);
+  }
   if (hasApplicationMenu) Object.assign(handlers, createApplicationMenuCommands({
     profile, notes: notesState,
     available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
@@ -870,6 +894,7 @@
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
       ...(hasViewWorkflows ? { viewing, viewPresentation: viewingTargets() } : {}),
+      ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
       ...(nativeState ? { native: nativeState } : {}),
       ...(hasRetention ? { retention: { closedWindows, automaticPersistence: false, reopen: 'last-ordinary-window-current-desktop' } } : {}),
     }),
@@ -1023,6 +1048,7 @@
       } } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets() } : {}),
       ...(hasViewWorkflows ? { viewing: viewingTargets() } : {}),
+      ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
 
@@ -2258,6 +2284,9 @@
       request = { command: 'finder.view.options.close', target: { windowId: pane.dataset.viewOptionsWindowId,
         optionsId: pane.dataset.viewOptionsId }, payload: {} };
     } else if (!event.metaKey) return;
+    else if (hasWindowExtensions && activeAppId === 'notes' && !event.altKey && !event.ctrlKey && !event.shiftKey
+      && (event.code === 'Digit0' || key === '0'))
+      request = { command: 'app.open', target: { appId: 'notes' }, payload: {} };
     else if (activeAppId === 'notes' && window && !window.utilityKind) {
       const source = viewWorkflows.notesForWindow(window.id);
       if (!source) return;
@@ -2376,12 +2405,14 @@
   function sharedMenuProviders() {
     const appId = activeAppId, app = applications[appId];
     const active = windows.find(window => window.id === activeWindowId);
-    const ordinary = Boolean(active && !active.fullScreen && !active.minimized && !isAppHidden(active.appId));
+    const managedOrdinary = Boolean(active && !active.utilityKind && !active.minimized && !isAppHidden(active.appId));
+    const ordinary = managedOrdinary && !active.fullScreen;
     const request = (command, window = active, payload = {}) => window
       ? { command, target: { windowId: window.id }, payload } : undefined;
     const running = Boolean(app && runningAppIds.includes(appId) && !pendingQuitAppIds.includes(appId));
     const enabled = running && !fileDialogState.current;
     const appWindows = windows.filter(window => window.appId === appId);
+    const documentWindows = appWindows.filter(window => !window.utilityKind && !window.minimized && !isAppHidden(appId));
     const original = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus?.node : document.activeElement;
     const control = original?.dataset?.notesControl;
     const textControl = ['title', 'body', 'search'].includes(control)
@@ -2428,19 +2459,31 @@
           { id: 'restore', label: 'Return to Previous Size', shortcut: 'fn ⌃R', enabled: ordinary && Boolean(active?.zoomed),
             request: request('window.setZoomed', active, { zoomed: false }) },
         ] },
-        { id: 'full-screen-tile', label: 'Full Screen Tile', enabled: Boolean(active && !active.minimized), children: [
-          { id: 'entire-screen', label: 'Entire Screen', enabled: Boolean(active && !active.fullScreen && !active.minimized),
+        { id: 'full-screen-tile', label: 'Full Screen Tile', enabled: managedOrdinary, children: [
+          { id: 'entire-screen', label: 'Entire Screen', enabled: ordinary,
             request: request('window.setFullScreen', active, { fullScreen: true }) },
-          { id: 'left-screen', label: 'Left of Screen', enabled: Boolean(active && !active.minimized),
+          { id: 'left-screen', label: 'Left of Screen', enabled: managedOrdinary,
             request: request('window.splitView.begin', active, { side: 'left' }) },
-          { id: 'right-screen', label: 'Right of Screen', enabled: Boolean(active && !active.minimized),
+          { id: 'right-screen', label: 'Right of Screen', enabled: managedOrdinary,
             request: request('window.splitView.begin', active, { side: 'right' }) },
-          { id: 'exit-full-screen', label: 'Exit Full Screen', enabled: Boolean(active?.fullScreen),
+          { id: 'exit-full-screen', label: 'Exit Full Screen', enabled: managedOrdinary && active.fullScreen,
             request: request('window.setFullScreen', active, { fullScreen: false }) },
         ] },
+        ...(hasWindowExtensions ? [
+          { id: 'next-document-window', label: 'Next Window', shortcut: '⌘`', enabled: documentWindows.length > 1,
+            request: { command: 'window.cycle', target: {}, payload: { direction: 'next' } } },
+          { id: 'previous-document-window', label: 'Previous Window', shortcut: '⇧⌘`', enabled: documentWindows.length > 1,
+            request: { command: 'window.cycle', target: {}, payload: { direction: 'previous' } } },
+          { id: 'bring-all-to-front', label: 'Bring All to Front', enabled: Boolean(windowExtensions.targets().windowIds.length),
+            request: { command: 'app.bringAllToFront', target: { appId }, payload: {} } },
+          ...(appId === 'notes' && !appWindows.some(window => !window.utilityKind)
+            ? [{ id: 'notes-main-window', label: 'Notes', shortcut: '⌘0', enabled: running,
+              request: { command: 'app.open', target: { appId: 'notes' }, payload: {} } }] : []),
+        ] : []),
         ...(appWindows.length ? [{ id: 'separator-windows', label: '', enabled: false, separator: true }] : []),
         ...appWindows.map(window => ({ id: `window:${window.id}`, label: window.title,
-          shortcut: window.minimized ? 'Minimized' : undefined, checked: window.id === activeWindowId, radio: true,
+          shortcut: window.minimized ? 'Minimized' : hasWindowExtensions && appId === 'notes' && !window.utilityKind ? '⌘0' : undefined,
+          checked: window.id === activeWindowId, radio: true,
           enabled: !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId),
           request: request('window.focus', window) })),
       ] },

@@ -291,3 +291,20 @@ test('last-running-app hide rejects before discarding its native menu or changin
   expect(state.hiddenAppIds).toEqual([]);
   expect(state.appMenu).toEqual({ appId: 'finder', itemId: null, scrollTop: 0 });
 });
+
+test('Golden document cycling skips auxiliary windows while preserving stable document order and minimized state', async () => {
+  const golden = getOSProfile('macos-golden-gate-27.0.1');
+  const first = window('first', 'finder'), second = window('second', 'finder');
+  const info = { ...window('info', 'finder'), utilityKind: 'desktop-info' };
+  const minimized = window('minimized', 'finder', true);
+  const managed = [first, info, window('other', 'notes'), minimized, second];
+  const consumer = cyclingConsumer(golden, managed, ['finder', 'notes'], 'info');
+  await consumer.commands['window.cycle']({}, { direction: 'next' });
+  expect(consumer.activeWindowId()).toBe('first');
+  await consumer.commands['window.cycle']({}, { direction: 'next' });
+  expect(consumer.activeWindowId()).toBe('second');
+  await consumer.commands['window.cycle']({}, { direction: 'previous' });
+  expect(consumer.activeWindowId()).toBe('first');
+  expect(info.minimized).toBe(false);
+  expect(minimized.minimized).toBe(true);
+});

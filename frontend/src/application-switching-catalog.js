@@ -46,7 +46,7 @@ export const applicationSwitchingCatalog = Object.fromEntries([
     ['switching.switcher.scroll'], object({ top: offset, left: offset })),
   switchCommand('window.cycle', empty, object({ direction }, []), [visibleScene, 'At least one visible, nonminimized, nonquitting eligible managed window.'],
     ['Cycle exact windows in stable creation order, default next, independently of later MRU/stacking updates.',
-      'macOS cycles the active application only and skips hidden/minimized windows. Windows cycles all visible nonminimized windows.',
+      'macOS cycles the active application only and skips hidden/minimized windows; Golden Gate Window extensions also skip utilities to cycle documents. Windows cycles all visible nonminimized windows.',
       'Use window.focus for actual foreground and keyboard settlement; no eligible window rejects disabled without clearing presentations.'],
     [...presentation, ...activation], object({ appId: identity, windowId: identity })),
   visibilityCommand('app.setHidden', app, object({ hidden: flag }), [visibleScene, 'Installed, running, nonquitting macOS application. Hiding requires another nonquitting running app for the conservative browser foreground fallback.'],
