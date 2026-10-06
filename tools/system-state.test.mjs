@@ -52,7 +52,7 @@ test('unrecognized applications, duplicate/overflow history and non-data propert
     expect(validateSystemState(state, profile).ok).toBe(false);
   }
   let reads = 0;
-  const actor = { computerName: valid.computerName, recentItems: { applications: ['notes'] } };
+  const actor = { computerName: valid.computerName, storage: valid.storage, recentItems: { applications: ['notes'] } };
   Object.defineProperty(actor.recentItems, 'documents', { enumerable: true, get() { reads++; return []; } });
   expect(validateSystemState(actor, profile).ok).toBe(false);
   expect(reads).toBe(0);
@@ -68,7 +68,7 @@ test('a saved computer name retains literal Unicode without accepting empty, mul
     expect(validateSystemState(candidate, profile).ok).toBe(false);
   }
   let reads = 0;
-  const candidate = { recentItems: state.recentItems };
+  const candidate = { recentItems: state.recentItems, storage: state.storage };
   Object.defineProperty(candidate, 'computerName', { enumerable: true, get() { reads++; return 'Borrowed name'; } });
   expect(validateSystemState(candidate, profile).ok).toBe(false);
   expect(reads).toBe(0);

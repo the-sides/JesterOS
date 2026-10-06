@@ -4,7 +4,7 @@ import { defineCommand, NONE, identity, object, empty } from './command-schema.j
 
 const MAX_FILES = 1024, MAX_TEXT = 1024 * 1024, MAX_HISTORY_TEXT = 8 * MAX_TEXT;
 const MAX_COUNTER = Number.MAX_SAFE_INTEGER - 1, MAX_TIME = 8_640_000_000_000_000 - 1;
-const anchors = new Set(['disk', 'desktop', 'downloads', 'trash', 'applications']);
+const anchors = new Set(['disk', 'desktop', 'downloads', 'trash', 'applications', 'documents', 'icloud-drive', 'mail-cache']);
 const reserved = new Set([...Object.getOwnPropertyNames(Object.prototype), 'prototype']);
 const validId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value) && !reserved.has(value);
 const integer = (value, minimum, maximum) => Number.isSafeInteger(value) && value >= minimum && value <= maximum;
@@ -208,6 +208,20 @@ export function createFinderEditing(ctx) {
       rootIds: [...(rootIds ?? changed)],
       owner: { windowId: originalOwner.windowId, folderId: originalOwner.folderId, selectionBefore: [...originalOwner.selectionBefore] } });
   }
+  function invalidateFiles(fileIds) {
+    const removed = new Set(fileIds);
+    for (const stack of [undo, redo]) for (let index = stack.length - 1; index >= 0; index--) {
+      const transaction = stack[index];
+      if (removed.has(transaction.owner.folderId) || transaction.before.some(file => removed.has(file.id) || removed.has(file.parentId))
+        || transaction.after.some(file => removed.has(file.id) || removed.has(file.parentId))) {
+        historyUnits -= transaction.units; stack.splice(index, 1);
+      }
+    }
+    const retained = new Set();
+    for (const transaction of [...undo, ...redo]) for (const file of [...transaction.before, ...transaction.after]) retained.add(file.id);
+    for (const fileId of leases.keys()) if (!retained.has(fileId)) leases.delete(fileId);
+    notify();
+  }
   function historyPlan(value, transaction, restoring) {
     if (!transaction || !location(value.byId.get(transaction.owner.folderId), value.byId, true)) return { error: disabled() };
     const expected = restoring ? transaction.before : transaction.after;
@@ -299,7 +313,7 @@ export function createFinderEditing(ctx) {
       return settleHistory(value, transaction, plan, true);
     }),
   };
-  return { handlers, targets, recordCreated, capture, recordChanged };
+  return { handlers, targets, recordCreated, capture, recordChanged, invalidateFiles };
 }
 
 const profiles = ['macos-golden-gate-27.0.1'];

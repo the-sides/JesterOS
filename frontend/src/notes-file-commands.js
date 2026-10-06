@@ -21,7 +21,7 @@ const invalid = () => rejected('invalid_arguments', 'Use the documented closed t
 const stale = () => rejected('stale_target', 'The source or destination changed while preparing this operation.');
 const unavailable = () => rejected('unavailable', 'This file workflow is not available in the current scene.');
 const limited = () => rejected('limit_exceeded', 'The operation exceeds the scene’s safe content, collection, clock or counter limits.');
-const anchors = new Set(['disk', 'desktop', 'downloads', 'trash', 'applications']);
+const anchors = new Set(['disk', 'desktop', 'downloads', 'trash', 'applications', 'documents', 'icloud-drive', 'mail-cache']);
 
 function stringBudget(value, seen = new Set()) {
   if (typeof value === 'string') return value.length;

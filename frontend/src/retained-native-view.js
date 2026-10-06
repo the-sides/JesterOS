@@ -11,6 +11,7 @@ const scrollSelectors = {
   'settings-about': '.settings-about',
   'settings-displays': '.settings-displays',
   'settings-storage': '.settings-storage',
+  'settings-storage-list': '[data-storage-file-list]',
   'desktop-info': '.info-inspector',
   'desktop-view-options': '.view-inspector',
   'application-about': '.golden-gate-about-app',

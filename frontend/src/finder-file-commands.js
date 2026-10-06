@@ -3,12 +3,14 @@ import { liveMacFileRecords, validMacDesktopName } from './desktop-file-state.js
 import { defineCommand, NONE, identity, object, empty } from './command-schema.js';
 
 const MAX_FILES = 1024, MAX_COUNTER = Number.MAX_SAFE_INTEGER - 1, MAX_TIME = 8_640_000_000_000_000 - 1;
-const protectedIds = new Set(['disk', 'desktop', 'downloads', 'trash', 'applications']);
+const protectedIds = new Set(['disk', 'desktop', 'downloads', 'trash', 'applications', 'documents', 'icloud-drive', 'mail-cache']);
 const fields = (value, allowed, required = allowed) => isRecord(value)
   && Reflect.ownKeys(value).every(key => typeof key === 'string' && allowed.includes(key)
     && Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'))
   && required.every(key => Object.hasOwn(value, key));
-const validId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value);
+const unsafeIds = new Set([...Object.getOwnPropertyNames(Object.prototype), 'prototype']);
+const validId = value => typeof value === 'string' && value.length > 0 && value.length <= 128
+  && !unsafeIds.has(value) && !/[\u0000-\u001f]/.test(value);
 const invalid = () => rejected('invalid_arguments', 'Use a live ordinary Finder window and the documented closed arguments.');
 const unavailable = () => rejected('unavailable', 'The requested Finder File surface is unavailable.');
 const stale = () => rejected('stale_target', 'The Finder window, location or owned selection changed.');

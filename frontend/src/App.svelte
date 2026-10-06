@@ -50,6 +50,9 @@
   import { SYSTEM_UTILITY_SIZES } from './apple-menu.js';
   import { createAppleCommands } from './apple-commands.js';
   import { recordSystemRecent, clearSystemRecents, systemStorageSummary } from './system-state.js';
+  import { createStorageCommands } from './storage-commands.js';
+  import { storageInventory, storageRows, trashStorageFiles, restoreStorageFiles, purgeStorageFiles,
+    setStorageRecommendation, maintainStorage, downloadStorageFile } from './storage-model.js';
   import GoldenGateAboutThisMac from './GoldenGateAboutThisMac.svelte';
   import GoldenGateSystemInformation from './GoldenGateSystemInformation.svelte';
   import GoldenGateForceQuit from './GoldenGateForceQuit.svelte';
@@ -341,6 +344,11 @@
   let messagesState = $state(initialData.messages);
   let communicationsState = $state(hasServices ? initialData.communications : undefined);
   const systemState = $state(hasAppleMenu ? initialData.system : undefined);
+  let storageConfirmation = $state(null);
+  let storageConfirmationLease = null;
+  let nextStorageConfirmation = 1;
+  let storageMaintenanceError = $state(null);
+  let storageMaintenanceClock = null;
   let appearanceState = $state(macDesktop ? initialData.appearance ?? appearanceDefaults(profile) : undefined);
   let printingState = $state(hasFileWorkflows ? initialData.printing : undefined);
   let editingPreferences = $state(hasEditWorkflows ? initialData.editing : undefined);
@@ -351,7 +359,8 @@
       : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
   });
   let macFiles = $state(macDesktop ? createMacSceneFiles() : undefined);
-  const systemStorage = $derived(hasAppleMenu ? systemStorageSummary(profile, macFiles) : null);
+  const storageManagement = $derived(hasAppleMenu ? storageInventory(profile, macFiles) : null);
+  const systemStorage = $derived(hasAppleMenu ? systemStorageSummary(profile, macFiles, storageManagement) : null);
   let recentDocumentCursor = hasAppleMenu ? macFiles.files.reduce((latest, file) =>
     file.kind === 'document' && Number.isFinite(file.lastOpenedAt) ? Math.max(latest, file.lastOpenedAt) : latest, 0) : 0;
   $effect(() => {
@@ -713,10 +722,24 @@
       getFiles: () => macDesktop ? (liveGoldenFiles ?? macFiles.files.filter(file => !isTrashed(macFiles, file)))
         .map(file => ({ ...file, appId: file.appId ?? (file.kind === 'folder' ? 'finder' : 'preview') })) : getDesktopItems(),
       getItems: getDesktopItems,
+      prepareOpen: file => {
+        if (!hasAppleMenu) return null;
+        const record = liveFile(macFiles, file.id);
+        if (!record) return rejected('stale_target', 'The file is no longer live.');
+        if (macFiles.sceneTime >= 8_640_000_000_000_000 - 1
+          || record.localResident === false && record.revision >= Number.MAX_SAFE_INTEGER - 1)
+          return rejected('limit_exceeded', 'Opening this file exceeds the scene clock or residency revision budget.');
+        return null;
+      },
       openedFile: (windowId, file) => {
         if (!macDesktop) return;
         const window = windows.find(window => window.id === windowId);
-        liveFile(macFiles, file.id).lastOpenedAt = nextMacFileTimestamp(macFiles);
+        const record = liveFile(macFiles, file.id);
+        record.lastOpenedAt = nextMacFileTimestamp(macFiles);
+        if (hasAppleMenu && record.localResident === false) {
+          record.localResident = true; record.revision++;
+          finderEditing?.invalidateFiles([record.id]);
+        }
         if (hasAppleMenu && file.kind === 'document') recordSystemRecent(systemState, 'documents', file.id);
         if (file.kind === 'application') return;
         if (file.kind === 'folder') setFinderFolder(window, file.id);
@@ -999,6 +1022,41 @@
     createDesktopFolder, trashDesktopItems, getDesktopFileInfo,
     invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
   }));
+  if (hasAppleMenu) Object.assign(handlers, createStorageCommands({
+    profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
+    getPanel: getSystemPanel, inventory: () => storageManagement, file: fileId => macFiles.files.find(file => file.id === fileId),
+    confirmation: () => storageConfirmation, cancelConfirmation: cancelStorageConfirmation,
+    requestConfirmation: requestStorageConfirmation, respondConfirmation: respondStorageConfirmation,
+    restore: (windowId, fileIds) => {
+      const result = storageTransaction(store => restoreStorageFiles(store, fileIds));
+      return result.status === 'applied' ? { status: 'applied', target: { windowId, ...result.target } } : result;
+    },
+    setRecommendation: (windowId, recommendation, enabled) => {
+      const result = storageTransaction((store, preferences) => setStorageRecommendation(store, preferences, recommendation, enabled), true);
+      return result.status === 'applied' ? { status: 'applied', target: { windowId, ...result.target } } : result;
+    },
+    advanceClock: milliseconds => storageTransaction((store, preferences) => {
+      if (store.sceneTime + milliseconds > 8_640_000_000_000_000 - 1) return rejected('limit_exceeded', 'The virtual clock would exceed its timestamp budget.');
+      store.sceneTime += milliseconds;
+      const changes = maintainStorage(store, preferences);
+      return { status: 'applied', target: { sceneTime: store.sceneTime, ...changes } };
+    }, true),
+    download: (windowId, fileId) => {
+      const result = storageTransaction(store => downloadStorageFile(store, fileId));
+      return result.status === 'applied' ? { status: 'applied', target: { windowId, ...result.target } } : result;
+    },
+    open: async (windowId, fileId) => {
+      const result = await handlers['desktop.open']({ fileId }, {});
+      return result.status === 'applied' ? { status: 'applied', target: { windowId, fileId, openedWindowId: result.target.windowId } } : result;
+    },
+    reveal: revealStorageFile,
+    scroll: (entry, area, payload) => {
+      const node = entry.element.querySelector(area === 'list' ? '[data-storage-file-list]' : '[data-storage-confirmation-list]');
+      if (!node?.isConnected) return rejected('unavailable', 'The exact native storage scroll area is not present.');
+      if (!payload.observe) { node.scrollTop = payload.top; node.scrollLeft = payload.left ?? 0; }
+      return { status: 'applied', target: { windowId: entry.window.id, top: node.scrollTop, left: node.scrollLeft } };
+    },
+  }));
   for (const name of Object.keys(handlers)) {
     if (!Object.hasOwn(commandCatalog, name)) throw new Error(`Missing native command descriptor: ${name}`);
   }
@@ -1019,6 +1077,7 @@
       ...(messagesState ? { messages: messagesState } : {}),
       ...(hasServices ? { communications: communicationsState, services: services.targets() } : {}),
       ...(hasAppleMenu ? { system: systemState } : {}),
+      ...(hasAppleMenu ? { storageManagement: { inventory: storageManagement, confirmation: storageConfirmation, error: storageMaintenanceError } } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1154,6 +1213,7 @@
         ...(window.settingsPane ? { settingsPane: window.settingsPane } : {}),
         ...(Object.hasOwn(window, 'aboutBuildVisible') ? { aboutBuildVisible: window.aboutBuildVisible } : {}),
         ...(Object.hasOwn(window, 'storageVolumesVisible') ? { storageVolumesVisible: window.storageVolumesVisible } : {}),
+        ...(window.storageView ? { storageView: $state.snapshot(window.storageView) } : {}),
         ...(hasViewWorkflows && window.finderPresentation ? { finderPresentation: { ...window.finderPresentation } } : {}),
         ...(hasViewWorkflows && window.notesPresentation ? { notesPresentation: { ...window.notesPresentation } } : {}),
         ...(desktopState.dock?.appWindows ? { presentationVisible: Boolean(dockWindowBounds[window.id]),
@@ -1188,6 +1248,7 @@
     }), () => profile, commandCatalog);
 
   async function settleCommands() {
+    if (hasAppleMenu) { runStorageMaintenance(); reconcileStorageViews(); }
     await tick();
     if (!disposed && desktopView && area.width && area.height) {
       const positionsChanged = reconcileDesktopPositions(area);
@@ -1545,7 +1606,8 @@
     const items = getDesktopItems();
     if (fileIds.some(fileId => !items.some(item => item.id === fileId))) return rejected('not_found', 'A trash source no longer exists.');
     if (fileIds.some(fileId => !items.find(item => item.id === fileId).movable)) return rejected('disabled', 'Protected system entries cannot be trashed.');
-    return trashVirtualFiles(desktopFileStore, fileIds, macDesktop ? ['disk', 'desktop', 'downloads', 'trash'] : undefined);
+    return hasAppleMenu ? trashStorageFiles(macFiles, fileIds)
+      : trashVirtualFiles(desktopFileStore, fileIds, macDesktop ? ['disk', 'desktop', 'downloads', 'trash'] : undefined);
     });
   }
   function windowApplication(window) {
@@ -2352,6 +2414,8 @@
   function systemTargets() {
     return { machine: { ...profile.defaults.machine, computerName: systemState.computerName,
       profileId: profile.id, version: profile.version }, storage: systemStorage, runningAppIds: [...runningAppIds],
+      storageManagement: $state.snapshot({ preferences: systemState.storage, inventory: storageManagement,
+        confirmation: storageConfirmation, maintenanceError: storageMaintenanceError }),
       panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
         || window.appId === 'systeminformation' && !window.utilityKind
         || window.appId === 'settings' && !window.utilityKind
@@ -2369,6 +2433,120 @@
           scroll: element ? { top: element.scrollTop, left: element.scrollLeft } : null };
       }), boundaries: { hostHardware: false, hostProcesses: false, localDocumentRecovery: true, fictionalServers: false,
         hostDisplayConfiguration: false, hostDiskInspection: false, warrantyLookup: false, repairBooking: false } };
+  }
+  function cancelStorageConfirmation(windowId) {
+    if (storageConfirmation?.windowId === windowId) { storageConfirmation = null; storageConfirmationLease = null; }
+  }
+  function storageFingerprint(fileIds) {
+    const wanted = new Set(fileIds), byId = new Map(macFiles.files.map(file => [file.id, file]));
+    const rows = [...storageManagement.browserRows, ...storageManagement.categories.find(category => category.id === 'trash').rows];
+    return JSON.stringify(rows.filter(row => wanted.has(row.fileId) || row.ancestorIds.some(id => wanted.has(id))).map(row => {
+      const file = byId.get(row.fileId);
+      return [file.id, file.parentId, file.name, file.revision, file.deleted, file.inCloud ?? false, file.localResident ?? true];
+    }).sort((left, right) => left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0));
+  }
+  function requestStorageConfirmation(window, action, fileIds) {
+    const rows = new Map([...storageManagement.browserRows,
+      ...storageManagement.categories.find(category => category.id === 'trash').rows].map(row => [row.fileId, row]));
+    const selected = new Set(fileIds), roots = fileIds.filter(id => !rows.get(id).ancestorIds.some(parent => selected.has(parent)));
+    const candidate = { ...macFiles, files: macFiles.files.map(file => file.readOnly ? file : { ...file }) };
+    const result = action === 'trash' ? trashStorageFiles(candidate, roots) : purgeStorageFiles(candidate, roots);
+    if (result.status !== 'applied') return result;
+    if (!Number.isSafeInteger(nextStorageConfirmation) || nextStorageConfirmation >= Number.MAX_SAFE_INTEGER - 1)
+      return rejected('limit_exceeded', 'The private confirmation identity budget is exhausted.');
+    storageConfirmationLease = storageFingerprint(roots);
+    storageConfirmation = { confirmationId: `storage-confirmation-${window.id}-${nextStorageConfirmation++}`,
+      windowId: window.id, action, fileIds: roots, names: roots.map(id => rows.get(id).name) };
+    return { status: 'applied', target: { confirmationId: storageConfirmation.confirmationId,
+      windowId: window.id, action, fileIds: [...roots] } };
+  }
+  function respondStorageConfirmation(accept) {
+    const pending = storageConfirmation;
+    if (!accept) {
+      cancelStorageConfirmation(pending.windowId);
+      return { status: 'applied', target: { confirmationId: pending.confirmationId, windowId: pending.windowId, accepted: false, fileIds: [] } };
+    }
+    if (storageFingerprint(pending.fileIds) !== storageConfirmationLease)
+      return rejected('stale_target', 'The exact confirmed subtree changed; cancel and review the current files.');
+    const result = storageTransaction(store => pending.action === 'trash'
+      ? trashStorageFiles(store, pending.fileIds) : purgeStorageFiles(store, pending.fileIds));
+    if (result.status !== 'applied') return result;
+    cancelStorageConfirmation(pending.windowId);
+    return { status: 'applied', target: { confirmationId: pending.confirmationId, windowId: pending.windowId,
+      accepted: true, fileIds: result.target.fileIds } };
+  }
+  function storageTransaction(operation, maintenanceIncluded = false) {
+    const before = macFiles.files, originalIds = new Set(before.map(file => file.id));
+    const candidate = { files: before.map(file => file.readOnly ? file : { ...file }), nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime };
+    const preferences = { ...systemState.storage };
+    let result;
+    try { result = operation(candidate, preferences); }
+    catch (error) {
+      if (error instanceof RangeError) return rejected('limit_exceeded', error.message);
+      throw error;
+    }
+    if (result.status !== 'applied') return result;
+    if (!canReplaceWorkflowFiles(candidate.files)) return rejected('limit_exceeded', 'The complete scene text budget cannot hold this storage metadata.');
+    const retainedIds = new Set(candidate.files.map(file => file.id));
+    const removedIds = [...originalIds].filter(id => !retainedIds.has(id));
+    const current = new Map(before.map(file => [file.id, file]));
+    const changedIds = candidate.files.filter(file => {
+      const original = current.get(file.id);
+      return original && (file.revision !== original.revision || file.deleted !== original.deleted
+        || file.inCloud !== original.inCloud || file.localResident !== original.localResident);
+    }).map(file => file.id);
+    if (removedIds.length || changedIds.length) finderEditing?.invalidateFiles([...removedIds, ...changedIds]);
+    const next = candidate.files.map(file => {
+      const original = current.get(file.id);
+      if (!original || file.readOnly) return file;
+      if (!Object.hasOwn(file, 'deletedAt')) delete original.deletedAt;
+      Object.assign(original, file); return original;
+    });
+    macFiles.files = next; macFiles.sceneTime = candidate.sceneTime;
+    Object.assign(systemState.storage, preferences);
+    if (removedIds.length) {
+      const removed = new Set(removedIds);
+      for (const window of [...windows]) if (removed.has(window.fileId)) closeWindow(window.id);
+      for (const entry of Object.values(closedWindows)) if (removed.has(entry.window.fileId)) {
+        delete entry.window.fileId; entry.window.title = applications[entry.window.appId].name;
+      }
+      for (const fileId of removedIds) delete desktopState.positions[fileId];
+      clipboardState.fileIds = clipboardState.fileIds.filter(fileId => !removed.has(fileId));
+    }
+    reconcileFinderLocations(before);
+    const liveIds = new Set(liveMacFileRecords(macFiles).map(file => file.id));
+    desktopState.selectedFileIds = desktopState.selectedFileIds.filter(id => liveIds.has(id));
+    if (!liveIds.has(desktopState.selectionAnchorId)) desktopState.selectionAnchorId = desktopState.selectedFileIds[0] ?? null;
+    if (desktopState.rename && !liveIds.has(desktopState.rename.fileId)) desktopState.rename = null;
+    editingEpoch++; storageMaintenanceClock = maintenanceIncluded ? macFiles.sceneTime : null;
+    reconcileStorageViews();
+    return result;
+  }
+  function runStorageMaintenance() {
+    const preferences = systemState.storage;
+    if (!preferences.storeInCloud && !preferences.optimizeStorage && !preferences.emptyTrashAutomatically) { storageMaintenanceError = null; return; }
+    if (storageMaintenanceClock === macFiles.sceneTime) return;
+    const result = storageTransaction((store, prefs) => ({ status: 'applied', target: maintainStorage(store, prefs) }));
+    storageMaintenanceClock = macFiles.sceneTime;
+    storageMaintenanceError = result.status === 'rejected' ? result.error.message : null;
+  }
+  function reconcileStorageViews() {
+    for (const window of [...windows, ...Object.values(closedWindows).map(entry => entry.window)]) if (window.storageView) {
+      const view = window.storageView;
+      if (view.scope === 'file-browser' && !storageManagement.browserRows.some(row => row.fileId === view.folderId && row.canNavigate)) view.folderId = 'disk';
+      const visible = new Set(storageRows(storageManagement, view).map(row => row.fileId));
+      view.selectedFileIds = view.selectedFileIds.filter(id => visible.has(id));
+    }
+    if (storageConfirmation && (!windows.some(window => window.id === storageConfirmation.windowId && window.settingsPane === 'storage')
+      || storageConfirmation.fileIds.some(id => !macFiles.files.some(file => file.id === id)))) cancelStorageConfirmation(storageConfirmation.windowId);
+  }
+  async function revealStorageFile(windowId, fileId) {
+    const file = liveFile(macFiles, fileId);
+    if (!file) return rejected('not_found', 'The exact storage record is no longer live.');
+    const result = await handlers['desktop.open']({ fileId: file.parentId }, {});
+    if (result.status !== 'applied') return result;
+    const selected = await handlers['finder.selection.set']({ windowId: result.target.windowId }, { fileIds: [fileId] });
+    return selected.status === 'applied' ? { status: 'applied', target: { windowId, fileId, finderWindowId: result.target.windowId } } : selected;
   }
   function dismissDockPresentation() {
     if (!hasDockContext) return;
@@ -3311,6 +3489,7 @@
   }
 
   onMount(() => {
+    if (hasAppleMenu) { runStorageMaintenance(); reconcileStorageViews(); }
     const unregister = registerCommands(commands);
     const unregisterSession = registerSessionScene?.({
       persist: captureSavedScene,
@@ -3739,6 +3918,7 @@
         {:else if hasAppleMenu && window.appId === 'settings' && !window.utilityKind
           && (window.settingsPane === 'about' || window.settingsPane === 'displays' || window.settingsPane === 'storage')}
           <GoldenGateSystemAboutSettings {profile} {window} system={systemState} storage={systemStorage}
+            inventory={storageManagement} confirmation={storageConfirmation} maintenanceError={storageMaintenanceError}
             execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasAppleMenu && window.appId === 'systeminformation' && !window.utilityKind}
           <GoldenGateSystemInformation {profile} windowId={window.id} computerName={systemState.computerName} runningApps={runningAppIds.map(id => applications[id])} execute={commands.execute} />

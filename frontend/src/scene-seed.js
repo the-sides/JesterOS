@@ -40,9 +40,9 @@ export const sceneSeedSchema = {
       deleted: flag, createdAt: timestamp, updatedAt: timestamp })), selectedId: nullable(identity),
       folder: choice('notes', 'deleted'), search: string(4096), sidebarVisible: flag, preferences: notesPreferencesSchema }),
     files: object({ files: array(object({ id: identity, parentId: nullable(identity), name: string(255, 1),
-      kind: choice('folder', 'document'), appId: identity, icon: string(128, 1), content: string(MAX_TEXT),
+      kind: choice('folder', 'document', 'image'), appId: identity, icon: string(128, 1), content: string(MAX_TEXT),
       deleted: flag, revision: counter(1), createdAt: timestamp, modifiedAt: timestamp, addedAt: timestamp,
-      lastOpenedAt: nullable(timestamp), tags: array(string(256), 64) },
+      lastOpenedAt: nullable(timestamp), tags: array(string(256), 64), inCloud: flag, localResident: flag, deletedAt: timestamp },
     ['id', 'parentId', 'name', 'kind', 'appId', 'icon', 'content', 'deleted', 'revision'])),
     nextFileId: counter(1), sceneTime: timestamp }),
     printing: printingSchema,
@@ -190,14 +190,17 @@ export function validateSceneSeed(seed, profile) {
   const icons = new Set(['drive', 'folder', 'pdf', ...(profile.capabilities.includes('shell.file-workflows') ? ['document'] : []),
     ...Object.values(profile.applications).map(app => app.icon), ...profile.desktopFiles.map(file => file.icon)]);
   if (files.size !== store.files.length) return invalid('File identities must be unique.');
-  for (const anchor of ['disk', 'desktop', 'downloads', 'trash']) {
+  for (const anchor of ['disk', 'desktop', 'downloads', 'trash', 'documents', 'icloud-drive', 'mail-cache']) {
     const file = files.get(anchor);
-    if (!file || file.kind !== 'folder' || file.deleted || file.parentId !== (anchor === 'disk' ? null : 'disk')) return invalid('Disk, Desktop, Downloads and Trash must be live canonical folder anchors.');
+    if (!file || file.kind !== 'folder' || file.deleted || file.parentId !== (anchor === 'disk' ? null : 'disk')) return invalid('All disk/Desktop/Documents/Downloads/iCloud/Mail/Trash anchors must remain live canonical folders.');
   }
   let maxFileNumber = 0;
   for (const file of store.files) {
     if (!validMacDesktopName(file.name) || !icons.has(file.icon)
       || (file.kind === 'folder' ? file.appId !== 'finder' : file.appId === 'finder' || !Object.hasOwn(profile.applications, file.appId))) return invalid('File names, stock icons and application associations must be valid.');
+    if (file.kind === 'folder' && (Object.hasOwn(file, 'inCloud') || Object.hasOwn(file, 'localResident'))
+      || Object.hasOwn(file, 'deletedAt') && (!file.deleted || file.deletedAt > store.sceneTime))
+      return invalid('Only payload records own residency/cloud metadata; deletion times belong to directly trashed records and cannot exceed the scene clock.');
     const suffix = /^file-(\d+)$/.exec(file.id);
     if (suffix) maxFileNumber = Math.max(maxFileNumber, Number(suffix[1]));
     if (file.id !== 'disk' && (!files.has(file.parentId) || files.get(file.parentId).kind !== 'folder')) return invalid('Every user file must have an existing folder parent.');
@@ -210,6 +213,8 @@ export function validateSceneSeed(seed, profile) {
       if (!ancestor || ancestor.kind !== 'folder') return invalid('Every ancestor must be an existing folder.');
       parent = ancestor.parentId;
     }
+    if (file.localResident === false && file.inCloud !== true && !visited.has('icloud-drive') && !visited.has('mail-cache'))
+      return invalid('A nonresident payload requires actual retained cloud backing or a Mail-cache ancestor.');
   }
   if (store.nextFileId <= maxFileNumber) return invalid('nextFileId must exceed every generated file-N identity.');
   const liveFiles = liveMacFileRecords(store), liveIds = new Set(liveFiles.map(file => file.id));

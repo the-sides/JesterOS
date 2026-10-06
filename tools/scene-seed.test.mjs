@@ -87,7 +87,7 @@ test('complete custom seeds accept empty models and independent null note select
   seed.notes.selectedId = null;
   seed.notes.folder = 'deleted';
   seed.notes.search = 'No matching notes';
-  seed.files.files = seed.files.files.filter(file => ['disk', 'desktop', 'downloads', 'trash'].includes(file.id));
+  seed.files.files = seed.files.files.filter(file => ['disk', 'desktop', 'downloads', 'trash', 'documents', 'icloud-drive', 'mail-cache'].includes(file.id));
   seed.files.files.find(file => file.id === 'disk').name = 'Fictional Archive';
   seed.messages.pinned = [];
   seed.messages.conversations = [];
@@ -242,18 +242,18 @@ test('historical or capability-less profiles reject setup commands before malfor
 
 test('maximum nested seed remains discoverable and ancestor deletion/reparenting updates eligibility', () => {
   const seed = fixture(), store = seed.files;
-  store.files = store.files.filter(file => ['disk', 'desktop', 'downloads', 'trash'].includes(file.id));
-  for (let index = 0; index < 1020; index++) store.files.push({
+  store.files = store.files.filter(file => ['disk', 'desktop', 'downloads', 'trash', 'documents', 'icloud-drive', 'mail-cache'].includes(file.id));
+  for (let index = 0; index < 1017; index++) store.files.push({
     id: `fixture-${index}`, parentId: index ? `fixture-${index - 1}` : 'desktop',
     name: `Folder ${index}`, kind: 'folder', appId: 'finder', icon: 'folder', content: '', deleted: false, revision: 1,
   });
   expect(validate(seed)).toEqual({ ok: true });
-  expect(liveMacFileRecords(store).some(file => file.id === 'fixture-1019')).toBe(true);
+  expect(liveMacFileRecords(store).some(file => file.id === 'fixture-1016')).toBe(true);
   store.files.find(file => file.id === 'fixture-10').deleted = true;
-  expect(liveMacFileRecords(store).some(file => file.id === 'fixture-1019')).toBe(false);
+  expect(liveMacFileRecords(store).some(file => file.id === 'fixture-1016')).toBe(false);
   expect(liveMacFileRecords(store).some(file => file.id === 'fixture-9')).toBe(true);
-  store.files.find(file => file.id === 'fixture-1019').parentId = 'desktop';
-  expect(liveMacFileRecords(store).some(file => file.id === 'fixture-1019')).toBe(true);
+  store.files.find(file => file.id === 'fixture-1016').parentId = 'desktop';
+  expect(liveMacFileRecords(store).some(file => file.id === 'fixture-1016')).toBe(true);
   store.files.find(file => file.id === 'fixture-10').deleted = false;
   expect(liveMacFileRecords(store).some(file => file.id === 'fixture-11')).toBe(true);
 });

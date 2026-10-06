@@ -210,6 +210,20 @@ test('genuine New Folder and Duplicate hooks record full transactions and invali
   expect(model.run('finder.edit.redo').error.code).toBe('disabled');
 });
 
+test('permanent storage removal cannot resurrect records or block unrelated earlier Undo', () => {
+  const model = scene(), target = { windowId: model.window.id };
+  const earlier = model.commands['finder.folder.create'](target, { name: 'Kept' });
+  const removed = model.commands['finder.folder.create'](target, { name: 'Purged' });
+  model.files.files = model.files.files.filter(file => file.id !== removed.target.fileId);
+  model.editing.invalidateFiles([removed.target.fileId]);
+  expect(model.run('finder.edit.undo').status).toBe('applied');
+  expect(model.files.files.some(file => file.id === earlier.target.fileId)).toBe(false);
+  expect(model.run('finder.edit.redo').status).toBe('applied');
+  expect(model.files.files.some(file => file.id === earlier.target.fileId)).toBe(true);
+  expect(model.files.files.some(file => file.id === removed.target.fileId)).toBe(false);
+  expect(model.run('finder.edit.redo').error.code).toBe('disabled');
+});
+
 test('windowless Desktop copy and multi-root paste use only actual Desktop ownership', () => {
   const model = scene(), first = model.add('desktop', 'First.md'), second = model.add('desktop', 'Second.md');
   const finder = model.add('downloads', 'Finder.md');

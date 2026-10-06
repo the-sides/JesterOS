@@ -10,6 +10,8 @@ import { macDockApps } from './mac-dock-model.js';
 import { dockFolderItemId } from './mac-dock-folders.js';
 import { finderPresentationSchema, notesPresentationSchema } from './viewing-state.js';
 import { communicationEntry } from './communication-state.js';
+import { storageViewSchema } from './storage-catalog.js';
+import { storageInventory, storageRows } from './storage-model.js';
 
 const PROFILE_ID = 'macos-golden-gate-27.0.1';
 const STORAGE_KEY = `jesteros:${PROFILE_ID}:saved-session:v1`;
@@ -33,7 +35,7 @@ const bounds = object({ x: number(-MAX_COUNTER), y: number(-MAX_COUNTER), width:
 const desktopId = { ...identity, pattern: '^desktop-[1-9][0-9]*$' };
 const scrollPosition = object({ top: number(), left: number() });
 const scrollKey = choice('notes-list', 'notes-body', 'messages-conversations', 'messages-thread', 'finder-contents',
-  'window-content', 'settings-dock', 'settings-appearance', 'settings-about', 'settings-displays', 'settings-storage', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel', 'system-about', 'system-force-quit', 'system-information', 'system-coverage');
+  'window-content', 'settings-dock', 'settings-appearance', 'settings-about', 'settings-displays', 'settings-storage', 'settings-storage-list', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel', 'system-about', 'system-force-quit', 'system-information', 'system-coverage');
 const selectionKey = choice('notes-title', 'notes-body', 'notes-search',
   'service-name', 'service-email', 'service-phone', 'service-notes', 'service-to', 'service-subject', 'service-body', 'settings-computer-name');
 const viewToken = object({
@@ -50,7 +52,7 @@ const windowRecord = object({
   finderBrowseMode: choice('icons', 'list', 'columns', 'gallery'),
   utilityKind: choice('desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'system-about', 'system-force-quit', 'system-coverage'),
   fileId: safeKey(), infoSections: object({ general: flag, name: flag }), forceQuitSelectedAppId: nullable(identity),
-  aboutBuildVisible: flag, storageVolumesVisible: flag,
+  aboutBuildVisible: flag, storageVolumesVisible: flag, storageView: storageViewSchema,
 }, ['id', 'appId', 'title', 'minimized', 'fullScreen', 'zoomed', 'bounds', 'restoreBounds', 'spaceId']);
 const rootSnapshot = object({
   seed: sceneSeedSchema, windows: array(windowRecord),
@@ -156,6 +158,7 @@ function validateView(view, window, seed) {
         : window.appId === 'settings' ? [`settings-${window.settingsPane}`]
           : window.appId === 'printcenter' ? ['printing-queue'] : window.appId === 'systeminformation' ? ['system-information'] : ['window-content'];
   if (window.utilityKind || (window.appId !== 'notes' && window.appId !== 'messages')) allowed.push('window-content');
+  if (!window.utilityKind && window.appId === 'settings' && window.settingsPane === 'storage' && window.storageView) allowed.push('settings-storage-list');
   if (view.scroll.some(scroll => !allowed.includes(scroll.key)
     || (scroll.key === 'service-panel' ? !Object.hasOwn(scroll, 'recordId') || scroll.recordId !== (entry?.id ?? null)
       : Object.hasOwn(scroll, 'recordId')))) return false;
@@ -196,6 +199,8 @@ function windowNumber(window, userId, profile) {
 function validateRoot(scene, userId, profile) {
   const seedResult = validateSceneSeed(scene.seed, profile);
   if (!seedResult.ok) return invalid(`${userId} seed: ${seedResult.message}`);
+  const inventory = storageInventory(profile, { ...scene.seed.files,
+    files: [...scene.seed.files.files, ...createMacApplicationFiles(profile, scene.seed.files.sceneTime)] });
   const registered = id => Object.hasOwn(profile.applications, id);
   if (!registered(scene.activeAppId) || !scene.runningAppIds.includes(scene.activeAppId)
     || !scene.runningAppIds.includes(profile.defaults.desktopAppId) || scene.runningAppIds.some(id => !registered(id))) {
@@ -246,6 +251,15 @@ function validateRoot(scene, userId, profile) {
       && (window.appId !== 'settings' || window.utilityKind)) return invalid('Only About This Mac or ordinary System Settings owns build visibility.');
     if (Object.hasOwn(window, 'storageVolumesVisible') && (window.appId !== 'settings' || window.utilityKind))
       return invalid('Only ordinary System Settings owns volume-detail visibility.');
+    if (window.storageView) {
+      const view = window.storageView;
+      if (window.appId !== 'settings' || window.utilityKind
+        || view.category !== 'documents' && (view.scope !== 'large-files' || view.folderId !== 'disk')
+        || view.scope === 'file-browser' && !inventory.browserRows.some(row => row.fileId === view.folderId && row.canNavigate))
+        return invalid('Storage views belong to an ordinary Settings owner with a real eligible Documents folder.');
+      const visible = new Set(storageRows(inventory, view).map(row => row.fileId));
+      if (view.selectedFileIds.some(id => !visible.has(id))) return invalid('Saved storage selection must belong to the exact current category/scope/folder.');
+    }
     if (window.utilityKind) {
       if (Object.hasOwn(window, 'folderId') || Object.hasOwn(window, 'finderSelectedFileIds')
         || Object.hasOwn(window, 'finderPresentation') || Object.hasOwn(window, 'notesPresentation')
@@ -288,8 +302,8 @@ function validateRoot(scene, userId, profile) {
       if (window.finderSelectedFileIds?.some(id => files.has(id)
         ? !liveFiles.has(id) || files.get(id).parentId !== window.folderId
         : files.has(window.folderId) || !matches(id, identity))) return invalid('Finder selections must belong to their live folder, or retain safe identities for an unavailable folder.');
-      if (Object.hasOwn(window, 'fileId') && (!files.has(window.fileId) || files.get(window.fileId).kind !== 'document'
-        || files.get(window.fileId).appId !== window.appId)) return invalid('Document windows must reference an existing document associated with their application.');
+      if (Object.hasOwn(window, 'fileId') && (!files.has(window.fileId) || !['document', 'image'].includes(files.get(window.fileId).kind)
+        || files.get(window.fileId).appId !== window.appId)) return invalid('Document/image windows must reference an existing payload associated with their application.');
       if (isLive && !profile.applications[window.appId].multipleWindows) {
         if (ordinaryApps.has(window.appId)) return invalid('Single-window applications cannot have duplicate live ordinary windows.');
         ordinaryApps.add(window.appId);

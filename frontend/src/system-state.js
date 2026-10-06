@@ -1,7 +1,6 @@
 import { object } from './command-schema.js';
 import { isRecord } from './feature-commands.js';
-import { desktopFileSize } from './desktop-context-model.js';
-import { liveMacFileRecords } from './desktop-file-state.js';
+import { storagePreferencesDefaults, storagePreferencesSchema, validateStoragePreferences, storageInventory } from './storage-model.js';
 
 const RECENT_LIMIT = 10;
 const forbiddenIds = new Set([...Object.getOwnPropertyNames(Object.prototype), 'prototype']);
@@ -11,9 +10,9 @@ export const computerNameSchema = { type: 'string', minLength: 1, maxLength: 256
 export const validComputerName = name => typeof name === 'string' && name.length > 0 && name.length <= 256
   && /\S/u.test(name) && !/[\r\n]/u.test(name);
 export const systemStateSchema = object({ computerName: computerNameSchema,
-  recentItems: object({ applications: recentList, documents: recentList }) });
+  recentItems: object({ applications: recentList, documents: recentList }), storage: storagePreferencesSchema });
 export const systemDefaults = profile => ({ computerName: profile.defaults.machine.computerName,
-  recentItems: { applications: [], documents: [] } });
+  recentItems: { applications: [], documents: [] }, storage: storagePreferencesDefaults() });
 
 // Apple-menu history is independent of Dock usage and filesystem metadata.
 // Clearing it must not reset either of those domains or remove their records.
@@ -49,7 +48,8 @@ function validList(value) {
   return true;
 }
 export function validateSystemState(state, profile) {
-  if (!closedData(state, ['computerName', 'recentItems']) || !validComputerName(state.computerName)
+  if (!closedData(state, ['computerName', 'recentItems', 'storage']) || !validComputerName(state.computerName)
+    || !validateStoragePreferences(state.storage).ok
     || !closedData(state.recentItems, ['applications', 'documents'])
     || !validList(state.recentItems.applications) || !validList(state.recentItems.documents)
     || state.recentItems.applications.some(id => !Object.hasOwn(profile.applications, id))) {
@@ -58,22 +58,18 @@ export function validateSystemState(state, profile) {
   return { ok: true };
 }
 
-// Disk capacity/system/app allocation are explicit fictional machine fixtures.
-// Writable payload sizes reuse Finder's byte semantics; Trash still occupies space.
-export function systemStorageSummary(profile, store) {
+// Allocation is fictional; local bytes and cloud backing payloads are distinct.
+// Supply the already-derived inventory in the native root to avoid a second pass.
+export function systemStorageSummary(profile, store, inventory = storageInventory(profile, store)) {
   const allocation = profile.defaults.machine.storage;
-  const live = new Set(liveMacFileRecords(store).map(file => file.id));
-  let documentsBytes = 0, trashBytes = 0, virtualFileCount = 0;
-  for (const file of store.files) {
-    if (file.readOnly || file.kind !== 'document' && file.kind !== 'image') continue;
-    const bytes = desktopFileSize(file);
-    if (live.has(file.id)) documentsBytes += bytes;
-    else trashBytes += bytes;
-    virtualFileCount++;
-  }
-  const virtualFileBytes = documentsBytes + trashBytes;
-  const usedBytes = allocation.systemBytes + allocation.applicationsBytes + virtualFileBytes;
+  const byId = new Map(inventory.categories.map(category => [category.id, category]));
+  const documentsBytes = byId.get('documents').residentBytes, icloudBytes = byId.get('icloud').residentBytes;
+  const mailBytes = byId.get('mail').residentBytes, trashBytes = byId.get('trash').residentBytes;
+  const localPayloadBytes = documentsBytes + icloudBytes + mailBytes + trashBytes;
+  const virtualFileBytes = inventory.categories.reduce((total, category) => total + (category.payloadBytes ?? 0), 0);
+  const usedBytes = allocation.systemBytes + allocation.applicationsBytes + localPayloadBytes;
   return { ...allocation, usedBytes, availableBytes: allocation.capacityBytes - usedBytes,
-    documentsBytes, trashBytes, virtualFileBytes, virtualFileCount,
+    documentsBytes, icloudBytes, mailBytes, trashBytes, localPayloadBytes, virtualFileBytes,
+    virtualFileCount: store.files.filter(file => !file.readOnly && (file.kind === 'document' || file.kind === 'image')).length,
     applicationCount: Object.keys(profile.applications).length };
 }

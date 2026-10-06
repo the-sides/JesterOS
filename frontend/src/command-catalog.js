@@ -27,6 +27,7 @@ import { windowExtensionCatalog } from './window-extension-commands.js';
 import { helpViewerCatalog } from './help-viewer-commands.js';
 import { serviceCatalog } from './service-catalog.js';
 import { appleCatalog } from './apple-catalog.js';
+import { storageCatalog } from './storage-catalog.js';
 import { finderEditingCatalog } from './finder-editing.js';
 import { textToolsCatalog } from './text-tools-commands.js';
 import { nativeClipboardCatalog } from './native-clipboard.js';
@@ -80,6 +81,7 @@ export const commandCatalog = {
   ...helpViewerCatalog,
   ...serviceCatalog,
   ...appleCatalog,
+  ...storageCatalog,
   ...Object.fromEntries([defineCommand(['macos-golden-gate-27.0.1'], 'notes.document.create', 'shell.file-workflows', empty, empty,
     ['Interactive local Golden scene and available workspace; no blocking File sheet.', 'Complete record, clock, identity and whole-seed content capacity before opening.'],
     ['Create exactly one new local plain-text note and activate its ordinary Notes document window, reopening remembered geometry only when required. Utilities are not document substitutes. Focus the actual new title field.'],

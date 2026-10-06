@@ -2,8 +2,9 @@
   import { untrack } from 'svelte';
   import { validComputerName } from './system-state.js';
   import GoldenGateMachineIllustration from './GoldenGateMachineIllustration.svelte';
+  import GoldenGateStorageManagement from './GoldenGateStorageManagement.svelte';
 
-  let { profile, system, window, storage, execute, registerView } = $props();
+  let { profile, system, window, storage, inventory, confirmation, maintenanceError, execute, registerView } = $props();
   const machine = $derived(profile.defaults.machine);
   const pane = $derived(window.settingsPane);
   const pages = [{ id: 'about', label: 'About' }, { id: 'displays', label: 'Displays' }, { id: 'storage', label: 'Storage' }];
@@ -12,6 +13,8 @@
   const categories = $derived([
     { id: 'applications', label: 'Applications', bytes: storage.applicationsBytes },
     { id: 'documents', label: 'Documents', bytes: storage.documentsBytes },
+    { id: 'icloud', label: 'iCloud Drive', bytes: storage.icloudBytes },
+    { id: 'mail', label: 'Mail', bytes: storage.mailBytes },
     { id: 'trash', label: 'Trash', bytes: storage.trashBytes },
     { id: 'system', label: 'System Data', bytes: storage.systemBytes },
     { id: 'available', label: 'Available', bytes: storage.availableBytes },
@@ -69,7 +72,10 @@
     {:else}
       <article class="card"><div class="row"><h2>{machine.startupDisk}</h2><button type="button" data-application-settings-control="all-volumes" aria-expanded={Boolean(window.storageVolumesVisible)} onclick={() => execute({ command: 'system.storage.volumes.set', target: { windowId: window.id }, payload: { expanded: !window.storageVolumesVisible } })}>All Volumes</button></div><p class="storage-total">{bytes(storage.usedBytes)} of {bytes(storage.capacityBytes)} used</p><div class="storage-bar" aria-label="Storage allocation">{#each categories as category}<span data-storage-category={category.id} style:flex-grow={category.bytes} title={`${category.label}: ${bytes(category.bytes)}`}></span>{/each}</div><dl class="storage-categories">{#each categories as category}<div><dt><i data-storage-category={category.id}></i>{category.label}</dt><dd>{bytes(category.bytes)}</dd></div>{/each}</dl>{#if window.storageVolumesVisible}<div class="volume-details" aria-label="All fictional volumes"><h3>All Volumes</h3><dl><div><dt>Volume</dt><dd>{machine.startupDisk}</dd></div><div><dt>Format</dt><dd>APFS (fictional)</dd></div><div><dt>Capacity</dt><dd>{storage.capacityBytes.toLocaleString('en-US')} bytes</dd></div><div><dt>Available</dt><dd>{storage.availableBytes.toLocaleString('en-US')} bytes</dd></div></dl></div>{/if}</article>
       <article class="card"><h3>Virtual Files</h3><dl><div><dt>Stored documents</dt><dd>{storage.virtualFileCount}</dd></div><div><dt>Actual payload bytes</dt><dd>{storage.virtualFileBytes.toLocaleString('en-US')} bytes</dd></div><div><dt>Registered applications</dt><dd>{storage.applicationCount}</dd></div></dl></article>
-      <p class="disclosure">Capacity and System Data/Applications allocation are fictional scene fixtures. Documents and Trash count actual writable virtual payload bytes (including decoded PDF bytes); Trash occupies space until permanent deletion. No host disk is scanned.</p>
+      <p class="disclosure">Capacity and reserved System Data/Applications allocation are fictional. Category sizes count actual locally resident virtual UTF-8/decoded-PDF payload bytes. Cloud/cache backing content is retained separately; resident Trash stays allocated until permanent deletion. No host disk is scanned.</p>
+      {#if maintenanceError}<p role="alert" class="name-error">{maintenanceError}</p>{/if}
+      <GoldenGateStorageManagement windowId={window.id} {profile} {inventory} preferences={system.storage}
+        view={window.storageView ?? null} confirmation={confirmation?.windowId === window.id ? confirmation : null} {execute} />
     {/if}
     <p class="disclosure">Original offline machine scene. Serial number, build and coverage are invented; no Apple account, warranty lookup, repair request or hardware access occurs.</p>
   </div>

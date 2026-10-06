@@ -11,6 +11,7 @@ import { spacesDefaults, spacesItems } from '../frontend/src/spaces.js';
 import { applicationBundleId, createMacApplicationFiles } from '../frontend/src/mac-application-files.js';
 import { finderPresentationDefaults, notesPresentationDefaults } from '../frontend/src/viewing-state.js';
 import { draftPreview, createCommunicationDraft, submitCommunicationDraft, communicationEntry } from '../frontend/src/communication-state.js';
+import { storageViewDefaults } from '../frontend/src/storage-model.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const bounds = () => ({ x: 140, y: 80, width: 848, height: 592, scale: 0.8 });
@@ -96,6 +97,31 @@ test('saved About name caret and coverage belong only to their exact native Sett
     const candidate = structuredClone(snapshot); change(candidate);
     expect(validateSavedSession(candidate, profile).ok).toBe(false);
   }
+});
+
+test('saved storage views and list positions require their actual category, folder and Settings owner', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  const window = addWindow(scene, 'settings', { settingsPane: 'storage', storageView: storageViewDefaults('documents') });
+  window.storageView.selectedFileIds = ['itinerary'];
+  scene.views[window.id].scroll = [{ key: 'settings-storage-list', top: 80, left: 12 }];
+  expect(validateSavedSession(snapshot, profile).ok).toBe(true);
+  for (const change of [
+    value => { value.storageView.category = 'mail'; },
+    value => { value.storageView.scope = 'file-browser'; value.storageView.folderId = 'missing'; },
+    value => { value.storageView.selectedFileIds = ['documents']; },
+    value => { value.appId = 'finder'; },
+    value => { value.settingsPane = 'about'; },
+  ]) {
+    const candidate = structuredClone(snapshot);
+    change(candidate.locals[0].scene.windows.find(item => item.id === window.id));
+    expect(validateSavedSession(candidate, profile).ok).toBe(false);
+  }
+  const closed = structuredClone(snapshot), closedScene = closed.locals[0].scene;
+  closedScene.windows = closedScene.windows.filter(item => item.id !== window.id);
+  closedScene.switching.creationWindowIds = closedScene.switching.creationWindowIds.filter(id => id !== window.id);
+  closedScene.closedWindows.settings = { window: structuredClone(window), view: closedScene.views[window.id] };
+  delete closedScene.views[window.id];
+  expect(validateSavedSession(closed, profile).ok).toBe(true);
 });
 const validate = snapshot => validateSavedSession(snapshot, profile);
 function rejects(change) {

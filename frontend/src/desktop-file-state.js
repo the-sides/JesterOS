@@ -14,6 +14,10 @@ export function createMacDesktopFileStore(profile, sceneTime = 0) {
   for (const [id, name] of [['desktop', 'Desktop'], ['downloads', 'Downloads'], ['trash', 'Trash']]) {
     if (!files.some(file => file.id === id)) files.push({ id, parentId: 'disk', name, kind: 'folder', icon: 'folder', appId: 'finder', content: '', deleted: false, revision: 1 });
   }
+  if (profile.id === 'macos-golden-gate-27.0.1') for (const [id, name] of [
+    ['documents', 'Documents'], ['icloud-drive', 'iCloud Drive'], ['mail-cache', 'Mail'],
+  ]) files.push({ id, parentId: 'disk', name, kind: 'folder', icon: 'folder', appId: 'finder', content: '',
+    deleted: false, revision: 1, createdAt: sceneTime, modifiedAt: sceneTime, addedAt: sceneTime, lastOpenedAt: null, tags: [] });
   return { files, nextFileId: 1, sceneTime };
 }
 

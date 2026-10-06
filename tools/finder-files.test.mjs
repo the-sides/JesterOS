@@ -3,6 +3,7 @@ import { createFinderFileCommands } from '../frontend/src/finder-file-commands.j
 import { createDefaultSceneSeed, validateSceneSeed } from '../frontend/src/scene-seed.js';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { createFile } from '../frontend/src/windows11-app-helpers.js';
+import { createMacApplicationFiles } from '../frontend/src/mac-application-files.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const clone = value => structuredClone(value);
@@ -25,6 +26,20 @@ function scene() {
     run: (name, target = { windowId: window.id }, payload = {}) => commands[name](target, payload),
     snapshot: () => clone({ files, window, desktop }) };
 }
+
+test('real readonly bundle identities can be selected and revealed but never duplicated', () => {
+  const model = scene();
+  model.files.files.push(...createMacApplicationFiles(profile, model.files.sceneTime));
+  const bundle = model.files.files.find(file => file.bundleAppId === 'safari');
+  model.window.folderId = bundle.parentId;
+  expect(model.run('finder.selection.set', undefined, { fileIds: [bundle.id] }).status).toBe('applied');
+  expect(model.window.finderSelectedFileIds).toEqual([bundle.id]);
+  const before = model.snapshot();
+  expect(model.run('finder.file.duplicate').error.code).toBe('disabled');
+  expect(model.snapshot()).toEqual(before);
+  expect(model.run('finder.selection.set', undefined, { fileIds: ['mac-application:absent'] }).error.code).toBe('stale_target');
+  expect(model.window.finderSelectedFileIds).toEqual([bundle.id]);
+});
 
 test('Finder creates at its current location and recursive copies are independent complete live subtrees', () => {
   const model = scene();
