@@ -88,10 +88,14 @@
   import GoldenGateSpotlightSettings from './GoldenGateSpotlightSettings.svelte';
   import { createNotificationCommands } from './notification-commands.js';
   import GoldenGateNotificationCenter from './GoldenGateNotificationCenter.svelte';
+  import GoldenGateNotificationBanner from './GoldenGateNotificationBanner.svelte';
+  import GoldenGateNotificationSettings from './GoldenGateNotificationSettings.svelte';
+  import { dismissNotification } from './notification-model.js';
+  import { resolveNotificationDestination, retainNotificationDestination, notificationDestinationActions } from './notification-destinations.js';
   import { createNotificationWidgetCommands } from './notification-widget-commands.js';
   import GoldenGateWidgetGallery from './GoldenGateWidgetGallery.svelte';
   import GoldenGateWidgetData from './GoldenGateWidgetData.svelte';
-  import { widgetDataApps, widgetDataScope } from './notification-widget-model.js';
+  import { widgetDataApps, widgetDataScope, validateWidgetsState, setWidgetReminderCompleted } from './notification-widget-model.js';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -114,7 +118,7 @@
   import { createServiceCommands } from './service-commands.js';
   import { createServiceSources } from './service-sources.js';
   import { serviceMenuItems } from './service-registry.js';
-  import { communicationEntries, communicationEntry } from './communication-state.js';
+  import { communicationEntries, communicationEntry, replyToCommunication } from './communication-state.js';
   import GoldenGateServiceProvider from './GoldenGateServiceProvider.svelte';
   import GoldenGateServiceLookup from './GoldenGateServiceLookup.svelte';
   import GoldenGateServicesContext from './GoldenGateServicesContext.svelte';
@@ -201,6 +205,8 @@
   let spotlightPreferencesController;
   let notificationPane = $state(null), notificationController = $state.raw(null);
   const notificationViews = new Map();
+  const notificationUi = $state({ banners: [], items: {} });
+  const notificationBannerViews = new Map();
   $effect(() => { if (notificationController) notificationController.reconcile(); });
   const widgetUi = $state({ editor: null, editingWidgetId: null, contextWidgetId: null, scrolls: {} });
   let widgetController = $state.raw(null), widgetOpening = $state.raw(null);
@@ -1261,6 +1267,18 @@
       canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
       getPane: () => notificationPane, setPane: pane => { notificationPane = pane; },
       getView: () => notificationViews.get(notificationPane?.centerId),
+      getUi: () => notificationUi, getBannerView: id => notificationBannerViews.get(id),
+      actions: entry => notificationDestinationActions(resolveNotificationDestination(entry, notificationSources(), profile)),
+      retainDestination: entry => retainNotificationDestination(entry, notificationSources, profile, () => !disposed),
+      openDestination: openNotificationDestination, completeDestination: completeNotificationDestination,
+      replyDestination: replyNotificationDestination, openSettings: openNotificationSettings,
+      getSettingsOwner: notificationSettingsOwner,
+      prepareSettings: async (owner, controlId, guard) => {
+        if (!guard() || !owner.view.controlIds().includes(controlId)) return false;
+        await tick(); await tick();
+        if (!guard() || owner.view.focus(controlId) !== true) return false;
+        return guard() && owner.view.focusedControl() === controlId;
+      },
       captureFocus: () => ({ snapshot: captureSessionDesktop(), appId: activeAppId,
         windowId: activeWindowId, window: windows.find(window => window.id === activeWindowId) ?? null }),
       restoreFocus: restoreTransientReturn, settle: async () => { await tick(); await tick(); },
@@ -1284,7 +1302,7 @@
       getCenter: () => notificationPane, getCenterView: () => notificationViews.get(notificationPane?.centerId),
       getEditorView: editorId => widgetEditorViews.get(editorId),
       getDataOwner: widgetDataOwner, getDataView: windowId => widgetDataViews.get(windowId),
-      getDataTargets: widgetDataTargets, openData: openWidgetData,
+      getDataTargets: widgetDataTargets, openData: openSelectedSceneData,
       closeCenter: pane => { if (notificationPane === pane) notificationController.clear(); },
       canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
       settle: async () => { await tick(); await tick(); },
@@ -1534,6 +1552,7 @@
         ...(window.finderSelectedFileIds ? { selectedFileIds: [...window.finderSelectedFileIds] } : {}),
         ...(window.settingsPane ? { settingsPane: window.settingsPane } : {}),
         ...(window.soundTab ? { soundTab: window.soundTab } : {}),
+        ...(window.notificationAppId ? { notificationAppId: window.notificationAppId } : {}),
         ...(Object.hasOwn(window, 'aboutBuildVisible') ? { aboutBuildVisible: window.aboutBuildVisible } : {}),
         ...(Object.hasOwn(window, 'storageVolumesVisible') ? { storageVolumesVisible: window.storageVolumesVisible } : {}),
         ...(window.storageView ? { storageView: $state.snapshot(window.storageView) } : {}),
@@ -1574,6 +1593,7 @@
 
   async function settleCommands() {
     if (hasAppleMenu) { runStorageMaintenance(); reconcileStorageViews(); }
+    if (hasNotifications) retireUnavailableNotificationSources();
     await tick();
     if (!disposed && desktopView && area.width && area.height) {
       const positionsChanged = reconcileDesktopPositions(area);
@@ -1864,15 +1884,19 @@
       || event.target?.closest?.('[data-spotlight-id], [data-spotlight-invoker]')) return;
     void commands.execute({ command: 'spotlight.close', target: { spotlightId: spotlightPane.spotlightId }, payload: { restoreFocus: false } });
   }
-  function toggleNotifications() {
+  function toggleNotifications(event) {
     if (!notificationInteractionsAvailable()) return;
+    if (event?.altKey) {
+      void commands.execute({ command: 'notifications.dnd.set', payload: { enabled: !systemState.notifications.preferences.doNotDisturb } });
+      return;
+    }
     void commands.execute(notificationPane
       ? { command: 'notifications.close', target: { centerId: notificationPane.centerId } }
       : { command: 'notifications.open' });
   }
   function notificationOutside(event) {
     if (!notificationPane || !notificationNativeAvailable()
-      || event.target?.closest?.('[data-notification-center-id], [data-notification-invoker], [data-widget-editor-id]')) return;
+      || event.target?.closest?.('[data-notification-center-id], [data-notification-invoker], [data-widget-editor-id], [data-notification-banner-id]')) return;
     void commands.execute({ command: 'notifications.close', target: { centerId: notificationPane.centerId },
       payload: { restoreFocus: false } });
   }
@@ -1898,11 +1922,11 @@
         controlIds: actual?.controlIds ?? [], focusedControl: actual?.focusedControl ?? null, scroll: actual?.scroll ?? null };
     });
   }
-  async function openWidgetData(selection, guard, commitSelection) {
-    const stale = () => rejected('stale_target', 'The original widget source or destination has retired.');
+  async function openSelectedSceneData(selection, guard, commitSelection) {
+    const stale = () => rejected('stale_target', 'The original scene-data source or destination has retired.');
     if (widgetOpening || !guard()) return stale();
     if (workflowTextSize() + systemRecentTextDelta(systemState, 'applications', selection.appId) > 4 * 1024 * 1024)
-      return rejected('limit_exceeded', 'Opening the widget source exceeds the complete-scene history budget.');
+      return rejected('limit_exceeded', 'Opening the original scene-data source exceeds the complete-scene history budget.');
     const snapshot = captureWindowPreparation();
     // A destination rollback owns its windows, not asynchronously arriving
     // notifications or other system records. Keep canonical leaf identities.
@@ -1945,6 +1969,102 @@
       }
       if (widgetOpening === preparation) widgetOpening = null;
     }
+  }
+
+  function notificationSources() {
+    return { notes: notesState, files: macFiles, communications: communicationsState, widgets: systemState.widgets };
+  }
+  function retireUnavailableNotificationSources() {
+    if (disposed) return;
+    for (const entry of [...systemState.notifications.entries])
+      if (!resolveNotificationDestination(entry, notificationSources(), profile)) dismissNotification(systemState.notifications, entry.id);
+  }
+  function notificationSettingsOwner(windowId) {
+    const window = windows.find(entry => entry.id === windowId && entry.appId === 'settings' && !entry.utilityKind
+      && entry.settingsPane === 'notifications');
+    const view = window && applicationViews.get(windowId);
+    return window && activeWindowId === windowId && activeAppId === 'settings' && notificationNativeAvailable()
+      && windowInteractive(window) && view?.available() ? { window, view } : null;
+  }
+  async function openNotificationSettings(appId) {
+    const result = await openWindowPanel('settings', null, 'Notifications', 'notifications');
+    if (result.status !== 'applied') return result;
+    const owner = notificationSettingsOwner(result.target.windowId);
+    if (!owner) return rejected('unavailable', 'The original Notifications Settings window did not remain foreground.');
+    owner.window.notificationAppId = appId ?? owner.window.notificationAppId ?? 'messages';
+    await tick(); await tick();
+    if (appId && !disposed && notificationSettingsOwner(owner.window.id)?.view === owner.view)
+      owner.view.focus('notifications-allow');
+    return { status: 'applied', target: { ...result.target, selectedAppId: owner.window.notificationAppId } };
+  }
+  async function openNotificationDestination(lease, guard) {
+    const { source } = lease;
+    const stale = () => rejected('stale_target', 'The original notification source or native app destination has retired.');
+    if (!guard()) return stale();
+    if (source.kind === 'event' || source.kind === 'reminder') {
+      const state = systemState.widgets;
+      const result = await openSelectedSceneData({ appId: source.appId }, guard, () => {
+        if (!guard() || systemState.widgets !== state) return stale();
+        const selected = { ...state.selected, ...(source.kind === 'event'
+          ? { calendarEventId: source.recordId } : { reminderListId: source.record.listId }) };
+        if (!validateWidgetsState({ ...state, selected }, profile).ok
+          || workflowTextSize() + persistentStringUnits(selected) - persistentStringUnits(state.selected) > 4 * 1024 * 1024)
+          return rejected('limit_exceeded', 'The original notification data selection exceeds the complete scene budget.');
+        if (!guard()) return stale();
+        state.selected = selected;
+        return { status: 'applied', target: { appId: source.appId } };
+      });
+      return result.status === 'applied' ? { status: 'applied', target: { ...result.target, recordId: source.recordId } } : result;
+    }
+    if (source.kind === 'file') {
+      const result = await handlers['desktop.open']({ fileId: source.recordId }, {});
+      return result.status === 'applied' ? { status: 'applied', target: {
+        appId: source.appId, windowId: result.target.windowId ?? null, recordId: source.recordId,
+      } } : result;
+    }
+    if (source.kind === 'app') {
+      const result = await handlers['app.open']({ appId: source.appId }, {});
+      return result.status === 'applied' ? { status: 'applied', target: {
+        appId: source.appId, windowId: result.target.windowId ?? null, recordId: null,
+      } } : result;
+    }
+    const invoke = async (command, target, payload = {}) => {
+      if (!guard()) return stale();
+      const result = await handlers[command](target, payload);
+      return guard() ? result : stale();
+    };
+    let result = await invoke('app.open', { appId: source.appId });
+    if (result.status !== 'applied') return result;
+    const windowId = result.target.windowId;
+    await tick(); await tick();
+    if (source.kind === 'note') {
+      result = await invoke('notes.search', {}, { query: '' });
+      if (result.status !== 'applied') return result;
+      result = await invoke('notes.selectFolder', { folder: 'notes' });
+      if (result.status !== 'applied') return result;
+      result = await invoke('notes.view.openNote', { windowId, noteId: source.recordId });
+    } else {
+      result = await invoke('services.provider.select', { appId: source.appId, windowId }, { entryId: source.recordId });
+      if (result.status === 'applied') result = await invoke('services.panel.focus', { appId: source.appId, windowId, control: 'panel' });
+    }
+    return result.status === 'applied' ? { status: 'applied', target: { appId: source.appId, windowId, recordId: source.recordId } } : result;
+  }
+  function completeNotificationDestination(lease, guard) {
+    if (!guard() || lease.source.kind !== 'reminder') return rejected('stale_target', 'The original reminder source is unavailable.');
+    return setWidgetReminderCompleted(systemState.widgets, lease.source.recordId, true,
+      delta => guard() && workflowTextSize() + delta <= 4 * 1024 * 1024 && guard());
+  }
+  function replyNotificationDestination(lease, body, guard) {
+    if (!guard() || !['message', 'mail'].includes(lease.source.kind))
+      return rejected('stale_target', 'The original fictional local reply source is unavailable.');
+    const result = replyToCommunication(communicationsState, lease.source.recordId, body,
+      candidate => guard() && canCommitServiceCommunications(candidate) && guard(), macFiles.sceneTime);
+    if (result.status === 'applied') { sharedClockWriter.onTimeChanged?.(communicationsState.timeBase); serviceEpoch++; }
+    return result;
+  }
+  function registerNotificationBannerView(bannerId, view, original) {
+    if (view) { notificationBannerViews.set(bannerId, view); return; }
+    if (!original || notificationBannerViews.get(bannerId) === original) notificationBannerViews.delete(bannerId);
   }
 
   function getApplicationView(windowId) {
@@ -2271,7 +2391,7 @@
     node = find(getWindowPanel(entry.window.id));
     if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return false;
     const native = applicationViews.get(entry.window.id);
-    if (control !== 'panel' && entry.window.appId === 'settings' && ['sound', 'menu-bar', 'bluetooth', 'keyboard', 'spotlight'].includes(entry.window.settingsPane)
+    if (control !== 'panel' && entry.window.appId === 'settings' && ['sound', 'menu-bar', 'bluetooth', 'keyboard', 'spotlight', 'notifications'].includes(entry.window.settingsPane)
       && native?.focus) return native.focus(control);
     node.focus();
     await tick();
@@ -2281,6 +2401,9 @@
     if (utilityPreparation) return rejected('unavailable', 'Wait for the current native panel preparation.');
     if (pendingQuitAppIds.includes(appId)) return rejected('unavailable', 'Resolve the pending application quit before opening its panel.');
     const snapshot = captureWindowPreparation();
+    // Delivery controllers retain original canonical leaves across native panel
+    // preparation. A window rollback must not replace those identities.
+    if (settingsPane === 'notifications') snapshot.system = null;
     const preparation = { appId, windowId: null, snapshot, createdIds: [] };
     utilityPreparation = preparation;
     try {
@@ -3222,7 +3345,7 @@
       panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
         || window.appId === 'systeminformation' && !window.utilityKind
         || window.appId === 'settings' && !window.utilityKind
-          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth', 'keyboard'].includes(window.settingsPane)).map(window => {
+          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth', 'keyboard', 'notifications'].includes(window.settingsPane)).map(window => {
         const entry = getSystemPanel(window.id), element = managedWindowElement(window.id)?.querySelector('[data-system-panel]');
         const controlIds = systemPanelControls(entry);
         return { windowId: window.id, appId: window.appId,
@@ -3231,6 +3354,7 @@
           ...(controlIds.includes('version') ? { aboutBuildVisible: Boolean(window.aboutBuildVisible) } : {}),
           ...(window.appId === 'settings' && window.settingsPane === 'storage' ? { storageVolumesVisible: Boolean(window.storageVolumesVisible) } : {}),
           ...(window.appId === 'settings' && window.settingsPane === 'sound' ? { soundTab: window.soundTab } : {}),
+          ...(window.appId === 'settings' && window.settingsPane === 'notifications' ? { selectedAppId: window.notificationAppId ?? 'messages' } : {}),
           ...(window.utilityKind === 'system-force-quit' ? { selectedAppId: window.forceQuitSelectedAppId } : {}),
           focusedControl: element?.contains(document.activeElement)
             ? document.activeElement === element ? 'panel' : document.activeElement.dataset.applicationSettingsControl ?? null : null,
@@ -4492,6 +4616,10 @@
       if (fileWorkflowsAvailable() && printingState.jobs.some(job => job.status === 'queued' || job.status === 'printing'))
         commands.execute({ command: 'printing.advance', payload: { pages: 1 } });
     }, 1000) : null;
+    const notificationTimer = hasNotifications ? setInterval(() => {
+      if (notificationNativeAvailable() && !notificationPane && notificationUi.banners.length)
+        void commands.execute({ command: 'notifications.banner.advance', payload: { milliseconds: 250 } });
+    }, 250) : null;
     return () => {
       disposed = true; stopScene?.(); unregister(); unregisterSession?.();
       viewWorkflows?.dismissOptions();
@@ -4505,11 +4633,12 @@
       bluetoothController?.clear();
       inputController?.dispose();
       spotlightController?.dispose(); spotlightViews.clear();
-      notificationController?.dispose(); notificationViews.clear();
+      notificationController?.dispose(); notificationViews.clear(); notificationBannerViews.clear();
       widgetController?.dispose(); widgetEditorViews.clear(); widgetDataViews.clear();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
+      if (notificationTimer !== null) clearInterval(notificationTimer);
       if (stageDrag) stagePointerUp({ pointerId: stageDrag.pointerId, type: 'pointercancel' });
     };
   });
@@ -4585,6 +4714,7 @@
       ...(macDesktop && appId === 'finder' && !utilityKind ? { folderId: remembered?.window.folderId ?? 'desktop' } : {}),
       ...(hasDockContext && appId === 'settings' && !utilityKind ? { settingsPane: remembered?.window.settingsPane ?? 'dock' } : {}),
       ...(hasSound && appId === 'settings' && !utilityKind ? { soundTab: remembered?.window.soundTab ?? 'output' } : {}),
+      ...(hasNotifications && appId === 'settings' && !utilityKind ? { notificationAppId: remembered?.window.notificationAppId ?? 'messages' } : {}),
       ...(hasViewWorkflows && !utilityKind && appId === 'finder'
         ? { finderPresentation: remembered?.window.finderPresentation ?? finderPresentationDefaults(),
           finderBrowseMode: remembered?.window.finderBrowseMode
@@ -4971,6 +5101,9 @@
         {:else if hasSpotlight && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'spotlight'}
           <GoldenGateSpotlightSettings {profile} {window} preferences={systemState.spotlight} folders={spotlightPrivacyFolders()}
             execute={commands.execute} registerView={registerApplicationView} />
+        {:else if hasNotifications && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'notifications'}
+          <GoldenGateNotificationSettings {profile} {window} preferences={systemState.notifications.preferences}
+            selectedAppId={window.notificationAppId ?? 'messages'} execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasSound && !window.utilityKind && ['music', 'quicktime'].includes(window.appId)}
           <GoldenGateAudioPlayer {profile} {window} sound={soundController.summary()} {foreground} {preview}
             playback={preview ? soundController.targets().media.find(player => player.windowId === window.id) ?? null : null}
@@ -5063,7 +5196,10 @@
         {:else if hasDockContext && window.appId === 'settings'}
           {#if hasAppearance && window.settingsPane === 'appearance'}
             <MacAppearancePreferences {profile} state={appearanceState} execute={commands.execute} />
-            {#if hasAppleMenu}<div class="settings-pane-links"><button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'system.settings.open', payload: { pane: 'about' } })}>General — About…</button></div>{/if}
+            <div class="settings-pane-links">
+              {#if hasAppleMenu}<button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'system.settings.open', payload: { pane: 'about' } })}>General — About…</button>{/if}
+              {#if hasNotifications}<button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'notifications.settings.open' })}>Notifications…</button>{/if}
+            </div>
           {:else if hasDashboard && window.settingsPane === 'mission-control'}
             <DashboardPreferences mode={dashboardState.mode} execute={commands.execute} />
             <div class="settings-pane-links">
@@ -5073,6 +5209,7 @@
             <MacDockPreferences {profile} preferences={desktopState.dock.preferences} execute={commands.execute} />
             <div class="settings-pane-links">
               {#if hasAppleMenu}<button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'system.settings.open', payload: { pane: 'about' } })}>General — About…</button>{/if}
+              {#if hasNotifications}<button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'notifications.settings.open' })}>Notifications…</button>{/if}
               {#if hasAppearance}
                 <button type="button" class="settings-pane-link" onclick={() => commands.execute({ command: 'appearance.preferences.open' })}>{modernMac ? 'Appearance…' : 'General…'}</button>
               {/if}
@@ -5265,9 +5402,27 @@
       style:visibility={!notificationNativeAvailable() ? 'hidden' : undefined}>
       <GoldenGateNotificationCenter pane={notificationPane} groups={notificationController.groups()} clock={clockContext}
         {...(hasWidgets ? { widgetState: systemState.widgets, widgetUi } : {})}
+        actionsFor={notificationController.actions} previewFor={notificationController.preview} itemUiFor={notificationController.itemUi}
         foreground={notificationNativeAvailable()} execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
         registerView={view => { if (view) notificationViews.set(centerId, view); else notificationViews.delete(centerId); }} />
     </div>
+  {/if}
+  {#if hasNotifications}
+    {#each notificationUi.banners.slice(0, 1) as banner (banner.bannerId)}
+      {@const entry = systemState.notifications.entries.find(value => value.id === banner.notificationId)}
+      {#if entry}
+        <div class="notification-banner-placement" style:top={`${stageArea.menuHeight + 8}px`}
+          style:width={`${Math.max(1, Math.min(360, stageArea.width - 16))}px`}
+          style:max-height={`${Math.max(1, stageArea.height - stageArea.menuHeight - 16)}px`}
+          style:visibility={!notificationNativeAvailable() || notificationPane ? 'hidden' : undefined}>
+          <GoldenGateNotificationBanner {banner} {entry} app={profile.applications[entry.appId]}
+            actions={notificationController.actions(entry)} showPreview={notificationController.preview(entry)}
+            itemUi={notificationController.itemUi(entry)} foreground={notificationNativeAvailable() && !notificationPane}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(view, original) => registerNotificationBannerView(banner.bannerId, view, original)} />
+        </div>
+      {/if}
+    {/each}
   {/if}
   {#if hasWidgets && widgetUi.editor && notificationPane}
     {@const editorId = widgetUi.editor.editorId}
@@ -5315,6 +5470,7 @@
   .scene-root { position: absolute; inset: 0; }
   .spotlight-placement { position:absolute; z-index:25000; transform:translateX(-50%); }
   .notification-placement { position:absolute; right:8px; z-index:25000; }
+  .notification-banner-placement { position:absolute; right:8px; z-index:25010; display:flex; overflow:hidden; border-radius:22px; }
   .widget-gallery-placement { position:absolute; z-index:25100; border-radius:24px; overflow:hidden; border:1px solid var(--appearance-light-edge,#ffffff80); box-shadow:0 12px 45px #0004; }
   .desktop-interaction-root { height:100%; }
   .status-sheet-backdrop { position:absolute; inset:0; z-index:30000; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:8px; background:#0003; overflow:hidden; }

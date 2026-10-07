@@ -16,6 +16,7 @@ const scrollSelectors = {
   'settings-bluetooth': '[data-bluetooth-settings-scroll]',
   'settings-keyboard': '[data-input-settings-scroll]',
   'settings-spotlight': '[data-spotlight-settings-scroll]',
+  'settings-notifications': '[data-notification-settings-scroll]',
   'widget-data': '[data-widget-data-window-id]',
   'sound-player': '[data-sound-player] [data-sound-media-scroll]',
   'desktop-info': '.info-inspector',

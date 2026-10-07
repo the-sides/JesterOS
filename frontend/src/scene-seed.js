@@ -12,6 +12,7 @@ import { macDockDefaults } from './mac-dock-model.js';
 import { dockFolderItemId } from './mac-dock-folders.js';
 import { isRecord, rejected } from './feature-commands.js';
 import { object, choice, flag } from './command-schema.js';
+import { validateNotificationDestinations } from './notification-destinations.js';
 
 const PROFILE_ID = 'macos-golden-gate-27.0.1';
 const MAX_COUNTER = Number.MAX_SAFE_INTEGER - 1;
@@ -254,6 +255,8 @@ export function validateSceneSeed(seed, profile) {
   if (!unique(dock.folderFileIds) || dock.folderFileIds.some(id => !liveFolder(id)) || Object.keys(dock.folderPreferences).some(id => !liveFolder(id))) return invalid('Dock aliases and preferences must refer to live user folders other than Disk or Trash.');
   const aliases = new Set(dock.folderFileIds.map(dockFolderItemId));
   if (!unique(dock.secondaryOrderItemIds) || dock.secondaryOrderItemIds.some(id => !aliases.has(id))) return invalid('Secondary Dock order may contain only unique existing folder aliases, never window tiles.');
+  const destinations = validateNotificationDestinations(seed, profile);
+  if (!destinations.ok) return invalid(destinations.message);
   return { ok: true };
 }
 

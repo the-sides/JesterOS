@@ -20,7 +20,7 @@ test('individually valid notification bodies cannot bypass the saved-session ser
   model.nextId = 3;
   model.entries = Array.from({ length: 2 }, (_, index) => ({
     id: `notification-${index + 1}`, appId: 'mail', title: 'Bounded record',
-    body: 'n'.repeat(1024 * 1024), createdAt: 0,
+    body: 'n'.repeat(1024 * 1024), createdAt: 0, destination: null, snoozedUntil: null,
   }));
   const before = structuredClone(snapshot);
   const handlers = commands({ storage, capture: async () => snapshot });
@@ -72,6 +72,23 @@ function addWindow(scene, appId, fields = {}, userId = 'local-alex') {
   scene.switching.creationWindowIds.push(id);
   return window;
 }
+
+test('saved Notification Settings preserve their exact selected application and semantic scroll, rejecting missing identities before storage replacement', async () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  const window = addWindow(scene, 'settings', { settingsPane: 'notifications', notificationAppId: 'mail' });
+  scene.views[window.id].scroll.push({ key: 'settings-notifications', top: 120, left: 0 });
+  const storage = memoryStorage(), replacements = [];
+  const handlers = commands({ storage, capture: async () => snapshot, replace: async value => { replacements.push(value); } });
+  expect((await execute(handlers, 'save')).status).toBe('applied');
+  expect((await execute(handlers, 'restore')).status).toBe('applied');
+  expect(replacements[0].locals[0].scene.windows.find(entry => entry.id === window.id).notificationAppId).toBe('mail');
+  expect(replacements[0].locals[0].scene.views[window.id].scroll).toContainEqual({ key: 'settings-notifications', top: 120, left: 0 });
+  const stored = storage.values.get(savedSessionStorageKey(profile));
+  delete window.notificationAppId;
+  expect((await execute(handlers, 'save')).error.code).toBe('invalid_arguments');
+  expect(storage.values.get(savedSessionStorageKey(profile))).toBe(stored);
+  expect(replacements).toHaveLength(1);
+});
 function remember(scene, appId, fields = {}, view = emptyView()) {
   const window = addWindow(scene, appId, fields);
   scene.windows.pop();
@@ -265,9 +282,6 @@ test('explicit save and restore retain independent local notification bytes and 
   expect(replacements[0]).toEqual(expected);
   const restoredAlex = replacements[0].locals[0].scene.seed.system.notifications;
   const restoredCasey = replacements[0].locals[1].scene.seed.system.notifications;
-  expect(restoredAlex).toEqual({ nextId: 3, entries: [
-    { id: 'notification-1', appId: 'mail', title: 'Literal 🎬', body: '\ufeff \r\n\u{1D11E} exact ', createdAt: sceneTime },
-  ] });
   postNotification(restoredAlex, profile, 'mail', { title: 'Next Alex', body: '' }, sceneTime, () => true);
   postNotification(restoredCasey, profile, 'calendar', { title: 'Next Casey', body: '' }, sceneTime, () => true);
   expect(restoredAlex.entries.map(entry => entry.id).sort()).toEqual(['notification-1', 'notification-3']);
@@ -277,8 +291,8 @@ test('explicit save and restore retain independent local notification bytes and 
 
 test('invalid saved notification models and private panes reject atomically without replacing or overwriting storage', async () => {
   const valid = fixture(true), storage = memoryStorage(JSON.stringify(valid)), replacements = [];
-  valid.locals[0].scene.seed.system.notifications = { nextId: 5, entries: [
-    { id: 'notification-4', appId: 'notes', title: 'Saved', body: 'literal body', createdAt: 0 },
+  valid.locals[0].scene.seed.system.notifications = { ...valid.locals[0].scene.seed.system.notifications, nextId: 5, entries: [
+    { id: 'notification-4', appId: 'notes', title: 'Saved', body: 'literal body', createdAt: 0, destination: null, snoozedUntil: null },
   ] };
   for (const change of [
     value => { delete value.baseline.seed.system.notifications; },

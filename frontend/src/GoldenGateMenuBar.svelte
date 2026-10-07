@@ -280,9 +280,11 @@
   }
   function toggle(event, menu) {
     event.preventDefault(); event.stopPropagation();
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || (event.altKey && !['apple', 'sound'].includes(menu.menuId)) || !available(menu.menuId)) return;
+    if (event.button !== 0 || event.ctrlKey || event.metaKey
+      || event.altKey && !['apple', 'sound'].includes(menu.menuId) && !(menu.kind === 'clock' && onnotifications)
+      || !available(menu.menuId)) return;
     if (menu.kind === 'clock' && onnotifications) {
-      if (notificationCenterAvailable) onnotifications();
+      if (notificationCenterAvailable) onnotifications(event);
       return;
     }
     if (menuState.menuId === menu.menuId) request('close', menu.menuId);
@@ -301,7 +303,7 @@
     if (!available(menu.menuId)) return;
     if (menu.kind === 'clock' && onnotifications && ['Enter', ' '].includes(event.key)) {
       event.preventDefault(); event.stopPropagation();
-      if (!event.repeat && notificationCenterAvailable) onnotifications();
+      if (!event.repeat && notificationCenterAvailable) onnotifications(event);
       return;
     }
     const key = event.key === ' ' ? 'Space' : event.key;

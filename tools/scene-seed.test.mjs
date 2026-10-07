@@ -13,9 +13,9 @@ const validate = seed => validateSceneSeed(seed, profile);
 
 test('notification bodies participate in the complete seed aggregate text budget', () => {
   const seed = fixture();
-  seed.system.notifications = { nextId: 5, entries: Array.from({ length: 4 }, (_, index) => ({
+  seed.system.notifications = { ...seed.system.notifications, nextId: 5, entries: Array.from({ length: 4 }, (_, index) => ({
     id: `notification-${index + 1}`, appId: 'mail', title: 'Bounded record',
-    body: 'n'.repeat(1024 * 1024), createdAt: seed.files.sceneTime,
+    body: 'n'.repeat(1024 * 1024), createdAt: seed.files.sceneTime, destination: null, snoozedUntil: null,
   })) };
   const before = structuredClone(seed);
   expect(validate(seed).ok).toBe(false);
@@ -103,8 +103,8 @@ test('seed replacement preserves complete local draft bytes and rejects invalid 
 
 test('replacement accepts canonical notifications but rejects incomplete, malformed and accessor records before disposal', async () => {
   const seed = fixture(), replacements = [];
-  seed.system.notifications = { nextId: 10, entries: [
-    { id: 'notification-9', appId: 'mail', title: 'Exact 🎬', body: ' \r\nliteral body ', createdAt: seed.files.sceneTime },
+  seed.system.notifications = { ...seed.system.notifications, nextId: 10, entries: [
+    { id: 'notification-9', appId: 'mail', title: 'Exact 🎬', body: ' \r\nliteral body ', createdAt: seed.files.sceneTime, destination: null, snoozedUntil: null },
   ] };
   const handlers = createSceneSeedCommands({ profile, available: () => true,
     replaceScene: async value => { replacements.push(value); } });

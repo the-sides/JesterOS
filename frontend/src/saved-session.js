@@ -36,7 +36,7 @@ const bounds = object({ x: number(-MAX_COUNTER), y: number(-MAX_COUNTER), width:
 const desktopId = { ...identity, pattern: '^desktop-[1-9][0-9]*$' };
 const scrollPosition = object({ top: number(), left: number() });
 const scrollKey = choice('notes-list', 'notes-body', 'messages-conversations', 'messages-thread', 'finder-contents',
-  'window-content', 'settings-dock', 'settings-appearance', 'settings-about', 'settings-displays', 'settings-storage', 'settings-storage-list', 'settings-wifi', 'settings-sound', 'settings-bluetooth', 'settings-keyboard', 'settings-spotlight', 'sound-player', 'widget-data', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel', 'system-about', 'system-force-quit', 'system-information', 'system-coverage');
+  'window-content', 'settings-dock', 'settings-appearance', 'settings-about', 'settings-displays', 'settings-storage', 'settings-storage-list', 'settings-wifi', 'settings-sound', 'settings-bluetooth', 'settings-keyboard', 'settings-spotlight', 'settings-notifications', 'sound-player', 'widget-data', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel', 'system-about', 'system-force-quit', 'system-information', 'system-coverage');
 const selectionKey = choice('notes-title', 'notes-body', 'notes-search',
   'service-name', 'service-email', 'service-phone', 'service-notes', 'service-to', 'service-subject', 'service-body', 'settings-computer-name');
 const viewToken = object({
@@ -48,8 +48,8 @@ const viewToken = object({
 const windowRecord = object({
   id: { ...identity, maxLength: 256 }, appId: identity, title: string(4096), minimized: flag, fullScreen: flag, zoomed: flag,
   bounds, restoreBounds: nullable(bounds), spaceId: desktopId,
-  folderId: safeKey(), finderSelectedFileIds: ids(safeKey()), settingsPane: choice('dock', 'appearance', 'about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth', 'keyboard', 'spotlight'),
-  soundTab: choice('output', 'input'),
+  folderId: safeKey(), finderSelectedFileIds: ids(safeKey()), settingsPane: choice('dock', 'appearance', 'about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth', 'keyboard', 'spotlight', 'notifications'),
+  soundTab: choice('output', 'input'), notificationAppId: identity,
   finderPresentation: finderPresentationSchema, notesPresentation: notesPresentationSchema,
   finderBrowseMode: choice('icons', 'list', 'columns', 'gallery'),
   utilityKind: choice('desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'system-about', 'system-force-quit', 'system-coverage'),
@@ -270,7 +270,7 @@ function validateRoot(scene, userId, profile) {
       if (Object.hasOwn(window, 'folderId') || Object.hasOwn(window, 'finderSelectedFileIds')
         || Object.hasOwn(window, 'finderPresentation') || Object.hasOwn(window, 'notesPresentation')
         || Object.hasOwn(window, 'finderBrowseMode')
-        || Object.hasOwn(window, 'settingsPane') || Object.hasOwn(window, 'soundTab')) return invalid('Utilities cannot contain ordinary app window presentation fields.');
+        || Object.hasOwn(window, 'settingsPane') || Object.hasOwn(window, 'soundTab') || Object.hasOwn(window, 'notificationAppId')) return invalid('Utilities cannot contain ordinary app window presentation fields.');
       if (window.utilityKind === 'application-about' || window.utilityKind === 'application-settings') {
         if (window.utilityKind === 'application-settings' && window.appId !== 'notes') return invalid('Only Notes has a represented app Settings utility.');
         if (Object.hasOwn(window, 'fileId') || Object.hasOwn(window, 'infoSections')) return invalid('App utilities cannot contain desktop-file metadata.');
@@ -297,6 +297,9 @@ function validateRoot(scene, userId, profile) {
       if (window.appId === 'settings' ? !Object.hasOwn(window, 'settingsPane') : Object.hasOwn(window, 'settingsPane')) return invalid('Only System Settings windows have a required Golden Gate settings pane.');
       if (Object.hasOwn(window, 'soundTab') && window.appId !== 'settings')
         return invalid('Only ordinary System Settings windows can retain an Output/Input Sound tab.');
+      if (window.settingsPane === 'notifications' && !Object.hasOwn(window, 'notificationAppId')
+        || Object.hasOwn(window, 'notificationAppId') && (window.appId !== 'settings' || !registered(window.notificationAppId)))
+        return invalid('Notification Settings require their exact registered selected application; only ordinary System Settings windows can retain it.');
       if (window.appId === 'finder' ? !Object.hasOwn(window, 'finderPresentation') || !Object.hasOwn(window, 'finderBrowseMode')
         : Object.hasOwn(window, 'finderPresentation') || Object.hasOwn(window, 'finderBrowseMode')) return invalid('Only ordinary Finder windows require Finder presentation and browsing mode.');
       if (window.appId === 'notes' ? !Object.hasOwn(window, 'notesPresentation')

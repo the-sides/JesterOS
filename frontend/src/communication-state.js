@@ -169,7 +169,7 @@ function stateError(state) {
   const validation = validateCommunications(state);
   return validation.ok ? null : rejected('invalid_arguments', validation.message);
 }
-function commit(state, candidate, canCommit = () => true) {
+function commit(state, candidate, canCommit = () => true, isCurrent = () => true) {
   const validation = validateCommunications(candidate);
   if (!validation.ok) return rejected('limit_exceeded', validation.message);
   if (typeof canCommit !== 'function') return rejected('invalid_arguments', 'Expected a synchronous candidate budget callback.');
@@ -177,7 +177,9 @@ function commit(state, candidate, canCommit = () => true) {
     if (stateKeys.some(key => Object.getOwnPropertyDescriptor(state, key)?.writable !== true)) return rejected('invalid_arguments', 'Communications state must be writable.');
     // The callback owns this detached copy; it cannot alter either the current
     // model or the validated candidate that will actually be committed.
-    if (canCommit(detached(candidate)) !== true) return rejected('limit_exceeded', 'The complete communications candidate exceeds the scene budget.');
+    const accepted = canCommit(detached(candidate));
+    if (!isCurrent()) return rejected('unavailable', 'The original communications model changed during reply preparation.');
+    if (accepted !== true) return rejected('limit_exceeded', 'The complete communications candidate exceeds the scene budget.');
   } catch { return rejected('limit_exceeded', 'The complete communications candidate could not be accepted.'); }
   for (const key of stateKeys) state[key] = candidate[key];
   return null;
@@ -240,7 +242,46 @@ export function selectCommunicationEntry(state, appId, entryId) {
   const error = stateError(state); if (error) return error;
   if (typeof appId !== 'string' || !Object.hasOwn(channels, appId) || (entryId !== null && !validId(entryId))) return rejected('invalid_arguments', 'Expected an exact communications application and entry identity or null.');
   if (entryId !== null && !entries(state, appId).some(entity => entity.id === entryId)) return rejected('not_found', 'The entry does not exist in this communications channel.');
-  const next = detached(state); next.selected[appId] = entryId;
+  const next = { ...state, selected: { ...state.selected, [appId]: entryId } };
   const denied = commit(state, next); if (denied) return denied;
   return { status: 'applied', target: { appId, entryId } };
+}
+
+function retainCommunicationGraph(state) {
+  const snapshots = [];
+  const visit = value => {
+    if (!value || typeof value !== 'object') return;
+    for (const key of Reflect.ownKeys(value)) if (key !== 'length') visit(value[key]);
+    snapshots.push({ value, prototype: Object.getPrototypeOf(value), descriptors: Object.getOwnPropertyDescriptors(value) });
+  };
+  visit(state);
+  return () => snapshots.every(({ value, prototype, descriptors }) => Object.getPrototypeOf(value) === prototype
+    && Reflect.ownKeys(value).length === Reflect.ownKeys(descriptors).length
+    && Reflect.ownKeys(descriptors).every(key => {
+      const a = descriptors[key], b = Object.getOwnPropertyDescriptor(value, key);
+      return b && a.enumerable === b.enumerable && a.configurable === b.configurable && a.writable === b.writable
+        && a.value === b.value && a.get === b.get && a.set === b.set;
+    }));
+}
+
+/** A notification reply commits one real local sent record, never a draft shim. */
+export function replyToCommunication(state, recordId, body, canCommit = () => true, sceneTime) {
+  const error = stateError(state); if (error) return error;
+  if (!validId(recordId) || typeof body !== 'string' || !body.trim() || body.length > MAX_TEXT)
+    return rejected('invalid_arguments', 'A local notification reply requires an original sent record and bounded nonblank text.');
+  const original = state.outbox.find(entity => entity.id === recordId && ['message', 'mail'].includes(entity.kind));
+  if (!original || !original.fields.to.trim()) return rejected('not_found', 'The original local reply recipient is unavailable.');
+  const current = retainCommunicationGraph(state);
+  const time = nextTimestamp(state, sceneTime);
+  if (state.outbox.length >= 1024 || state.nextId >= MAX_COUNTER || time === null)
+    return rejected('limit_exceeded', 'Local reply capacity, allocation or scene clock is exhausted.');
+  const fields = { ...original.fields, body };
+  if (original.kind === 'mail' && !fields.subject.startsWith('Re: ')) fields.subject = `Re: ${fields.subject}`;
+  if (!validFields(original.kind, fields)) return rejected('limit_exceeded', 'The original recipient or reply subject exceeds its literal field bounds.');
+  const next = detached(state), replyId = `service-${original.kind}-${state.nextId}`;
+  const record = { id: replyId, kind: original.kind, createdAt: time, updatedAt: time, revision: 1, fields,
+    ...(original.kind === 'mail' ? { attachments: [] } : {}) };
+  next.outbox.push(record); next.nextId++; next.timeBase = time; next.selected[appForKind(original.kind)] = replyId;
+  const denied = commit(state, next, canCommit, current); if (denied) return denied;
+  return { status: 'applied', target: { appId: appForKind(original.kind), recordId: replyId } };
 }

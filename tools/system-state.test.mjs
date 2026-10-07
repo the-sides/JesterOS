@@ -11,7 +11,7 @@ test('canonical notification records validate against each original profile inve
   for (const original of listOSProfiles()) {
     const state = notificationsDefaults(), appId = Object.keys(original.applications)[0];
     state.nextId = 2;
-    state.entries.push({ id: 'notification-1', appId, title: 'Registered app', body: '', createdAt: 0 });
+    state.entries.push({ id: 'notification-1', appId, title: 'Registered app', body: '', createdAt: 0, destination: null, snoozedUntil: null });
     expect(validateNotificationsState(state, original)).toEqual({ ok: true });
     state.entries[0].appId = 'foreign-profile-application';
     expect(validateNotificationsState(state, original).ok).toBe(false);
@@ -117,9 +117,9 @@ test('reopen-window preferences preserve explicit false and reject missing, coer
 
 test('notification records require registered applications, monotonic allocation and closed descriptor-only data', () => {
   const state = systemDefaults(profile);
-  state.notifications = { nextId: 8, entries: [
-    { id: 'notification-3', appId: 'notes', title: 'Literal 🎬 title', body: ' \r\nbody\u{1D11E} ', createdAt: 0 },
-    { id: 'notification-7', appId: 'mail', title: 'Later', body: '', createdAt: 42 },
+  state.notifications = { ...notificationsDefaults(), nextId: 8, entries: [
+    { id: 'notification-3', appId: 'notes', title: 'Literal 🎬 title', body: ' \r\nbody\u{1D11E} ', createdAt: 0, destination: { kind: 'note', recordId: 'note-1' }, snoozedUntil: null },
+    { id: 'notification-7', appId: 'mail', title: 'Later', body: '', createdAt: 42, destination: null, snoozedUntil: 84 },
   ] };
   expect(validateSystemState(JSON.parse(JSON.stringify(state)), profile)).toEqual({ ok: true });
   for (const change of [

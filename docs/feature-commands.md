@@ -10,7 +10,7 @@ The mounted desktop exposes `globalThis.jesteros` with:
 - `inspect()`: a detached snapshot of supported command names and current window/application state. Changing this snapshot does not change the scene.
 - `describe()`: detached, JSON-serializable version-1 catalog for the active profile. Includes supported profile IDs, capability, request/success-result JSON Schemas, runtime requirements, data/presentation effects, completion semantics and current target identities. Read `describe().commands[name]` for a Golden Gate command; querying never activates a window or changes the scene.
 
-The default Golden Gate27.0.1 exposes434 commands; preserved Mojave178/Sonoma163/High Sierra170/Windows190 remain selectable. New feature work is latest macOS only. The stable public object follows native remounts; during transition dispatch/discovery reject unavailable and inspect reports profile:null/transitioning:true. Immutable profile identity/coverage and native adapters are not a theme selector. Rust transport/controller remain deferred.
+The default Golden Gate27.0.1 exposes453 commands; preserved Mojave178/Sonoma163/High Sierra170/Windows190 remain selectable. New feature work is latest macOS only. The stable public object follows native remounts; during transition dispatch/discovery reject unavailable and inspect reports profile:null/transitioning:true. Immutable profile identity/coverage and native adapters are not a theme selector. Rust transport/controller remain deferred.
 
 Requests contain `command`, optional `requestId`, `target`, and `payload`. Command targets/payloads are plain JSON objects; omitted target/payload become empty objects. Explicit null, arrays, unrecognized request fields, unknown commands, and invalid command arguments are rejected. A supplied requestId must be a nonempty string and is echoed in results.
 
@@ -1204,22 +1204,22 @@ Sources: [Spotlight27](https://support.apple.com/guide/mac-help/find-what-you-ne
 
 ## Current Notification Center — NOTIF-01
 
-Golden-only capability `shell.notification-center`; eight additions brought discovery to414 at this checkpoint. [Apple's27 guide](https://support.apple.com/guide/mac-help/get-notifications-mchle7f8a9b0/27/mac/27) describes one combined center, not retired Mojave Today/Notifications tabs. Date/time click/Return/Space opens it; Clock context menu/ArrowDown/existing commands remain settings routes. Scene-data widgets are implemented in the following section; banner/app/Focus actions remain NOTIF-03.
+Golden-only capability `shell.notification-center`; eight additions brought discovery to414 at this checkpoint. [Apple's27 guide](https://support.apple.com/guide/mac-help/get-notifications-mchle7f8a9b0/27/mac/27) describes one combined center, not retired Mojave Today/Notifications tabs. Date/time click/Return/Space opens it; Clock context menu/ArrowDown/existing commands remain settings routes. Scene-data widgets and banner/app/DND/settings actions are implemented in the following sections; full Focus remains deferred.
 
 | Command | Target | Payload | Applied target / behavior |
 | --- | --- | --- | --- |
 | `notifications.open` | `{}` | `{}` | `{centerId,reused}`; close incompatible original Spotlight/shared menus, capture original return focus, mount/focus the real center. |
 | `notifications.close` | `{centerId}` | `{restoreFocus?}` | `{centerId,closed:true}`; retire only that private center, restoring only a still-valid original node/range unless false. |
-| `notifications.post` | `{appId}` | `{title,body,createdAt?}` | `{notificationId,appId,createdAt}`; commit one explicit local fictional arrival, defaulting to original scene time; no implicit banner or center opening. |
+| `notifications.post` | `{appId}` | `{title,body,createdAt?,destination?}` | `{notificationId,appId,createdAt}`; commit one explicit local fictional arrival, defaulting to original scene time; announce only according to canonical delivery policy, without implicitly opening the center. |
 | `notifications.group.setExpanded` | `{centerId,groupId}` | `{expanded}` | `{centerId,groupId,expanded}`; actual extant app stack/full body or Show Less; no hidden result cap. |
 | `notifications.dismiss` | `{centerId,notificationId}` | `{}` | `{centerId,notificationId,dismissed:true}`; remove only the original visible item. |
 | `notifications.clear` | `{centerId,groupId?}` | `{}` | `{centerId,removedIds}`; clear an original app stack, or all current records; retain allocation counter. |
 | `notifications.focus` | `{centerId,controlId}` | `{}` | `{centerId,controlId}`; prepare/focus the actual original enabled native control and read back ownership. |
 | `notifications.scroll` | `{centerId}` | `{top,left}` | `{centerId,top,left}` achieved native nonnegative bounded offsets, not request echoes. |
 
-`describe().targets.notifications` exposes current `centerId`, real groups `{groupId,appId,name,icon,count,notificationIds}` and actual `controlIds`. A group ID is its registered app ID; notification IDs are canonical `notification-<positive ordinal>`. Native controls are `center`, `close`, nonempty `clear-all`, collapsed `group:<appId>`, expanded `collapse:<appId>`/`clear:<appId>`, and visible `dismiss:<notificationId>`. Removed focused nodes recover to the same center. Native pointer/keyboard, held-X app clearing and typed paths share the original model/facade.
+`describe().targets.notifications` exposes current `centerId`, real groups `{groupId,appId,name,icon,count,notificationIds}`, actual `controlIds`, detached canonical `preferences` and private `banners`. A group ID is its registered app ID; notification IDs are canonical `notification-<positive ordinal>`. Native controls include `center`, `close`, nonempty `clear-all`, collapsed multi-item `group:<appId>`, expanded `collapse:<appId>`/`clear:<appId>`, and visible `dismiss:<notificationId>`. Singleton entries expose a real card directly. Item/action/setting controls are described below; removed focused nodes recover to the same center. Native pointer/keyboard, held-X clearing and typed paths share the original model/facade.
 
-Required per-local `system.notifications` is complete `{nextId,entries}`; each entry is exactly `{id,appId,title,body,createdAt}`. At most256 records; unique ordinals below safe bounded `nextId`, no reuse after dismiss/clear. Registered-profile app; literal nonblank single-line title1–256 UTF-16 units; body0–one Mi units; timestamp integer0–8,640,000,000,000,000−1. Post checks existing four Mi aggregate scene text/key growth atomically. Canonical descriptor validation rejects getters, symbols, sparse arrays, missing/extra fields and unknown app IDs before mutation. Already-validated reactive array/entry identities are materialized before mutation snapshots; quota reads do not authorize or falsely invalidate a lease.
+Required per-local `system.notifications` is complete `{nextId,entries,preferences}`; each entry is exactly `{id,appId,title,body,createdAt,destination,snoozedUntil}`. At most256 records; unique ordinals below bounded `nextId`, no reuse after dismiss/clear. Registered-profile app; literal nonblank single-line title1–256 UTF-16 units; body0–one Mi units; timestamp integer0–8,640,000,000,000,000−1. Destination is null or a valid matching `{kind,recordId}` source; snoozedUntil is null or bounded scene time. Required global/app policies are detailed below. Existing four-Mi aggregate text/key growth applies atomically. Descriptor-first validation rejects getters, symbols, sparse arrays, missing/extra fields and unknown apps. Already-validated reactive identities are materialized before mutation snapshots; quota reads neither authorize nor falsely invalidate a lease.
 
 `inspect().state.notifications` is nullable private pane metadata `{centerId,expandedGroupIds,focusedControl,scroll}`; canonical records remain `state.system.notifications`. None of that pane serializes. Lock/local switching suspend the original pane; accepted Root disposal/replacement retires it. All async continuations and controls retain original owner identity. Cold restoration preserves independent local records/counters without a center; Guest is excluded. Missing required notification leaf in seed or saved V1 rejects unchanged, without a compatibility merge.
 
@@ -1227,7 +1227,7 @@ Verification:606 tests/9570 assertions/52 files;666 modules/no Svelte warnings;4
 
 ## Scene-data widgets and gallery — NOTIF-02
 
-Golden-only capability `shell.notification-widgets`;20 additions bring current discovery to434. **Approved scope: current-native widgets only; an unverified Calculator widget is excluded. Existing Spotlight arithmetic remains available.** The [current27 gallery](https://support.apple.com/guide/mac-help/add-and-customize-widgets-mchl52be5da5/27/mac/27) is part of combined Notification Center, not a retired Today tab/Dashboard.
+Golden-only capability `shell.notification-widgets`;20 additions brought discovery to434 at that checkpoint. **Approved scope: current-native widgets only; an unverified Calculator widget is excluded. Existing Spotlight arithmetic remains available.** The [current27 gallery](https://support.apple.com/guide/mac-help/add-and-customize-widgets-mchl52be5da5/27/mac/27) is part of combined Notification Center, not a retired Today tab/Dashboard.
 
 All targets and payloads are closed plain data. `C` below means `{centerId}`, `E` means `{centerId,editorId}`, and `W` means `{centerId,widgetId}` from current discovery. IDs are original-owner leases, not aliases for whatever view has the same label. Read `describe().commands[name]` for exact typed success fields.
 
@@ -1274,6 +1274,44 @@ Canonical source data/configuration/order/selection persist independently per lo
 Verification:640 tests/10816 assertions/54 files;674 modules/no Svelte warnings;434 strict pairs/all20 additions Applied in actual Rust production. Native search/Add/preview drag/Done, context/Control-click/size/Option removal, widget/city drag and keyboard ordering, shared completion/focus, exact five-app source opens and empty/escaped authored data pass. Positive scroll250 survives closed reopen and cold sign-in; locals persist independent edits and Guest resets/excludes. Capacity64/Calculator/fifth-city/foreign/accessor/locked-owner rejection preserves state. Actual concurrent original resize commits before replacement, which keeps its exact own leaf. Owned320×180 center304×136/gallery302×134 fit with native compact category selection; tiny content stays scrollable.80 historical widget actors reject unsupported_profile before getters; inventories170/178/163/190 unchanged. Final index-BokZutKj.js errors/images/external resources clean.
 
 Primary sources: [widgets27](https://support.apple.com/guide/mac-help/add-and-customize-widgets-mchl52be5da5/27/mac/27), [Notification Center27](https://support.apple.com/guide/mac-help/get-notifications-mchle7f8a9b0/27/mac/27), [Reminders](https://support.apple.com/en-gw/guide/reminders/remn83e1a96e/mac), [Stocks](https://support.apple.com/guide/stocks/view-stocks-st96acfa8842/mac), [Clock](https://support.apple.com/guide/clock-mac/check-the-time-apdw7dec11e7/mac), [Weather27](https://support.apple.com/guide/weather-mac/welcome/mac). Authored bounded editor/materials/source coverage; no factory-pixel equality, full native widget inventory, verified native Weather unit editor, live provider or stock news.
+
+## Notification delivery and source actions — NOTIF-03
+
+Golden-only capability `shell.notification-delivery`;19 additions bring current discovery to453. All targets/payloads are closed literal data. `I` below is exactly one `{notificationId,centerId}` or `{notificationId,bannerId}` from the original visible owner; `B` means `{bannerId}`, `S` means `{windowId}`, and `A` means `{windowId,appId}` for the original foreground Notifications Settings window. Exact output contracts are published by `describe().commands[name]`.
+
+| Command | Target | Payload | Applied behavior |
+| --- | --- | --- | --- |
+| `notifications.item.open` | `I` | `{}` | Open/select the original source in its actual ordinary app; dismiss alert only after success. |
+| `notifications.item.snooze` | `I` | `{minutes:5\|15\|60}` | Hide the original linked event/reminder until authored scene time; retain ID and allocation counter. |
+| `notifications.item.complete` | `I` | `{}` | Complete the real shared reminder and dismiss its original alert. |
+| `notifications.item.expand` | `I` | `{expanded}` | Reveal/hide original card details. |
+| `notifications.options.setOpen` | `I` | `{open}` | Open/close real original Options controls. |
+| `notifications.reply.open` | `I` | `{}` | Open/focus a private native editor for the original real local message/mail source. |
+| `notifications.reply.update` | `I` | `{body}` | Update original private editor only; no canonical send. |
+| `notifications.reply.send` | `I` | `{}` | Atomically append a real local outbox reply and dismiss the alert; return actual new record ID. |
+| `notifications.reply.cancel` | `I` | `{}` | Discard original private editor without sending. |
+| `notifications.banner.dismiss` | `B` | `{}` | Dismiss the original canonical event and private banner; preserve nextId. |
+| `notifications.banner.focus` | `{bannerId,controlId}` | `{}` | Prepare/focus an original enabled native control; observe actual ownership. |
+| `notifications.banner.scroll` | `B` | `{top,left}` | Return achieved native clamped offsets, not request echoes. |
+| `notifications.banner.setPaused` | `B` | `{paused}` | Pause/resume original private temporary presentation time. |
+| `notifications.banner.advance` | `{}` | `{milliseconds:0..60000}` | Advance available temporary private presentation only; return actually expired IDs. |
+| `notifications.settings.open` | `{}` | `{appId?}` | Withdraw private center/banners and open/focus the real Notifications Settings pane; preserve canonical events. |
+| `notifications.settings.select` | `A` | `{}` | Select registered app in the original managed pane. |
+| `notifications.settings.configure` | `A` | `{configuration}` | Atomically update a closed partial app policy; return actual complete row. |
+| `notifications.settings.global.configure` | `S` | `{showPreviews}` | Set the canonical shared preview default in the original pane. |
+| `notifications.dnd.set` | `{}` | `{enabled}` | Set scene-only DND; suppress desktop delivery while retaining center-visible canonical events. |
+
+Canonical preferences are `{doNotDisturb,showPreviews,applications}`. Global previews are `always|when-unlocked|never`. At most128 unique registered-app overrides contain exactly `{appId,allow,desktop,center,style,previews}`; style is `temporary|persistent`, app previews add `default` to the global choices. Configure accepts any closed partial subset of these five non-appId fields. Absent app overrides mean allowed desktop+center delivery, temporary style and shared previews. Initial global DND is false and previews are when-unlocked. Allow/desktop/center filters affect delivery, not explicit operator allocation; previews hide both title/body and dismissal labels. There is no automatic host/incoming notification source.
+
+Optional post destination is null or `{kind:'message'|'mail'|'event'|'reminder'|'note'|'file',recordId}` matching the registered app and an extant original canonical record. Message/Mail sources are real local sent outbox records, not fixed hero text or a fabricated incoming inbox. Reply retains original recipient, adds Mail Re: once and does not forward source attachments. Complete shares the widget/app reminder row. Notes/event/reminder/communication/file opens select exact source IDs; file opening proves association/window identity, not a completed Preview PDF interior. Deleted/trash/invalid source links retire alerts at command settlement; complete seeds/saves reject dangling links before disposal.
+
+Temporary banners use six private presentation seconds and pause for hover/focus/inline reply; persistent alerts require an action/dismissal. Only the available visible queue head ages. Snooze uses authored scene timestamps, never this timer or host time, and due delivery reuses the original ID. Native Option-click date/time and disclosed scene Settings quick control share DND setter; full host Focus/rules/schedules and deferred STATUS-08 are not implemented.
+
+All async work retains original Root, record/source/native owner, not same-label replacements. Private queues/IDs/timers/details/options/reply drafts do not serialize. Canonical policies/events/destinations/snoozes/outbox retain per local; Guest excludes/resets. The real settings window retains registered notificationAppId and semantic settings-notifications scroll. Missing new canonical fields or invalid links reject old/incomplete V1 without shims.
+
+Proof:662 tests/11627 assertions/55 files;681 modules/no Svelte warnings;453 strict schema pairs and all87 retained request/results valid, all27 notification names Applied. Rust native expiry/pause/Option-date, preview precedence, six exact source routes, literal Unicode reply/shared completion/same-ID snooze, singleton reply, source deletion, cold settings scroll2257, two-local/Guest/private exclusion and lock rejection pass. Compact304×136 reply scroll and formerly occluded real Settings navigation pass at320×180/DPR1.25; tiny scaled text remains a readability limit. Old private work commits before replacement without borrowing its exact entry.76 historical calls reject before getters with unchanged state/DOM/focus and170/178/163/190 inventories.
+
+Primary source: [Get notifications on Mac27](https://support.apple.com/guide/mac-help/get-notifications-mchle7f8a9b0/27/mac/27). Original bounded geometry/timing/actions and scene DND control are simulation policies, not factory-pixel equivalence or host delivery.
 
 ## Working notes
 

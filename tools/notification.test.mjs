@@ -3,7 +3,8 @@ import { createRequire } from 'node:module';
 import { goldenGateProfile as profile } from '../frontend/src/golden-gate-profile.js';
 import {
   notificationsDefaults, validateNotificationsState, notificationGroups, postNotification,
-  dismissNotification, clearNotifications,
+  dismissNotification, clearNotifications, notificationAppSettings, notificationPreviewVisible,
+  notificationDesktopStyle, configureNotificationApp, configureNotificationGlobals, snoozeNotification,
 } from '../frontend/src/notification-model.js';
 import { createNotificationCommands } from '../frontend/src/notification-commands.js';
 
@@ -15,6 +16,8 @@ const MAX_COUNTER = Number.MAX_SAFE_INTEGER - 1, MAX_TIME = 8_640_000_000_000_00
 const event = (state, appId, title, createdAt = TIME, body = '') =>
   postNotification(state, profile, appId, { title, body, createdAt }, TIME, () => true);
 const snapshot = value => JSON.parse(JSON.stringify(value));
+const stringUnits = value => typeof value === 'string' ? value.length
+  : value && typeof value === 'object' ? Object.entries(value).reduce((total, [key, item]) => total + key.length + stringUnits(item), 0) : 0;
 function unchanged(state, operation, code) {
   const before = snapshot(state), result = operation();
   expect(result.status).toBe('rejected');
@@ -57,6 +60,327 @@ test('dismissal and per-app/all clearing never recycle allocations, including af
   unchanged(state, () => dismissNotification(state, 'notification-1'), 'not_found');
 });
 
+test('delivery preferences silence presentation without dropping explicit operator events or borrowing app overrides', () => {
+  const state = notificationsDefaults();
+  expect(notificationDesktopStyle(state, 'mail')).toBe('temporary');
+  expect(notificationPreviewVisible(state, 'mail', false)).toBe(false);
+  configureNotificationApp(state, profile, 'mail', { style: 'persistent', previews: 'always' });
+  configureNotificationGlobals(state, profile, { doNotDisturb: true, showPreviews: 'never' });
+  expect(event(state, 'mail', 'DND retains center record').status).toBe('applied');
+  expect(notificationDesktopStyle(state, 'mail')).toBeNull();
+  expect(notificationGroups(state, profile).map(group => group.appId)).toEqual(['mail']);
+  expect(notificationPreviewVisible(state, 'mail', false)).toBe(true);
+  expect(notificationPreviewVisible(state, 'notes')).toBe(false);
+  configureNotificationGlobals(state, profile, { doNotDisturb: false, showPreviews: 'always' });
+  expect(notificationDesktopStyle(state, 'mail')).toBe('persistent');
+  configureNotificationApp(state, profile, 'mail', { desktop: false });
+  expect(notificationDesktopStyle(state, 'mail')).toBeNull();
+  expect(notificationGroups(state, profile)).toHaveLength(1);
+  configureNotificationApp(state, profile, 'mail', { desktop: true, center: false });
+  expect(notificationDesktopStyle(state, 'mail')).toBe('persistent');
+  expect(notificationGroups(state, profile)).toEqual([]);
+  configureNotificationApp(state, profile, 'mail', { allow: false, center: true });
+  expect(event(state, 'mail', 'Disabled delivery still records the cue').status).toBe('applied');
+  expect(state.entries.map(entry => entry.title)).toEqual(['DND retains center record', 'Disabled delivery still records the cue']);
+  expect(notificationDesktopStyle(state, 'mail')).toBeNull();
+  expect(notificationPreviewVisible(state, 'mail')).toBe(false);
+  expect(notificationGroups(state, profile)).toEqual([]);
+  configureNotificationApp(state, profile, 'mail', { allow: true, previews: 'when-unlocked' });
+  expect(notificationPreviewVisible(state, 'mail', false)).toBe(false);
+  expect(notificationPreviewVisible(state, 'mail', true)).toBe(true);
+  configureNotificationApp(state, profile, 'mail', { previews: 'never' });
+  expect(notificationPreviewVisible(state, 'mail')).toBe(false);
+  configureNotificationApp(state, profile, 'mail', { previews: 'default' });
+  expect(notificationPreviewVisible(state, 'mail', false)).toBe(true);
+});
+
+test('resolved app settings and configuration results are detached and default app policies cost no saved rows', () => {
+  const state = notificationsDefaults(), resolved = notificationAppSettings(state, 'mail');
+  resolved.allow = false; resolved.style = 'persistent';
+  expect(notificationDesktopStyle(state, 'mail')).toBe('temporary');
+  for (const appId of Object.keys(profile.applications)) {
+    expect(configureNotificationApp(state, profile, appId, { allow: true }).status).toBe('applied');
+  }
+  expect(state.preferences.applications).toHaveLength(0);
+  const configured = configureNotificationApp(state, profile, 'mail', { style: 'persistent', previews: 'never' });
+  configured.target.settings.style = 'temporary';
+  expect(notificationDesktopStyle(state, 'mail')).toBe('persistent');
+  expect(notificationPreviewVisible(state, 'mail')).toBe(false);
+  const global = configureNotificationGlobals(state, profile, { showPreviews: 'always' });
+  global.target.preferences.applications[0].allow = false;
+  global.target.preferences.showPreviews = 'never';
+  expect(notificationDesktopStyle(state, 'mail')).toBe('persistent');
+  expect(notificationPreviewVisible(state, 'notes', false)).toBe(true);
+  const restored = snapshot(state);
+  expect(notificationDesktopStyle(restored, 'mail')).toBe('persistent');
+  expect(notificationPreviewVisible(restored, 'mail')).toBe(false);
+  configureNotificationApp(state, profile, 'mail', { style: 'temporary', previews: 'default' });
+  expect(state.preferences.applications).toHaveLength(0);
+});
+
+test('snoozed linked events retain their original identity and source and rejoin the app stack exactly at scene due time', () => {
+  const state = proxy(notificationsDefaults());
+  postNotification(state, profile, 'calendar', { title: 'Original event', body: '',
+    destination: { kind: 'event', recordId: 'event-1' } }, TIME);
+  event(state, 'mail', 'Other app', TIME + 1);
+  const original = state.entries[0], destination = original.destination;
+  for (const minutes of [5, 15, 60, 1440]) {
+    const due = TIME + minutes * 60_000;
+    expect(snoozeNotification(state, original.id, minutes, TIME)).toEqual({
+      status: 'applied', target: { notificationId: original.id, snoozedUntil: due },
+    });
+    expect(state.entries[0]).toBe(original);
+    expect(original.destination).toBe(destination);
+    expect(notificationGroups(state, profile, due - 1).map(group => group.appId)).toEqual(['mail']);
+    expect(notificationGroups(state, profile, due).map(group => group.appId)).toEqual(['mail', 'calendar']);
+    expect(notificationGroups(state, profile, due)[1].entries[0]).toBe(original);
+    expect(original.createdAt).toBe(TIME);
+  }
+  const restored = snapshot(state), due = restored.entries[0].snoozedUntil;
+  expect(notificationGroups(restored, profile, due - 1)).toHaveLength(1);
+  expect(notificationGroups(restored, profile, due)).toHaveLength(2);
+  for (const [id, minutes, time] of [
+    [original.id, 10, TIME], [original.id, 5, -1], [original.id, 5, 1.5],
+    [original.id, 5, MAX_TIME - 5 * 60_000 + 1], ['notification-01', 5, TIME],
+  ]) unchanged(state, () => snoozeNotification(state, id, minutes, time), 'invalid_arguments');
+  unchanged(state, () => snoozeNotification(state, 'notification-99', 5, TIME), 'not_found');
+  expect(snoozeNotification(state, original.id, 5, MAX_TIME - 5 * 60_000).target.snoozedUntil).toBe(MAX_TIME);
+  expect(notificationGroups(state, profile, MAX_TIME - 1)).toHaveLength(1);
+  expect(notificationGroups(state, profile)).toHaveLength(2);
+  expect(state.nextId).toBe(3);
+});
+
+test('registered destination kinds clone literal intent before quota and reject foreign source syntax without invoking quota', () => {
+  const state = notificationsDefaults();
+  for (const [kind, appId] of [['message', 'messages'], ['mail', 'mail'], ['event', 'calendar'],
+    ['reminder', 'reminders'], ['note', 'notes'], ['file', 'finder']]) {
+    const destination = { kind, recordId: `${kind}-1` }, payload = { title: 'Linked event', body: '', destination };
+    expect(postNotification(state, profile, appId, payload, TIME, () => {
+      destination.kind = 'foreign'; destination.recordId = 'changed';
+      payload.destination = null; return true;
+    }).status).toBe('applied');
+    expect(state.entries.at(-1).destination).toEqual({ kind, recordId: `${kind}-1` });
+    expect(state.entries.at(-1).destination).not.toBe(destination);
+  }
+  let calls = 0, reads = 0;
+  const accessor = { kind: 'mail' };
+  Object.defineProperty(accessor, 'recordId', { enumerable: true, get() { reads++; throw Error('must not read'); } });
+  for (const destination of [
+    undefined, { kind: 'message', recordId: 'message-1' }, { kind: 'unknown', recordId: 'mail-1' },
+    { kind: 'mail', recordId: '' }, { kind: 'mail', recordId: 'with space' },
+    { kind: 'mail', recordId: 'x'.repeat(129) }, { kind: 'mail', recordId: '__proto__' },
+    { kind: 'mail', recordId: 'mail-1', extra: true }, accessor,
+    Object.defineProperty({ kind: 'mail', recordId: 'mail-1' }, 'hidden', { value: true }),
+    { kind: 'mail', recordId: 'mail-1', [Symbol('actor')]: true },
+  ]) unchanged(state, () => postNotification(state, profile, 'mail', { title: 'Rejected source', body: '', destination },
+    TIME, () => { calls++; return true; }), 'invalid_arguments');
+  expect(calls).toBe(0); expect(reads).toBe(0);
+});
+
+test('app and global patches are closed descriptor-only intent and reject unknown apps before quota', () => {
+  const state = notificationsDefaults();
+  let calls = 0, reads = 0;
+  const quota = () => { calls++; return true; };
+  const appAccessor = Object.defineProperty({}, 'style', { enumerable: true, get() { reads++; return 'persistent'; } });
+  for (const patch of [
+    {}, appAccessor, { appId: 'mail' }, { allow: 1 }, { style: 'alert' }, { previews: 'sometimes' },
+    { desktop: true, foreign: true }, { center: false, [Symbol('actor')]: true },
+    Object.defineProperty({ allow: false }, 'previews', { value: 'never' }),
+  ]) unchanged(state, () => configureNotificationApp(state, profile, 'mail', patch, quota), 'invalid_arguments');
+  unchanged(state, () => configureNotificationApp(state, profile, 'foreign-app', { allow: false }, quota), 'invalid_arguments');
+  const globalAccessor = Object.defineProperty({}, 'showPreviews', { enumerable: true, get() { reads++; return 'never'; } });
+  for (const patch of [{}, globalAccessor, { showPreviews: 'default' }, { doNotDisturb: 'true' }, { applications: [] }])
+    unchanged(state, () => configureNotificationGlobals(state, profile, patch, quota), 'invalid_arguments');
+  expect(calls).toBe(0); expect(reads).toBe(0);
+  const appPatch = { style: 'persistent' }, globalPatch = { doNotDisturb: true, showPreviews: 'never' };
+  configureNotificationApp(state, profile, 'mail', appPatch, () => { appPatch.style = 'temporary'; return true; });
+  configureNotificationGlobals(state, profile, globalPatch, () => {
+    globalPatch.doNotDisturb = false; globalPatch.showPreviews = 'always'; return true;
+  });
+  expect(notificationAppSettings(state, 'mail').style).toBe('persistent');
+  expect(notificationDesktopStyle(state, 'mail')).toBeNull();
+  expect(notificationPreviewVisible(state, 'notes')).toBe(false);
+});
+
+test('every nested canonical descriptor is validated without executing accessors or asking quota', () => {
+  let reads = 0, calls = 0;
+  for (const ownerOf of [
+    state => [state, 'preferences'],
+    state => [state.preferences, 'doNotDisturb'],
+    state => [state.preferences, 'applications'],
+    state => [state.preferences.applications, '0'],
+    state => [state.preferences.applications[0], 'allow'],
+    state => [state.entries[0], 'destination'],
+    state => [state.entries[0].destination, 'recordId'],
+    state => [state.entries[0], 'snoozedUntil'],
+  ]) {
+    const state = notificationsDefaults();
+    configureNotificationApp(state, profile, 'mail', { style: 'persistent' });
+    postNotification(state, profile, 'mail', { title: 'Original', body: '',
+      destination: { kind: 'mail', recordId: 'mail-1' } }, TIME);
+    const [owner, key] = ownerOf(state);
+    Object.defineProperty(owner, key, { enumerable: true, get() { reads++; throw Error('must not read'); } });
+    expect(validateNotificationsState(state, profile).ok).toBe(false);
+    expect(configureNotificationGlobals(state, profile, { doNotDisturb: true }, () => { calls++; return true; }).error.code).toBe('invalid_arguments');
+    expect(postNotification(state, profile, 'notes', { title: 'Rejected', body: '' }, TIME,
+      () => { calls++; return true; }).error.code).toBe('invalid_arguments');
+  }
+  expect(reads).toBe(0); expect(calls).toBe(0);
+});
+
+test('preference capacity counts only saved overrides and rejects duplicate or foreign rows without compatibility merging', () => {
+  const applications = { ...profile.applications };
+  for (let index = 0; index < 129; index++) applications[`fixture-app-${index}`] = { name: `App ${index}` };
+  const selected = { ...profile, applications }, state = notificationsDefaults();
+  for (let index = 0; index < 128; index++)
+    expect(configureNotificationApp(state, selected, `fixture-app-${index}`, { desktop: false }).status).toBe('applied');
+  expect(validateNotificationsState(state, selected).ok).toBe(true);
+  unchanged(state, () => configureNotificationApp(state, selected, 'fixture-app-128', { desktop: false }), 'limit_exceeded');
+  expect(configureNotificationApp(state, selected, 'fixture-app-128', { desktop: true }).status).toBe('applied');
+  expect(state.preferences.applications).toHaveLength(128);
+  configureNotificationApp(state, selected, 'fixture-app-0', { desktop: true });
+  expect(configureNotificationApp(state, selected, 'fixture-app-128', { desktop: false }).status).toBe('applied');
+  expect(postNotification(state, selected, 'mail', { title: 'Required complete saved shape', body: '' }, TIME).status).toBe('applied');
+  for (const change of [
+    value => { value.preferences.applications[1] = { ...value.preferences.applications[0] }; },
+    value => { value.preferences.applications[0].appId = 'foreign-app'; },
+    value => { delete value.preferences.applications[0]; },
+    value => { value.preferences.applications[0].previews = 'unknown'; },
+    value => { delete value.preferences; },
+    value => { delete value.entries[0].destination; },
+  ]) {
+    const candidate = snapshot(state); change(candidate);
+    expect(validateNotificationsState(candidate, selected).ok).toBe(false);
+  }
+});
+
+test('configuration quota counts the whole leaf including row insertion, replacement, removal and shifted indices', () => {
+  const state = notificationsDefaults();
+  event(state, 'mail', 'Surviving original');
+  for (const appId of Object.keys(profile.applications).slice(0, 11))
+    configureNotificationApp(state, profile, appId, { desktop: false });
+  const removedApp = state.preferences.applications[0].appId;
+  const newApp = Object.keys(profile.applications).find(appId => !state.preferences.applications.some(row => row.appId === appId));
+  for (const operation of [
+    (leaf, quota) => configureNotificationApp(leaf, profile, newApp, { style: 'persistent', previews: 'when-unlocked' }, quota),
+    (leaf, quota) => configureNotificationApp(leaf, profile, removedApp, { previews: 'when-unlocked' }, quota),
+    (leaf, quota) => configureNotificationApp(leaf, profile, removedApp, { desktop: true }, quota),
+    (leaf, quota) => configureNotificationGlobals(leaf, profile, { showPreviews: 'always' }, quota),
+  ]) {
+    const candidate = snapshot(state);
+    expect(operation(candidate).status).toBe('applied');
+    const growth = stringUnits(candidate) - stringUnits(state), limit = 4 * MAX_TEXT;
+    const unrelated = limit - stringUnits(candidate), exact = snapshot(state), short = snapshot(state);
+    const survivor = exact.entries[0];
+    let observed;
+    expect(operation(exact, delta => {
+      observed = delta; return unrelated + stringUnits(exact) + delta <= limit;
+    }).status).toBe('applied');
+    expect(observed).toBe(growth);
+    expect(unrelated + stringUnits(exact)).toBe(limit);
+    expect(exact.entries[0]).toBe(survivor);
+    unchanged(short, () => operation(short, delta => unrelated + 1 + stringUnits(short) + delta <= limit), 'limit_exceeded');
+  }
+});
+
+test('post and configuration quotas lease the deep original graph and never overwrite reentrant changes', () => {
+  for (const mutate of [
+    state => { state.entries[0].destination.recordId = 'mail-2'; },
+    state => { state.entries[0].snoozedUntil = TIME + 60_000; },
+    state => { state.preferences.doNotDisturb = true; },
+    state => { state.preferences.applications[0].previews = 'never'; },
+    state => { Object.defineProperty(state.preferences.applications, '0', { writable: false }); },
+    state => { Object.setPrototypeOf(state.entries[0].destination, null); },
+  ]) for (const operation of [
+    (state, quota) => postNotification(state, profile, 'notes', { title: 'Outer post', body: '' }, TIME, quota),
+    (state, quota) => configureNotificationApp(state, profile, 'notes', { style: 'persistent' }, quota),
+    (state, quota) => configureNotificationGlobals(state, profile, { showPreviews: 'always' }, quota),
+  ]) {
+    const state = notificationsDefaults();
+    configureNotificationApp(state, profile, 'mail', { style: 'persistent' });
+    postNotification(state, profile, 'mail', { title: 'Original', body: '', destination: { kind: 'mail', recordId: 'mail-1' } }, TIME);
+    const entry = state.entries[0];
+    expect(operation(state, () => { mutate(state); return true; }).error.code).toBe('stale_target');
+    expect(state.entries).toHaveLength(1); expect(state.entries[0]).toBe(entry); expect(state.nextId).toBe(2);
+    expect(notificationAppSettings(state, 'notes').style).toBe('temporary');
+    expect(state.preferences.showPreviews).toBe('when-unlocked');
+  }
+  const state = notificationsDefaults();
+  const outer = configureNotificationApp(state, profile, 'mail', { allow: false }, () => {
+    expect(configureNotificationGlobals(state, profile, { doNotDisturb: true }).status).toBe('applied');
+    return true;
+  });
+  expect(outer.error.code).toBe('stale_target');
+  expect(notificationAppSettings(state, 'mail').allow).toBe(true);
+  expect(notificationDesktopStyle(state, 'mail')).toBeNull();
+});
+
+test('a callback-installed nested accessor retires every mutation lease without evaluating the replacement', () => {
+  let reads = 0;
+  for (const operation of [
+    (state, quota) => postNotification(state, profile, 'notes', { title: 'Outer', body: '' }, TIME, quota),
+    (state, quota) => configureNotificationApp(state, profile, 'mail', { style: 'persistent' }, quota),
+    (state, quota) => configureNotificationGlobals(state, profile, { doNotDisturb: true }, quota),
+  ]) {
+    const state = notificationsDefaults();
+    const result = operation(state, () => {
+      Object.defineProperty(state.preferences, 'showPreviews', { enumerable: true, get() { reads++; throw Error('must not read'); } });
+      return true;
+    });
+    expect(result.error.code).toBe('stale_target');
+    expect(state.entries).toEqual([]); expect(state.nextId).toBe(1);
+  }
+  expect(reads).toBe(0);
+});
+
+test('preference growth participates in the complete four-Mi leaf budget before the external scene decision', () => {
+  const state = notificationsDefaults();
+  for (let index = 0; index < 3; index++) event(state, 'mail', 'Large retained cue', TIME, 'x'.repeat(MAX_TEXT));
+  event(state, 'mail', 'Remaining capacity');
+  const candidate = snapshot(state);
+  configureNotificationApp(candidate, profile, 'notes', { style: 'persistent' });
+  const growth = stringUnits(candidate) - stringUnits(state), limit = 4 * MAX_TEXT;
+  state.entries.at(-1).body = 'x'.repeat(limit - stringUnits(state) - growth);
+  const over = snapshot(state); over.entries.at(-1).body += 'x';
+  let calls = 0;
+  unchanged(over, () => configureNotificationApp(over, profile, 'notes', { style: 'persistent' },
+    () => { calls++; return true; }), 'limit_exceeded');
+  expect(calls).toBe(0);
+  expect(configureNotificationApp(state, profile, 'notes', { style: 'persistent' }).status).toBe('applied');
+  expect(stringUnits(state)).toBe(limit);
+  expect(validateNotificationsState(state, profile).ok).toBe(true);
+});
+
+test('read-only canonical writers reject before quota and leave the original event and source untouched', () => {
+  const state = notificationsDefaults();
+  postNotification(state, profile, 'mail', { title: 'Original', body: '', destination: { kind: 'mail', recordId: 'mail-1' } }, TIME);
+  const original = state.entries[0];
+  Object.defineProperty(state, 'preferences', { writable: false });
+  let calls = 0;
+  unchanged(state, () => configureNotificationApp(state, profile, 'mail', { allow: false },
+    () => { calls++; return true; }), 'invalid_arguments');
+  unchanged(state, () => configureNotificationGlobals(state, profile, { doNotDisturb: true },
+    () => { calls++; return true; }), 'invalid_arguments');
+  Object.defineProperty(original, 'snoozedUntil', { writable: false });
+  unchanged(state, () => snoozeNotification(state, original.id, 5, TIME), 'invalid_arguments');
+  expect(calls).toBe(0); expect(state.entries[0]).toBe(original);
+});
+
+test('cold reactive source and preference graphs survive quota inspection while retaining entry and destination identities', () => {
+  const initial = notificationsDefaults();
+  configureNotificationApp(initial, profile, 'mail', { style: 'persistent' });
+  postNotification(initial, profile, 'mail', { title: 'Retained', body: '', destination: { kind: 'mail', recordId: 'mail-1' } }, TIME);
+  const state = proxy(snapshot(initial));
+  const quota = delta => stringUnits(state) + delta <= 4 * MAX_TEXT;
+  expect(configureNotificationApp(state, profile, 'notes', { previews: 'never' }, quota).status).toBe('applied');
+  const entry = state.entries[0], destination = entry.destination;
+  expect(configureNotificationGlobals(state, profile, { doNotDisturb: true }, quota).status).toBe('applied');
+  expect(postNotification(state, profile, 'notes', { title: 'Another event', body: '', destination: { kind: 'note', recordId: 'note-1' } }, TIME, quota).status).toBe('applied');
+  expect(state.entries[0]).toBe(entry); expect(entry.destination).toBe(destination);
+  expect(notificationGroups(state, profile)[1].entries[0]).toBe(entry);
+  expect(notificationDesktopStyle(state, 'mail')).toBeNull();
+});
+
 test('closed descriptors reject accessors, hidden fields, symbols, sparse arrays and unknown apps without evaluating them', () => {
   let reads = 0;
   const state = notificationsDefaults();
@@ -68,16 +392,16 @@ test('closed descriptors reject accessors, hidden fields, symbols, sparse arrays
     { title: 'Known', body: '', createdAt: undefined }, Object.assign(Object.create({}), { title: 'Known', body: '' }),
   ]) unchanged(state, () => postNotification(state, profile, 'mail', payload, TIME, () => true), 'invalid_arguments');
   unchanged(state, () => event(state, 'not-installed', 'Unknown'), 'invalid_arguments');
-  const good = { id: 'notification-1', appId: 'mail', title: 'Original', body: '', createdAt: TIME };
+  const good = { id: 'notification-1', appId: 'mail', title: 'Original', body: '', createdAt: TIME, destination: null, snoozedUntil: null };
   const malformed = [
-    { nextId: 2, entries: [good], extra: true },
-    { nextId: 2, entries: [good, good] }, { nextId: 1, entries: [good] },
-    { nextId: 2, entries: Array(1) },
-    { nextId: 2, entries: Object.assign([good], { extra: true }) },
-    { nextId: 2, entries: [Object.defineProperty({ ...good }, 'title', { enumerable: true, get() { reads++; return 'Getter'; } })] },
-    { nextId: 2, entries: [{ ...good, id: 'notification-01' }] },
-    { nextId: 2, entries: [{ ...good, appId: 'not-installed' }] },
-    Object.defineProperty({ nextId: 2 }, 'entries', { enumerable: true, get() { reads++; return [good]; } }),
+    { ...notificationsDefaults(), nextId: 2, entries: [good], extra: true },
+    { ...notificationsDefaults(), nextId: 2, entries: [good, good] }, { ...notificationsDefaults(), nextId: 1, entries: [good] },
+    { ...notificationsDefaults(), nextId: 2, entries: Array(1) },
+    { ...notificationsDefaults(), nextId: 2, entries: Object.assign([good], { extra: true }) },
+    { ...notificationsDefaults(), nextId: 2, entries: [Object.defineProperty({ ...good }, 'title', { enumerable: true, get() { reads++; return 'Getter'; } })] },
+    { ...notificationsDefaults(), nextId: 2, entries: [{ ...good, id: 'notification-01' }] },
+    { ...notificationsDefaults(), nextId: 2, entries: [{ ...good, appId: 'not-installed' }] },
+    Object.defineProperty({ ...notificationsDefaults(), nextId: 2 }, 'entries', { enumerable: true, get() { reads++; return [good]; } }),
   ];
   for (const input of malformed) {
     expect(validateNotificationsState(input, profile).ok).toBe(false);
@@ -102,7 +426,7 @@ test('UTF-16 text, event time, capacity and allocation boundaries reject atomica
   unchanged(crowded, () => event(crowded, 'mail', 'Over capacity'), 'limit_exceeded');
   dismissNotification(crowded, 'notification-1');
   expect(event(crowded, 'mail', 'Available again').target.notificationId).toBe('notification-257');
-  const counter = { nextId: MAX_COUNTER - 1, entries: [] };
+  const counter = { ...notificationsDefaults(), nextId: MAX_COUNTER - 1 };
   expect(event(counter, 'mail', 'Last allocation').target.notificationId).toBe('notification-9007199254740989');
   clearNotifications(counter);
   unchanged(counter, () => event(counter, 'mail', 'No reuse after exhaustion'), 'limit_exceeded');
@@ -121,21 +445,29 @@ test('fresh and cold reactive events survive a quota read of the complete canoni
   expect(cold.nextId).toBe(3);
 });
 
-test('quota deltas include entry field keys and numeric array keys; failed decisions allocate nothing', () => {
+test('exact whole-scene quota admits a linked event at the boundary and rejects one UTF-16 unit less without allocating', () => {
+  for (const count of [0, 10]) {
+    const original = notificationsDefaults();
+    for (let index = 0; index < count; index++) event(original, 'mail', 'Retained');
+    const payload = { title: 'Linked 🎬 cue', body: 'Literal body', destination: { kind: 'mail', recordId: 'sent-mail-1' } };
+    const admitted = snapshot(original);
+    expect(postNotification(admitted, profile, 'mail', payload, TIME).status).toBe('applied');
+    const expectedGrowth = stringUnits(admitted) - stringUnits(original);
+    const limit = 4 * MAX_TEXT, unrelated = limit - stringUnits(admitted);
+    const exact = snapshot(original), short = snapshot(original);
+    expect(postNotification(exact, profile, 'mail', payload, TIME,
+      delta => unrelated + stringUnits(exact) + delta <= limit).status).toBe('applied');
+    expect(unrelated + stringUnits(exact)).toBe(limit);
+    unchanged(short, () => postNotification(short, profile, 'mail', payload, TIME,
+      delta => unrelated + 1 + stringUnits(short) + delta <= limit), 'limit_exceeded');
+    let observedGrowth;
+    expect(postNotification(snapshot(original), profile, 'mail', payload, TIME,
+      delta => { observedGrowth = delta; return true; }).status).toBe('applied');
+    expect(observedGrowth).toBe(expectedGrowth);
+  }
   const state = notificationsDefaults();
-  let sceneUnits = 4 * MAX_TEXT - 45;
-  const budget = delta => {
-    if (sceneUnits + delta > 4 * MAX_TEXT) return false;
-    sceneUnits += delta; return true;
-  };
-  expect(postNotification(state, profile, 'mail', { title: 'A', body: '' }, TIME, budget).status).toBe('applied');
-  expect(sceneUnits).toBe(4 * MAX_TEXT);
-  unchanged(state, () => postNotification(state, profile, 'mail', { title: 'B', body: '' }, TIME, budget), 'limit_exceeded');
-  unchanged(state, () => postNotification(state, profile, 'mail', { title: 'B', body: '' }, TIME, () => { throw Error('quota failed'); }), 'limit_exceeded');
-  unchanged(state, () => postNotification(state, profile, 'mail', { title: 'B', body: '' }, TIME, () => Promise.resolve(true)), 'limit_exceeded');
-  for (let index = 1; index < 10; index++) event(state, 'mail', 'A');
-  expect(postNotification(state, profile, 'mail', { title: 'A', body: '' }, TIME, delta => delta === 47).status).toBe('applied');
-  expect(state.entries.at(-1).id).toBe('notification-11');
+  for (const decision of [() => false, () => { throw Error('quota failed'); }, () => Promise.resolve(true)])
+    unchanged(state, () => postNotification(state, profile, 'mail', { title: 'No allocation', body: '' }, TIME, decision), 'limit_exceeded');
   const large = notificationsDefaults();
   for (let index = 0; index < 3; index++) event(large, 'notes', 'Large', TIME, 'x'.repeat(MAX_TEXT));
   unchanged(large, () => event(large, 'notes', 'Fourth', TIME, 'x'.repeat(MAX_TEXT)), 'limit_exceeded');
@@ -168,6 +500,8 @@ test('historical profiles validate registered saved events but cannot post or op
   event(state, 'mail', 'Saved event');
   expect(validateNotificationsState(state, historical).ok).toBe(true);
   unchanged(state, () => postNotification(state, historical, 'mail', { title: 'Unsupported', body: '' }, TIME, () => true), 'unsupported_profile');
+  unchanged(state, () => configureNotificationApp(state, historical, 'mail', { style: 'persistent' }), 'unsupported_profile');
+  unchanged(state, () => configureNotificationGlobals(state, historical, { doNotDisturb: true }), 'unsupported_profile');
   const model = centerFixture(state, historical);
   expect((await model.run('open')).error.code).toBe('unsupported_profile');
   expect(model.pane()).toBeNull();
@@ -179,8 +513,10 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 function centerFixture(initial = notificationsDefaults(), selectedProfile = profile) {
   let state = initial, pane = null, view = null, foreground = true, root = true, sceneTime = TIME;
   let outsideFocus = { connected: true, label: 'original editor' }, focus = outsideFocus;
+  const ui = { banners: [], items: {} };
   const ctx = { profile: selectedProfile, namespace: 'scene-test', getState: () => state, getSceneTime: () => sceneTime,
-    alive: () => root, available: () => foreground, canCommit: () => true, getPane: () => pane, getView: () => view,
+    getUi: () => ui, getBannerView: () => null, alive: () => root, available: () => foreground,
+    canCommit: () => true, getPane: () => pane, getView: () => view,
     setPane(value) { pane = value; view = value ? makeView(value) : null; },
     settle: async () => { view?.sync(); }, beforeOpen: async () => true,
     captureFocus: () => outsideFocus,
