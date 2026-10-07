@@ -420,7 +420,7 @@ No host filesystem/background index, cloud/telemetry/market rates, full dictiona
 
 ## NOTIF-01 — canonical arrivals and private current Notification Center
 
-Current Golden discovery453;60/286 complete,226 remaining:224 queued plus STATUS-07/STATUS-08 deferred. Next DIALOG-01. NOTIF-03 adds19 delivery/action/settings commands; historical inventories170/178/163/190 unchanged.
+Current Golden discovery453;60/286 complete,226 remaining:211 queued plus15 deferred (STATUS-07/STATUS-08 and DIALOG-01–DIALOG-13). User requested settling the existing Spotlight/notifications checkpoint and skipping the rest of section3; no next slice is active. NOTIF-03 adds19 delivery/action/settings commands; historical inventories170/178/163/190 unchanged.
 
 Primary27 Get notifications guidance and its screenshot establish a combined center opened by date/time, app stacks, click expansion/Show Less, single X and held-X app clearing. Retired Mojave Today/Notifications tabs are not recreated. Native date Return/Space opens the center; context menu/ArrowDown retain actual Clock settings. Root owns GoldenGateNotificationCenter and native facade/placement; no Widget/banner/action/DND placeholders.
 
@@ -457,4 +457,11 @@ Actual cold saves preserve events/destinations/snoozes/preferences, source outbo
 Evidence:662 tests/11627 assertions/55 files;681 modules/no Svelte warnings;453 strict schema pairs,87 retained request/results valid and all27 notification names Applied. Native expiry/persistent pause/Option-date, preview precedence, six source routes, literal reply, shared completion, same-ID snooze, singleton reply, deleted-source retirement, cold/local/Guest exclusion and compact304×136 reply scroll pass. Tiny scaled Settings text is not claimed readable.76 historical calls reject before getters without state/DOM/focus changes or inventory drift. Primary27 notification guidance remains the source; no host notification service, full Focus/rules, incoming Mail/Messages inventory or full Preview reader.
 
 Final Rust-served index-D3r9Xzk9.js applies real linked post/private reply/managed Settings navigation, retains the original event and focuses its native checkbox. Zero browser errors, console entries, broken images or external resources. Proof: local://notif03-shipped-proof.json. Owned saved slot cleared and all proof tabs released.
+
+## User-requested settled checkpoint
+
+Completed Spotlight/notification features remain at NOTIF-03 commit e8a91ca. DIALOG-01–DIALOG-13 are deferred unchecked, not claimed complete or shipped WIP. Both dialog workers stopped; only their nine uncommitted component edits were restored to e8a91ca and the new unintegrated modal-view.js was removed. The user's unrelated docs/windows11-profile.md edit was not touched. Remaining backlog stays recorded; automatic sequential implementation is stopped.
+
+Settlement verification: rebuilt681 modules to the same index-D3r9Xzk9.js with no Svelte warnings (existing chunk advisory only);662 tests/11627 assertions/55 files pass. Fresh Rust browser verifies existing Restart/Escape cancellation, Spotlight notes query/real app result/native Escape, notification post/combined-center card/widgets and453 command inventory. Visual inspected; browser errors/console empty; owned proof tabs closed.
+
 

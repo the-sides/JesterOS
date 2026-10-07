@@ -628,7 +628,7 @@ Verification:548 tests/8,433 assertions/48 files;648 modules, no Svelte warnings
 
 Primary sources: [Keyboard Viewer27](https://support.apple.com/guide/mac-help/use-the-keyboard-viewer-on-mac-mchlp1015/27/mac/27), [write in another language27](https://support.apple.com/guide/mac-help/write-in-another-language-on-mac-mchlp1406/27/mac/27), [Input menu27](https://support.apple.com/guide/mac-help/aside/glos52ed78a0/27/mac/27), [Emoji & Symbols](https://support.apple.com/en-ph/guide/mac-help/mchlp1560/mac).
 
-`STATUS-07` and `STATUS-08` are deferred for now at the user's request, not completed. Next sequential feature: `DIALOG-01`.
+Work is settled at the completed `SPOT-01`/`SPOT-02` and `NOTIF-01`–`NOTIF-03` checkpoint. At the user's request, the rest of the Spotlight/notifications/common-secondary-interfaces section (`DIALOG-01`–`DIALOG-13`) is deferred, not complete; uncommitted dialog experiments were removed. `STATUS-07` and `STATUS-08` remain deferred. No next feature is active.
 
 ## Local Spotlight overlay — SPOT-01
 
