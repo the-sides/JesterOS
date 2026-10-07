@@ -16,7 +16,7 @@
   let clockDateAllowed = $state(false);
   const location = $derived(helpMenuLocation(menus, menuState));
   const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
-  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : zone === 'wifi' ? menu.kind === 'wifi' : zone === 'battery' ? menu.kind === 'battery' && menu.showInMenuBar : zone === 'sound' ? menu.kind === 'sound' && menu.showInMenuBar : zone === 'bluetooth' ? menu.kind === 'bluetooth' && menu.showInMenuBar : zone === 'clock' ? menu.kind === 'clock' : !['users', 'wifi', 'battery', 'clock', 'sound', 'bluetooth'].includes(menu.kind)));
+  const rendered = $derived(menus.filter(menu => zone === 'users' ? menu.kind === 'users' : zone === 'wifi' ? menu.kind === 'wifi' : zone === 'battery' ? menu.kind === 'battery' && menu.showInMenuBar : zone === 'sound' ? menu.kind === 'sound' && menu.showInMenuBar : zone === 'bluetooth' ? menu.kind === 'bluetooth' && menu.showInMenuBar : zone === 'input' ? menu.kind === 'input' && menu.showInMenuBar : zone === 'clock' ? menu.kind === 'clock' : !['users', 'wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input'].includes(menu.kind)));
   const openMenu = $derived(foreground ? rendered.find(menu => menu.menuId === menuState.menuId) : undefined);
   const clockMenu = $derived(rendered.find(menu => menu.kind === 'clock'));
   const clockDateShown = $derived(clockMenu?.showDate === 'always' || clockMenu?.showDate === 'when-space-allows' && clockDateAllowed);
@@ -88,7 +88,7 @@
     const menu = rendered.find(menu => menu.menuId === menuId);
     const node = invokers[menuId];
     if (!menu?.enabled || !visible(node)) return false;
-    if (['battery', 'clock', 'sound'].includes(menu.kind) && !ownsClip(node)) return false;
+    if (['battery', 'clock', 'sound', 'input'].includes(menu.kind) && !ownsClip(node)) return false;
     const rect = node.getBoundingClientRect(), clip = clipOf(node);
     return rect.right > clip.left && rect.left < clip.right && rect.bottom > clip.top && rect.top < clip.bottom;
   }
@@ -370,13 +370,13 @@
 {/snippet}
 
 <div class="golden-shared-menu-bar" class:users={zone === 'users'} class:clock={zone === 'clock'} bind:this={root} data-menu-bar={zone}
-  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : zone === 'battery' ? 'Battery status menu' : zone === 'sound' ? 'Sound status menu' : zone === 'bluetooth' ? 'Bluetooth status menu' : zone === 'clock' ? 'Fictional Clock settings menu' : 'Application menu bar'}>
+  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : zone === 'battery' ? 'Battery status menu' : zone === 'sound' ? 'Sound status menu' : zone === 'bluetooth' ? 'Bluetooth status menu' : zone === 'input' ? 'Fictional Input source menu' : zone === 'clock' ? 'Fictional Clock settings menu' : 'Application menu bar'}>
   {#each rendered as menu (menu.menuId)}
-    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'} class:battery={menu.kind === 'battery'} class:sound={menu.kind === 'sound'} class:bluetooth={menu.kind === 'bluetooth'} class:clock={menu.kind === 'clock'}
+    <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'} class:battery={menu.kind === 'battery'} class:sound={menu.kind === 'sound'} class:bluetooth={menu.kind === 'bluetooth'} class:input={menu.kind === 'input'} class:clock={menu.kind === 'clock'}
       bind:this={invokers[menu.menuId]} type="button" role="menuitem" data-menu-invoker={menu.menuId} data-date-shown={menu.kind === 'clock' ? clockDateShown : undefined}
       disabled={!menu.enabled || !foreground} aria-disabled={!menu.enabled || !foreground}
       class:located={location?.menuId === menu.menuId}
-      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.kind === 'battery' ? `Battery: ${menu.percent} percent, ${menu.statusLabel}${menu.criticalBattery ? ', Critically Low Battery' : menu.lowBattery ? ', Low Battery' : ''}` : menu.kind === 'sound' ? `Sound: ${menu.effectiveMuted ? 'muted' : `${menu.volume} percent`}, ${menu.outputName}` : menu.kind === 'bluetooth' ? `Bluetooth ${menu.powered ? 'on' : 'off'}${menu.connectedCount ? `, ${menu.connectedCount} connected` : ''}` : menu.kind === 'clock' ? `Clock: ${menu.fullDate}, ${menu.fullTime}, ${menu.timeZone} — fictional settings shortcut` : menu.label}
+      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.kind === 'battery' ? `Battery: ${menu.percent} percent, ${menu.statusLabel}${menu.criticalBattery ? ', Critically Low Battery' : menu.lowBattery ? ', Low Battery' : ''}` : menu.kind === 'sound' ? `Sound: ${menu.effectiveMuted ? 'muted' : `${menu.volume} percent`}, ${menu.outputName}` : menu.kind === 'bluetooth' ? `Bluetooth ${menu.powered ? 'on' : 'off'}${menu.connectedCount ? `, ${menu.connectedCount} connected` : ''}` : menu.kind === 'input' ? `Input source: ${menu.label} — fictional onscreen layouts` : menu.kind === 'clock' ? `Clock: ${menu.fullDate}, ${menu.fullTime}, ${menu.timeZone} — fictional settings shortcut` : menu.label}
       aria-haspopup="menu" aria-expanded={Boolean(openMenu?.menuId === menu.menuId)} aria-controls={`golden-menu-${menu.menuId}-0`}
       onpointerdown={invokerPointer} onpointerenter={event => hover(event, menu)} onclick={event => toggle(event, menu)}
       onkeydown={event => invokerKey(event, menu)} oncontextmenu={event => { suppressContext(event); if (menu.kind === 'clock' && available(menu.menuId)) request('open', menu.menuId); }}>
@@ -403,6 +403,11 @@
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path opacity={menu.powered ? 1 : .5} d="m6 7 12 10-6 5V2l6 5L6 17" />
           {#if !menu.powered}<path d="m4 3 16 18" />{/if}
+        </svg>
+      {:else if menu.kind === 'input'}
+        <svg viewBox="0 0 24 20" aria-hidden="true">
+          <rect x="2" y="2" width="20" height="16" rx="3" fill="currentColor" opacity=".18" />
+          <text x="12" y="14" text-anchor="middle" fill="currentColor" font-size="10" font-weight="650">{menu.symbol}</text>
         </svg>
       {:else if menu.kind === 'clock'}
         {@render clockContents(menu, clockDateShown)}
@@ -441,6 +446,8 @@
   .invoker svg { width: 14px; height: 18px; }
   .invoker.wifi { justify-content:center; width:24px; flex:0 0 24px; max-width:24px; margin:0; padding:0; }
   .invoker .wifi-signal { width:22px; height:18px; }
+  .invoker.input { justify-content:center; flex:0 0 24px; width:24px; max-width:24px; margin:0; padding:0; }
+  .invoker.input svg { width:24px; height:20px; }
   .invoker-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .invoker[aria-expanded='true'] { background: #fff3; box-shadow: inset 0 0 0 1px #fff2; }
   .invoker:focus-visible { outline: 2px solid var(--appearance-focus, #90c6ff); outline-offset: -2px; }

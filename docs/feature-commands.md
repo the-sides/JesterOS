@@ -1113,6 +1113,41 @@ Proof:530 tests/8301 assertions/46 files,641 modules/no Svelte warnings;376 stri
 
 Sources: [current27 Bluetooth settings](https://support.apple.com/guide/mac-help/bluetooth-settings-on-mac-blth8111/27/mac/27), [accessory pairing/connect/disconnect and separate Sound selection](https://support.apple.com/guide/mac-help/connect-a-wireless-accessory-blth1004/27/mac/27), [power on/off](https://support.apple.com/guide/mac-help/turn-bluetooth-on-or-off-blth1008/27/mac/27).
 
+### Fictional Input sources and native viewers — STATUS-06
+
+Fourteen Golden-only `input.*` names require `status.input` and bring discovery to390. Historical profiles reject unsupported_profile before mutation. The existing shared `status.menu.*`/`menu.navigate`/`menu.scroll` accepts menuId:'input'; native source rows close normally, and Keyboard Settings uses ordinary `system.settings.open {pane:'keyboard'}`. Existing Edit → Emoji & Symbols opens the same original-owner viewer.
+
+| Command | Target | Payload | Closed Applied target / behavior |
+| --- | --- | --- | --- |
+| `input.source.select` | `{sourceId:'us'\|'fr'\|'de'}` | `{}` | `{sourceId,previousSourceId}`; configured member only; same-source preserves previous. |
+| `input.source.cycle` | `{}` | `{direction:'last'\|'next'}` | `{sourceId,previousSourceId}`; previous or configured-order next, one-source previous:null. |
+| `input.sources.configure` | `{}` | `{sourceIds}` | `{sourceIds,sourceId,previousSourceId}`; unique dense1..3 known IDs, preserve order/active survivor, first survivor otherwise. |
+| `input.menu.configure` | `{}` | `{showInMenuBar:boolean}` | `{showInMenuBar}`; independent visibility, original shared-menu retirement on hide. |
+| `input.viewer.open` | `{}` | `{kind:'keyboard'\|'characters'}` | `{viewerId,kind}`; mounted original modeless utility, same-kind lease reuse; no-editor browsing valid. |
+| `input.viewer.close` | `{viewerId}` | `{restoreFocus?:boolean}` | `{viewerId}`; discard only the original utility, optional original-owner return. |
+| `input.viewer.focus` | `{viewerId,control}` | `{observe?:boolean}` | `{viewerId,control}`; real enabled mounted control, reveal/clipped hit/focus proof or exact native observation. |
+| `input.viewer.scroll` | `{viewerId}` | `{top:number>=0,observe?:boolean}` | `{viewerId,top}`; actual DOM-clamped body readback, not requested offset echo. |
+| `input.keyboard.modifiers` | `{viewerId}` | Nonempty `{shift?:boolean,option?:boolean}` | `{viewerId,shift,option}`; keyboard only, actual original pressed-state readback. |
+| `input.keyboard.press` | `{viewerId,keyId}` | `{}` | `{viewerId,keyId}`; current authored key/modifier; insertion/delete/newline require the exact original writable editor. |
+| `input.characters.search` | `{viewerId}` | `{query:string<=256 UTF-16 units}` | `{viewerId,query}`; actual native query synchronization over original bounded names/glyphs/codes. |
+| `input.characters.category` | `{viewerId}` | `{category:'all'\|'emoji'\|'symbols'\|'latin'}` | `{viewerId,category}`; filtered selected identity clears when absent. |
+| `input.characters.select` | `{viewerId,characterId}` | `{}` | `{viewerId,characterId}`; actual currently filtered glyph reveal/focus and private selection. |
+| `input.characters.insert` | `{viewerId,characterId}` | `{}` | `{viewerId,characterId}`; exact current glyph through the original canonical writer; double-click/Enter/Insert share this action. |
+
+Required exact `system.input:{sourceIds,activeSourceId,previousSourceId,showInMenuBar}` uses ordinary dense unique1..3 arrays, configured active ID, nullable distinct configured previous ID and boolean visibility. Defaults are us/fr/de, us, null, true. Source records are U.S./English/QWERTY/US, French/French/AZERTY/FR, German/German/QWERTZ/DE. Full-root positive text delta includes array index-key strings and IDs; complete old V1 without input rejects rather than merging defaults.
+
+`state.input`/`targets.input` publishes detached preferences/source records, active label, current private viewer summaries and explicit boundaries; no captured editor tuple is public. Viewer control IDs: panel/close; keyboard shift/option/key:&lt;physical keyId&gt;; characters search/category:&lt;category&gt;/character:&lt;id&gt;/insert. Enabled mounted offscreen controls remain discoverable; explicit focus reveals and verifies actual clipped native hit/focus. Characters use48 fixed original records, literal astral/ZWJ content and honest empty results, not a complete Unicode or Genmoji service.
+
+Modeless insertion binds the originally captured actual Notes or writable service-draft node, canonical revision/value and exact UTF-16 selection. Same-kind reuse and cross-viewer inherited return preserve that tuple. Successful own writes advance matching original leases; external edits/undo, readonly or owner loss never redirect into another focused editor. Notes commits real text.replace undo; service drafts commit their canonical revision and finish native caret using the returned revision/original facade/node after immutable entity replacement. Whole-grapheme Backspace handles even an actor-placed interior astral caret. Single-line fields remove newlines.
+
+Native Space/Enter activation is button click; Tab only moves focus. Root-bounded palette body/selection/actions, native query/modifier readback and composing draft preservation are actual surface behavior. Short-stage utilities share a layer above the bar only while no open shared menu/modal owns the surface. Control-Space selects the previous configured source; Control-Option-Space cycles order. Physical host layout/IME stays unchanged.
+
+Ordinary Keyboard Text Input uses existing system.panel focus/scroll IDs panel, input-source:&lt;id&gt;, input-select:&lt;id&gt;, input-show-in-menu-bar, input-keyboard-viewer and input-character-viewer. The final configured source checkbox is disabled. Saved V1 admits keyboard pane/settings-keyboard scroll and canonical input only; private utility IDs/query/category/modifiers/leases and Guest exclude. Lock preserves original viewers but blocks actions; same-user unlock resumes original leases. Old incomplete saved restore is atomic.
+
+Proof:548 tests/8433 assertions/48 files;648 modules/no Svelte warnings;390 strict pairs,147 Applied/218 recorded requests, all14 additions applied. Every response validates; missing-input seed and omitted-menuId probes reject structurally, unknown app.launch rejects, corrected schema-discovered calls pass. Native source/final layouts/characters/actual repeated Notes and Mail nodes, real Notes undo, draft `A😀B` interior-caret Backspace→`AB`/1 and native Enter→`AzB`/2 pass. Exact4 Mi/array numeric-key boundaries, two-local cold DE ordered sources/visible/Keyboard scroll187 versus French-only/hidden, Guest/private exclusion and lock/foreign/stale leases pass. Light/Dark320×180/DPR1.25 x8/y8/w304/h164 native close/popup hits are inspected after reproduced title occlusion. Synthetic composition events preserve native draft across real category click; no host IME claim.56 historical unsupported calls preserve inventories/full inspect/DOM/focus;1,402 schemas compile. Final index-DXzIKBtf.js has clean exercised runtime/assets.
+
+Sources: [Keyboard Viewer27](https://support.apple.com/guide/mac-help/use-the-keyboard-viewer-on-mac-mchlp1015/27/mac/27), [language/source shortcuts27](https://support.apple.com/guide/mac-help/write-in-another-language-on-mac-mchlp1406/27/mac/27), [Input menu27](https://support.apple.com/guide/mac-help/aside/glos52ed78a0/27/mac/27), [Emoji & Symbols](https://support.apple.com/en-ph/guide/mac-help/mchlp1560/mac). Boundaries: original badges/independent visibility, bounded Latin/spacing accents and catalogue; no native auto-show/single-source icon equivalence, dead-key/candidate conversion, full Unicode/favourites/history/Genmoji or host settings.
+
 ## Working notes
 
 1. **CORE-01 implementation.** Added a small handler registry with request validation, explicit rejections, DOM-settled applied results, and detached inspection. Routed existing Dock/file app-open actions through the same command handler as direct requests. Native UI behavior and artwork are unchanged; existing window-management and Notes research remains applicable ([fidelity](mojave-fidelity.md), [Notes](notes-mojave.md)).

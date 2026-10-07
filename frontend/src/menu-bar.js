@@ -3,7 +3,7 @@ import { APP_COMMAND_MENU_IDS } from './app-command-menus.js';
 import { helpMenuProviders, helpMenuResults, helpMenuLocation } from './help-menu-model.js';
 import { searchHelpArticles } from './help-content.js';
 
-const MENU_IDS = ['apple', 'application', 'window', 'users', 'wifi', 'battery', 'clock', 'sound', 'bluetooth', ...APP_COMMAND_MENU_IDS];
+const MENU_IDS = ['apple', 'application', 'window', 'users', 'wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input', ...APP_COMMAND_MENU_IDS];
 const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Space', 'Escape', 'Tab'];
 const MAX_LEVELS = 8;
 const identity = value => typeof value === 'string' && value.length > 0;
@@ -557,19 +557,19 @@ export function createMenuBarCommands(ctx) {
     'app.commandMenu.close': (target, payload) => commandMenu('close', target, payload),
     'app.commandMenu.select': (target, payload) => commandMenu('select', target, payload),
     'app.commandMenu.execute': (target, payload) => commandMenu('execute', target, payload),
-    'status.menu.open': (target, payload) => menuTarget(target) && ['wifi', 'battery', 'clock', 'sound', 'bluetooth'].includes(target.menuId) && openPayload(payload)
+    'status.menu.open': (target, payload) => menuTarget(target) && ['wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input'].includes(target.menuId) && openPayload(payload)
       ? open(target.menuId, payload) : invalid(),
     'status.menu.close': async (target, payload) => {
-      if (!menuTarget(target) || !['wifi', 'battery', 'clock', 'sound', 'bluetooth'].includes(target.menuId) || !closePayload(payload)) return invalid();
+      if (!menuTarget(target) || !['wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input'].includes(target.menuId) || !closePayload(payload)) return invalid();
       const result = await close(target.menuId, payload.restoreFocus !== false);
       return result.status === 'applied' ? applied({ menuId: target.menuId }) : result;
     },
     'status.menu.select': async (target, payload) => {
-      if (!menuTarget(target, true) || !['wifi', 'battery', 'clock', 'sound', 'bluetooth'].includes(target.menuId) || !observePayload(payload)) return invalid();
+      if (!menuTarget(target, true) || !['wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input'].includes(target.menuId) || !observePayload(payload)) return invalid();
       const result = await select(target.menuId, target.itemId, payload.observe === true);
       return result.status === 'applied' ? applied({ menuId: target.menuId, itemId: target.itemId }) : result;
     },
-    'status.menu.execute': (target, payload) => menuTarget(target, true) && ['wifi', 'battery', 'clock', 'sound', 'bluetooth'].includes(target.menuId) && fields(payload, [])
+    'status.menu.execute': (target, payload) => menuTarget(target, true) && ['wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input'].includes(target.menuId) && fields(payload, [])
       ? execute(target.menuId, target.itemId) : invalid(),
     'session.menu.open': (target, payload) => menuTarget(target) && ['apple', 'users'].includes(target.menuId) && openPayload(payload) ? open(target.menuId, payload) : invalid(),
     'session.menu.close': async (target, payload) => {
@@ -659,7 +659,7 @@ export function menuBarRequest(action, menuId, menus, args = {}) {
   }
   if (menuId === 'window') return { command: `menu.${action}`, target: ['select', 'execute'].includes(action) ? { menuId, itemId: args.itemId } : { menuId },
     payload: action === 'open' ? pick(args, ['position', 'itemId']) : action === 'close' ? pick(args, ['restoreFocus']) : {} };
-  if (['wifi', 'battery', 'clock', 'sound', 'bluetooth'].includes(menuId)) return { command: `status.menu.${action}`, target: { menuId,
+  if (['wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input'].includes(menuId)) return { command: `status.menu.${action}`, target: { menuId,
     ...(['select', 'execute'].includes(action) ? { itemId: args.itemId } : {}) },
     payload: action === 'open' ? pick(args, ['position', 'itemId']) : action === 'close' ? pick(args, ['restoreFocus'])
       : action === 'select' ? pick(args, ['observe']) : {} };

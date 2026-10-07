@@ -77,6 +77,9 @@
   import { createBluetoothCommands } from './bluetooth-commands.js';
   import GoldenGateBluetoothSettings from './GoldenGateBluetoothSettings.svelte';
   import GoldenGateBluetoothPair from './GoldenGateBluetoothPair.svelte';
+  import { createInputCommands } from './input-commands.js';
+  import GoldenGateInputSettings from './GoldenGateInputSettings.svelte';
+  import GoldenGateInputViewer from './GoldenGateInputViewer.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -129,6 +132,7 @@
   const hasClock = profile.capabilities.includes('status.clock');
   const hasSound = profile.capabilities.includes('status.sound');
   const hasBluetooth = profile.capabilities.includes('status.bluetooth');
+  const hasInput = profile.capabilities.includes('status.input');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
@@ -378,6 +382,10 @@
   let soundMediaRevision = $state(0);
   const bluetoothPresentation = $state({ pair: null });
   let bluetoothPairView = $state(null);
+  const inputPresentation = $state({ keyboard: null, characters: null, activeKind: null });
+  let inputLeaseRevision = $state(0);
+  const inputViewerViews = $state({ keyboard: null, characters: null });
+  const inputGraphemes = hasInput ? new Intl.Segmenter('und', { granularity: 'grapheme' }) : null;
   let storageConfirmation = $state(null);
   let storageConfirmationLease = null;
   let nextStorageConfirmation = 1;
@@ -1165,12 +1173,30 @@
     retireMenu: original => retireStatusMenu('bluetooth', original),
   }) : null;
   if (bluetoothController) Object.assign(handlers, bluetoothController.handlers);
+  const inputController = hasInput ? createInputCommands({
+    profile, presentation: inputPresentation, getState: () => systemState.input,
+    getView: kind => inputViewerViews[kind],
+    available: inputInteractionsAvailable, canBegin: inputInteractionsAvailable,
+    canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
+    capture: captureInputOwner, ownerCurrent: inputOwnerCurrent,
+    sameEditor: sameInputEditor,
+    captureEditor: captureInputEditor, editorCurrent: inputEditorCurrent, insert: insertInputText,
+    onChanged: () => { if (!disposed) inputLeaseRevision++; },
+    restore: (original, guard) => guard() && inputInteractionsAvailable() && inputOwnerCurrent(original)
+      ? restoreSessionDesktop(original) : false,
+    settle: async () => { await tick(); await tick(); },
+    retireMenu: original => retireStatusMenu('input', original),
+  }) : null;
+  if (inputController) Object.assign(handlers, inputController.handlers);
+  $effect(() => {
+    if (inputController) { activeAppId; activeWindowId; windows.length; inputController.reconcile(); }
+  });
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
     profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
     getRunningAppIds: () => runningAppIds,
     openAbout: () => openWindowPanel('finder', 'system-about', 'About This Mac'),
     openSettings: async pane => {
-      const title = { about: 'About', displays: 'Displays', storage: 'Storage', wifi: 'Wi-Fi', battery: 'Battery', 'menu-bar': 'Menu Bar', sound: 'Sound', bluetooth: 'Bluetooth' }[pane];
+      const title = { about: 'About', displays: 'Displays', storage: 'Storage', wifi: 'Wi-Fi', battery: 'Battery', 'menu-bar': 'Menu Bar', sound: 'Sound', bluetooth: 'Bluetooth', keyboard: 'Keyboard — Text Input' }[pane];
       const result = await openWindowPanel('settings', undefined, title, pane);
       return result.status === 'applied' ? { status: 'applied', target: { ...result.target, pane } } : result;
     },
@@ -1262,6 +1288,7 @@
       ...(hasClock ? { clock: clockController.targets() } : {}),
       ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
       ...(hasBluetooth ? { bluetooth: bluetoothController.targets() } : {}),
+      ...(hasInput ? { input: inputController.targets() } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1867,7 +1894,7 @@
     node = find(getWindowPanel(entry.window.id));
     if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return false;
     const native = applicationViews.get(entry.window.id);
-    if (control !== 'panel' && entry.window.appId === 'settings' && ['sound', 'menu-bar', 'bluetooth'].includes(entry.window.settingsPane)
+    if (control !== 'panel' && entry.window.appId === 'settings' && ['sound', 'menu-bar', 'bluetooth', 'keyboard'].includes(entry.window.settingsPane)
       && native?.focus) return native.focus(control);
     node.focus();
     await tick();
@@ -2310,6 +2337,126 @@
     const note = window && visibleNotes(notesState).find(note => note.id === target.noteId && note.id === notesState.selectedId);
     return note ? { window, note } : null;
   }
+  function inputInteractionsAvailable() {
+    return hasInput && windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
+      && !servicePending && !switching.switcher && !presentation.pairing;
+  }
+  function captureInputOwner() {
+    const captured = menuBarState?.menuId ? getMenuReturnFocus?.() ?? captureSessionDesktop() : captureSessionDesktop();
+    const original = inputController.getReturnFocus(captured.focus?.node) ?? captured;
+    return { ...original, appId: activeAppId, windowId: activeWindowId,
+      window: windows.find(window => window.id === activeWindowId) ?? null };
+  }
+  function inputOwnerCurrent(original) {
+    if (!original || disposed || activeAppId !== original.appId || activeWindowId !== original.windowId) return false;
+    if (original.windowId === null) return original.window === null;
+    const window = windows.find(window => window.id === original.windowId);
+    return window === original.window && !window.minimized && !isAppHidden(window.appId)
+      && !pendingQuitAppIds.includes(window.appId);
+  }
+  function captureInputEditor(original) {
+    const node = original?.focus?.node, selection = original?.focus?.selection;
+    if (!inputInteractionsAvailable() || !inputOwnerCurrent(original) || !node?.isConnected
+      || !sceneRoot.contains(node) || node.disabled || node.readOnly || node.closest('[inert]')
+      || !node.getClientRects().length || typeof node.selectionStart !== 'number'
+      || !selection || selection.start < 0 || selection.start > selection.end || selection.end > node.value.length
+      || original.focus.sourceValue !== node.value) return null;
+    const control = node.dataset.notesControl, windowId = original.windowId;
+    if (['title', 'body', 'search'].includes(control)) {
+      const target = { windowId, control, ...(control !== 'search' ? { noteId: node.dataset.noteId } : {}) };
+      const source = ownedTextSource(target);
+      const revision = source?.note?.updatedAt ?? textEditing.targets().searchRevision;
+      if (!source || source.readOnly || source.value !== node.value || original.focus.noteRevision !== revision) return null;
+      return { kind: 'notes', original, node, target: { ...target, revision }, note: source.note,
+        value: source.value, selection: { ...selection } };
+    }
+    const field = node.dataset.serviceField, provider = field && getServiceProvider(windowId);
+    if (!provider?.editable || provider.pending || !provider.entry || provider.view.fieldNode(field) !== node
+      || node.dataset.serviceEntryId !== provider.entry.id || provider.entry.fields[field] !== node.value
+      || original.focus.serviceRevision !== provider.entry.revision) return null;
+    return { kind: 'draft', original, node, entry: provider.entry, view: provider.view, field,
+      revision: provider.entry.revision, value: node.value, selection: { ...selection } };
+  }
+  function inputEditorCurrent(editor) {
+    if (!editor || !inputInteractionsAvailable() || !inputOwnerCurrent(editor.original)) return false;
+    const node = editor.node, selected = editor.selection;
+    if (!node?.isConnected || !sceneRoot.contains(node) || node.disabled || node.readOnly || node.closest('[inert]')
+      || !node.getClientRects().length || node.value !== editor.value
+      || node.selectionStart !== selected.start || node.selectionEnd !== selected.end
+      || node.selectionDirection !== selected.direction) return false;
+    if (editor.kind === 'notes') {
+      const source = ownedTextSource(editor.target);
+      return Boolean(source && !source.readOnly && source.note === editor.note && source.value === editor.value
+        && (source.note?.updatedAt ?? textEditing.targets().searchRevision) === editor.target.revision);
+    }
+    const provider = getServiceProvider(editor.original.windowId);
+    return Boolean(provider?.editable && !provider.pending && provider.entry === editor.entry
+      && provider.view === editor.view && provider.entry.revision === editor.revision
+      && provider.entry.fields[editor.field] === editor.value && provider.view.fieldNode(editor.field) === node);
+  }
+  function inputCanInsert(viewerId) {
+    inputLeaseRevision;
+    return inputController.targets().viewers.find(viewer => viewer.viewerId === viewerId)?.canInsert ?? false;
+  }
+  function inputViewerBounds(kind) {
+    const width = Math.max(1, Math.min(kind === 'keyboard' ? 680 : 440, stageArea.width - 16));
+    const height = Math.max(1, Math.min(kind === 'keyboard' ? 300 : 420, stageArea.height - 16));
+    return { left: stageArea.width / 2,
+      top: Math.min(stageArea.menuHeight + 8, Math.max(8, stageArea.height - height - 8)), width, height };
+  }
+  function sameInputEditor(left, right) {
+    if (!left || !right || left.node !== right.node || left.kind !== right.kind || left.value !== right.value
+      || left.original.window !== right.original.window || left.selection.start !== right.selection.start
+      || left.selection.end !== right.selection.end || left.selection.direction !== right.selection.direction) return false;
+    return left.kind === 'notes'
+      ? left.note === right.note && left.target.windowId === right.target.windowId && left.target.noteId === right.target.noteId
+        && left.target.control === right.target.control && left.target.revision === right.target.revision
+      : left.entry === right.entry && left.view === right.view && left.field === right.field && left.revision === right.revision;
+  }
+  function inputDraftWritten(editor, revision, value) {
+    const provider = getServiceProvider(editor.original.windowId);
+    return inputInteractionsAvailable() && inputOwnerCurrent(editor.original)
+      && provider?.entry?.id === editor.entry.id && provider.entry.revision === revision
+      && provider.entry.fields[editor.field] === value && provider.view === editor.view
+      && provider.view.fieldNode(editor.field) === editor.node && editor.node.value === value;
+  }
+  async function insertInputText(editor, { action, text }) {
+    if (!inputEditorCurrent(editor)) return { result: rejected('stale_target', 'The original input viewer editor changed.') };
+    let { start, end } = editor.selection;
+    let inserted = action === 'newline' ? '\n' : action === 'backspace' ? '' : text;
+    if (action === 'backspace' && start === end && start > 0) {
+      const preceding = inputGraphemes.segment(editor.value).containing(start - 1);
+      start = preceding.index;
+      end = Math.max(end, preceding.index + preceding.segment.length);
+    }
+    let result;
+    if (editor.kind === 'notes') {
+      result = await textEditing.handlers['text.replace']({ ...editor.target, start, end }, { text: inserted, label: 'typing' });
+    } else {
+      const multiline = ['body', 'notes'].includes(editor.field);
+      if (!multiline) inserted = inserted.replace(/[\r\n]/g, '');
+      const value = editor.value.slice(0, start) + inserted + editor.value.slice(end);
+      result = await handlers['services.draft.set']({ appId: editor.original.appId, windowId: editor.original.windowId,
+        draftId: editor.entry.id, field: editor.field }, { value });
+      if (result.status === 'applied') {
+        await tick(); await tick();
+        const revision = result.target.revision, caret = start + inserted.length;
+        // The canonical draft writer replaces entities; its returned revision,
+        // original facade and exact native node own this post-write selection.
+        if (!inputDraftWritten(editor, revision, value)
+          || !await editor.view.focus(editor.field, { start: caret, end: caret, direction: 'none' })
+          || !inputDraftWritten(editor, revision, value)
+          || editor.node.selectionStart !== caret || editor.node.selectionEnd !== caret)
+          return { result, editor: null };
+      }
+    }
+    if (result.status !== 'applied') return { result };
+    // Notes records real undo; drafts commit their canonical revision. Both finish the native caret.
+    // Refresh only that same node/owner, never whichever editor now has focus.
+    if (!inputOwnerCurrent(editor.original) || document.activeElement !== editor.node) return { result, editor: null };
+    const original = { ...editor.original, focus: captureNativeFocus() };
+    return { result, original, editor: captureInputEditor(original) };
+  }
   function ownedTextSource(target, requireForeground = true) {
     if (!ownedNotesWindow(target.windowId, requireForeground) || !['title', 'body', 'search'].includes(target.control)) return null;
     const note = target.control === 'search' ? null : ownedTextDocument(target, requireForeground)?.note;
@@ -2696,7 +2843,7 @@
       panels: windows.filter(window => Object.hasOwn(SYSTEM_UTILITY_SIZES, window.utilityKind)
         || window.appId === 'systeminformation' && !window.utilityKind
         || window.appId === 'settings' && !window.utilityKind
-          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth'].includes(window.settingsPane)).map(window => {
+          && ['about', 'displays', 'storage', 'wifi', 'battery', 'menu-bar', 'date-time', 'sound', 'bluetooth', 'keyboard'].includes(window.settingsPane)).map(window => {
         const entry = getSystemPanel(window.id), element = managedWindowElement(window.id)?.querySelector('[data-system-panel]');
         const controlIds = systemPanelControls(entry);
         return { windowId: window.id, appId: window.appId,
@@ -3237,6 +3384,7 @@
     soundController?.clear();
     soundMediaController?.clear();
     bluetoothController?.clear();
+    inputController?.clear();
     if (!reopenWindows) {
       // Close real native views using their existing lifecycle; never replace
       // the document/files/communications models with startup seed data.
@@ -3326,6 +3474,13 @@
     if (!request) return;
     if (menuBarState?.menuId) await dismissMenuBar?.();
     await commands.execute(request);
+  }
+  function inputSourceKeydown(event) {
+    if (!inputInteractionsAvailable() || event.defaultPrevented || event.isComposing
+      || !event.ctrlKey || event.metaKey || event.shiftKey || ![' ', 'Spacebar'].includes(event.key)
+      || !sceneRoot?.contains(event.target)) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (!event.repeat) commands.execute({ command: 'input.source.cycle', payload: { direction: event.altKey ? 'next' : 'last' } });
   }
   function viewKeydown(event) {
     if (!hasViewWorkflows || !foreground || disposed || event.defaultPrevented || event.isComposing) return;
@@ -3558,6 +3713,7 @@
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
       ...(hasBluetooth ? [bluetoothController.menuProvider(windowInteractionsAvailable() && !utilityPreparation
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
+      ...(hasInput ? [inputController.menuProvider(inputInteractionsAvailable())] : []),
     ];
   }
   function captureSwitchingFocus() {
@@ -3916,6 +4072,7 @@
       listen(window, 'keydown', dashboardKeydown, true),
       listen(window, 'keydown', spacesKeydown, true),
       listen(window, 'keydown', fullScreenKeydown, true),
+      listen(window, 'keydown', inputSourceKeydown, true),
       listen(window, 'keydown', viewKeydown, true),
       listen(window, 'keydown', editingKeydown, true),
       listen(sceneRoot, 'beforeinput', observeTextBeforeInput, true),
@@ -3956,6 +4113,7 @@
       soundController?.clear();
       soundMediaController?.clear();
       bluetoothController?.clear();
+      inputController?.dispose();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -4414,6 +4572,9 @@
         {:else if hasBluetooth && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'bluetooth'}
           <GoldenGateBluetoothSettings {profile} {window} bluetooth={bluetoothController.summary()}
             execute={commands.execute} registerView={registerApplicationView} />
+        {:else if hasInput && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'keyboard'}
+          <GoldenGateInputSettings {profile} {window} input={inputController.summary()}
+            execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasSound && !window.utilityKind && ['music', 'quicktime'].includes(window.appId)}
           <GoldenGateAudioPlayer {profile} {window} sound={soundController.summary()} {foreground} {preview}
             playback={preview ? soundController.targets().media.find(player => player.windowId === window.id) ?? null : null}
@@ -4663,6 +4824,24 @@
   {/if}
 </Desktop>
 </div>
+  {#if hasInput}
+    {@const viewerAvailable = inputInteractionsAvailable()}
+    {@const keyboardBounds = inputPresentation.keyboard && inputViewerBounds('keyboard')}
+    {@const characterBounds = inputPresentation.characters && inputViewerBounds('characters')}
+    <!-- Short stages need reachable title controls above the bar, but never above an open menu/modal. -->
+    {@const layer = viewerAvailable && !menuBarState?.menuId
+      && (characterBounds || keyboardBounds)?.top < stageArea.menuHeight ? 22000 : 12000}
+    {#each [inputPresentation.keyboard, inputPresentation.characters].filter(Boolean) as pane (pane.viewerId)}
+      {@const bounds = pane.kind === 'keyboard' ? keyboardBounds : characterBounds}
+      <div class="input-placement" style:left="{bounds.left}px" style:top="{bounds.top}px"
+        style:width="{bounds.width}px" style:height="{bounds.height}px"
+        style:z-index={layer + (inputPresentation.activeKind === pane.kind ? 200 : 100)}>
+        <GoldenGateInputViewer {profile} {pane} input={inputController.summary()} execute={commands.execute}
+          foreground={viewerAvailable} active={inputPresentation.activeKind === pane.kind}
+          canInsert={inputCanInsert(pane.viewerId)} bind:this={inputViewerViews[pane.kind]} />
+      </div>
+    {/each}
+  {/if}
 {#if hasWifi && wifiPresentation.join}
   <div class="status-sheet-backdrop">
     <GoldenGateWifiJoin pending={wifiPresentation.join} execute={commands.execute} {foreground} bind:this={wifiJoinView} />
@@ -4699,6 +4878,7 @@
   .desktop-interaction-root { height:100%; }
   .status-sheet-backdrop { position:absolute; inset:0; z-index:30000; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:8px; background:#0003; overflow:hidden; }
   .help-placement { position:absolute; left:50%; transform:translateX(-50%); width:min(700px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:11500; display:flex; justify-content:center; }
+  .input-placement { position:absolute; transform:translateX(-50%); display:flex; }
   .service-lookup-placement { position:absolute; top:4px; left:50%; transform:translateX(-50%); width:min(390px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:12000; display:flex; }
   .file-dialog-backdrop { position: absolute; inset: 0; z-index: 20000; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 8px; background: #0002; overflow: hidden; }
   .stage-backdrop { position: absolute; z-index: 1; background: black; pointer-events: none; }

@@ -294,7 +294,7 @@
         {:else if item.type === 'wifi-disclosure'}
           <span class="power-label">{item.label}</span><span class="disclosure-arrow" aria-hidden="true">{item.checked ? '⌄' : '›'}</span>
         {:else}
-          <span class="check" aria-hidden="true">{item.checked ? item.radio ? '●' : '✓' : ''}</span>
+          <span class="check" aria-hidden="true">{item.checked ? item.radio && menu.kind !== 'input' ? '●' : '✓' : ''}</span>
           <span class="label">{item.label}</span>
           <span class="shortcut">{item.type === 'bluetooth-device' ? !item.enabled ? 'Unavailable' : item.batteryPercent === null ? '' : `${item.batteryPercent}%` : item.shortcut ?? ''}</span>
           <span class="arrow" aria-hidden="true">{item.children ? '›' : ''}</span>

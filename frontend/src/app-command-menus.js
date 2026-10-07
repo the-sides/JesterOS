@@ -18,7 +18,7 @@ const leaf = (id, text, enabled, request, extra = {}) => ({ id, label: text, ena
   ...(enabled ? { request } : {}) });
 const request = (command, target = {}, payload = {}) => ({ command, target, payload });
 
-function editMenuItems({ appId, window, selected, noteView, editing, finder }) {
+function editMenuItems({ profile, appId, window, selected, noteView, editing, finder }) {
   const source = editing?.selection, tool = editing?.tool, native = editing?.native;
   const clipboard = editing?.clipboard, history = editing?.history;
   const document = noteView && window && !window.utilityKind && selected && editing?.documentAvailable;
@@ -90,6 +90,9 @@ function editMenuItems({ appId, window, selected, noteView, editing, finder }) {
       option('smartQuotes', 'Smart Quotes'), option('smartDashes', 'Smart Dashes'),
       unavailable('smart-links', 'Smart Links'), option('textReplacement', 'Text Replacement'),
     ] });
+  if (profile.capabilities.includes('status.input')) rows.push(
+    { id: 'separator-characters', label: '', enabled: false, separator: true },
+    leaf('emoji-symbols', 'Emoji & Symbols', true, request('input.viewer.open', {}, { kind: 'characters' })));
   return rows;
 }
 
@@ -240,7 +243,7 @@ export function appCommandMenuProviders({ profile, appId, enabled, activeWindow,
         leaf('delete-note', 'Delete Note', editable, request('notes.trash', { noteId: selected?.id }, { focus: true })),
       ] : [newWindow]), close,
     ],
-    edit: profile.capabilities.includes('shell.edit-workflows') ? editMenuItems({ appId, window, selected, noteView, editing, finder }) : [
+    edit: profile.capabilities.includes('shell.edit-workflows') ? editMenuItems({ profile, appId, window, selected, noteView, editing, finder }) : [
       unavailable('undo', 'Undo', '⌘Z'), unavailable('redo', 'Redo', '⇧⌘Z'),
       { id: 'separator-clipboard', label: '', enabled: false, separator: true },
       unavailable('cut', 'Cut', '⌘X'), unavailable('copy', 'Copy', '⌘C'), unavailable('paste', 'Paste', '⌘V'),

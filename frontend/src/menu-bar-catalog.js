@@ -2,9 +2,9 @@ import { defineCommand, NONE, identity, flag, offset, choice, object, empty, mat
 import { APP_COMMAND_MENU_IDS } from './app-command-menus.js';
 
 const profiles = ['macos-golden-gate-27.0.1'];
-const menuId = choice('apple', 'application', 'window', 'users', 'wifi', 'battery', 'clock', 'sound', 'bluetooth', ...APP_COMMAND_MENU_IDS);
+const menuId = choice('apple', 'application', 'window', 'users', 'wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input', ...APP_COMMAND_MENU_IDS);
 const commandMenuId = choice(...APP_COMMAND_MENU_IDS);
-const statusMenuId = choice('wifi', 'battery', 'clock', 'sound', 'bluetooth');
+const statusMenuId = choice('wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input');
 const commandOwner = object({ menuId: commandMenuId, appId: identity });
 const nullable = schema => ({ oneOf: [schema, { type: 'null' }] });
 const level = { type: 'integer', minimum: 0, maximum: 7 };
@@ -24,14 +24,14 @@ export const menuBarCatalog = Object.fromEntries([
   define('status.menu.open', object({ menuId: statusMenuId }), {
     ...object({ position: choice('first', 'last'), itemId: identity }, []),
     not: match({ position: true, itemId: true }),
-  }, [mounted], ['Open the real Wi-Fi/Battery/Sound/Bluetooth or fictional Clock settings shortcut invoker under the existing single shared menu owner; select first/last/exact enabled native row. Sound input rows follow private sound.menu.inputs.set. No calendar flyout or fabricated Notification Center.'], object({ menuId: statusMenuId })),
+  }, [mounted], ['Open the real Wi-Fi/Battery/Sound/Bluetooth/Input or fictional Clock settings shortcut invoker under the existing single shared menu owner; select first/last/exact enabled native row. Sound input rows follow private sound.menu.inputs.set. No calendar flyout or fabricated Notification Center.'], object({ menuId: statusMenuId })),
   define('status.menu.close', object({ menuId: statusMenuId }), object({ restoreFocus: flag }, []),
-    [mounted], ['Dismiss only the owned Wi-Fi/Battery/Clock/Sound/Bluetooth popup; restore its actual status invoker by default.'], object({ menuId: statusMenuId })),
+    [mounted], ['Dismiss only the owned Wi-Fi/Battery/Clock/Sound/Bluetooth/Input popup; restore its actual status invoker by default.'], object({ menuId: statusMenuId })),
   define('status.menu.select', object({ menuId: statusMenuId, itemId: identity }), object({ observe: flag }, []),
     [mounted, 'Exact current enabled rendered row; observe requires its actual native focus.'],
-    ['Reveal/select/focus the actual Wi-Fi/Battery/Clock/Sound/Bluetooth row or real Sound range; preserve retained system and document data.'], object({ menuId: statusMenuId, itemId: identity })),
+    ['Reveal/select/focus the actual Wi-Fi/Battery/Clock/Sound/Bluetooth/Input row or real Sound range; preserve retained system and document data.'], object({ menuId: statusMenuId, itemId: identity })),
   define('status.menu.execute', object({ menuId: statusMenuId, itemId: identity }), empty,
-    [mounted, 'Exact current enabled rendered row has a canonical fictional Wi-Fi/Battery/Clock/Sound/Bluetooth action; the native Sound volume range is adjusted through sound.volume.set or menu.navigate, not leaf execution.'],
+    [mounted, 'Exact current enabled rendered row has a canonical fictional Wi-Fi/Battery/Clock/Sound/Bluetooth/Input action; the native Sound volume range is adjusted through sound.volume.set or menu.navigate, not leaf execution.'],
     ['Wi-Fi power/inline disclosure, Battery Low Power mode, Sound mute/device selection and Bluetooth power/paired connection retain the same actual popup and original editor-return token. Other real leaves dismiss/restore the original editor before canonical dispatch. Failed preparation/dispatch restores the owned popup.'], object({ menuId: statusMenuId, itemId: identity })),
   define('menu.navigate', target, object({ key: choice('ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Space', 'Escape', 'Tab') }),
     [mounted, 'Left/Right on a visible enabled closed invoker instead opens the adjacent available provider. All other keys require the matching open menu.'],
