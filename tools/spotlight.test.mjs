@@ -5,7 +5,7 @@ import { spotlightPreferencesDefaults } from '../frontend/src/spotlight-preferen
 
 const source = (kind, id, label, terms = []) => ({ kind, id, label, terms, secondary: '', icon: null, canReveal: kind === 'file', token: {} });
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
-function fixture(initial = [source('file', 'one', 'Résumé')]) {
+function fixture(initial = [source('file', 'one', 'Résumé')], beforeOpen) {
   let pane = null, sources = initial, foreground = true, root = true, view;
   const activated = [], restored = [], token = new Proxy({}, { ownKeys() { throw Error('private token inspected'); } });
   let activationGate = null;
@@ -15,6 +15,7 @@ function fixture(initial = [source('file', 'one', 'Résumé')]) {
     available: () => foreground, alive: () => root, getSources: () => sources, isSourceCurrent: item => sources.includes(item),
     getPreferences: spotlightPreferencesDefaults,
     captureReturn: () => token, restoreReturn: async (value, guard) => { if (guard()) restored.push(value); }, dismissMenus() {}, settle: async () => {},
+    ...(beforeOpen ? { beforeOpen } : {}),
     async activate(item, action, guard) {
       activationStarted.resolve();
       if (activationGate) await activationGate.promise;
@@ -84,6 +85,21 @@ test('late native preparation cannot borrow a reopened or suspended owner', asyn
   const suspended = model.run('query', model.target(), { query: 'resume' });
   model.foreground(false); model.foreground(true); secondGate.resolve();
   expect((await suspended).status).toBe('rejected'); expect(fresh.query).toBe('');
+});
+
+test('opening across a pending overlay cutover cannot borrow a resumed or replaced Root', async () => {
+  for (const retire of [
+    model => model.root(false),
+    model => { model.foreground(false); model.foreground(true); },
+    model => model.commands.clear(),
+  ]) {
+    const gate = deferred(), started = deferred();
+    const model = fixture(undefined, async () => { started.resolve(); await gate.promise; return true; });
+    const pending = model.run('open');
+    await started.promise; retire(model); gate.resolve();
+    expect((await pending).status).toBe('rejected');
+    expect(model.pane()).toBeNull();
+  }
 });
 
 test('pending source activation rejects replacement, duplicate activation and dead Root', async () => {

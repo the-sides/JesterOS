@@ -8,6 +8,7 @@ import { soundDefaults, soundSchema, validateSoundState } from './sound-model.js
 import { bluetoothDefaults, bluetoothSchema, validateBluetoothState } from './bluetooth-model.js';
 import { inputDefaults, inputSchema, validateInputState } from './input-model.js';
 import { spotlightPreferencesDefaults, spotlightPreferencesSchema, validateSpotlightPreferences } from './spotlight-preferences.js';
+import { notificationsDefaults, notificationsSchema, validateNotificationsState } from './notification-model.js';
 
 const RECENT_LIMIT = 10;
 const forbiddenIds = new Set([...Object.getOwnPropertyNames(Object.prototype), 'prototype']);
@@ -19,9 +20,9 @@ export const validComputerName = name => typeof name === 'string' && name.length
 const serverSchema = object({ id: identity, name: computerNameSchema, folderId: identity, available: flag });
 export const systemStateSchema = object({ computerName: computerNameSchema, reopenWindows: flag,
   recentItems: object({ applications: recentList, documents: recentList, servers: recentList }),
-  servers: { type: 'array', maxItems: 128, items: serverSchema }, storage: storagePreferencesSchema, wifi: wifiSchema, battery: batterySchema, clock: clockSchema, sound: soundSchema, bluetooth: bluetoothSchema, input: inputSchema, spotlight: spotlightPreferencesSchema });
+  servers: { type: 'array', maxItems: 128, items: serverSchema }, storage: storagePreferencesSchema, wifi: wifiSchema, battery: batterySchema, clock: clockSchema, sound: soundSchema, bluetooth: bluetoothSchema, input: inputSchema, spotlight: spotlightPreferencesSchema, notifications: notificationsSchema });
 export const systemDefaults = profile => ({ computerName: profile.defaults.machine.computerName, reopenWindows: true,
-  recentItems: { applications: [], documents: [], servers: [] }, servers: [], storage: storagePreferencesDefaults(), wifi: wifiDefaults(), battery: batteryDefaults(profile), clock: clockDefaults(), sound: soundDefaults(profile), bluetooth: bluetoothDefaults(), input: inputDefaults(), spotlight: spotlightPreferencesDefaults() });
+  recentItems: { applications: [], documents: [], servers: [] }, servers: [], storage: storagePreferencesDefaults(), wifi: wifiDefaults(), battery: batteryDefaults(profile), clock: clockDefaults(), sound: soundDefaults(profile), bluetooth: bluetoothDefaults(), input: inputDefaults(), spotlight: spotlightPreferencesDefaults(), notifications: notificationsDefaults() });
 
 // Apple-menu history is independent of Dock usage and filesystem metadata.
 // Clearing it must not reset either of those domains or remove their records.
@@ -79,16 +80,17 @@ function validServers(value) {
   return true;
 }
 export function validateSystemState(state, profile) {
-  if (!closedData(state, ['computerName', 'reopenWindows', 'recentItems', 'servers', 'storage', 'wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input', 'spotlight']) || !validComputerName(state.computerName)
+  if (!closedData(state, ['computerName', 'reopenWindows', 'recentItems', 'servers', 'storage', 'wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input', 'spotlight', 'notifications']) || !validComputerName(state.computerName)
     || typeof state.reopenWindows !== 'boolean'
     || !validateStoragePreferences(state.storage).ok || !validateWifiState(state.wifi).ok
     || !validateBatteryState(state.battery, profile).ok || !validateClockState(state.clock).ok || !validateSoundState(state.sound, profile).ok
     || !validateBluetoothState(state.bluetooth, state.sound).ok || !validateInputState(state.input).ok || !validateSpotlightPreferences(state.spotlight).ok || !validServers(state.servers)
+    || !validateNotificationsState(state.notifications, profile).ok
     || !closedData(state.recentItems, ['applications', 'documents', 'servers'])
     || !validList(state.recentItems.applications) || !validList(state.recentItems.documents) || !validList(state.recentItems.servers)
     || state.recentItems.applications.some(id => !Object.hasOwn(profile.applications, id))
     || state.recentItems.servers.some(id => !state.servers.some(server => server.id === id))) {
-    return { ok: false, message: 'System state requires a bounded single-line computer name, boolean reopen-windows and storage preferences, closed consistent fictional Wi-Fi, Battery, Clock, Sound, Bluetooth, authored Input and Spotlight preferences with linked route ownership, and distinct bounded application/document/registered-server history belonging to this profile.' };
+    return { ok: false, message: 'System state requires a bounded single-line computer name, boolean reopen-windows and storage preferences, closed consistent fictional Wi-Fi, Battery, Clock, Sound, Bluetooth, authored Input and Spotlight preferences with linked route ownership, canonical bounded notifications with monotonic identities from registered profile applications, and distinct bounded application/document/registered-server history belonging to this profile.' };
   }
   return { ok: true };
 }

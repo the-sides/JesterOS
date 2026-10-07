@@ -5,7 +5,8 @@
   import GoldenGateHelpLocation from './GoldenGateHelpLocation.svelte';
   import { helpMenuLocation } from './help-menu-model.js';
 
-  let { profile, menus, state: menuState, execute, registerView, foreground = true, zone = 'primary' } = $props();
+  let { profile, menus, state: menuState, execute, registerView, foreground = true, zone = 'primary',
+    notificationCenterId = null, notificationCenterAvailable = false, onnotifications } = $props();
   let root = $state(null);
   let invokers = $state({});
   let popups = $state([]);
@@ -280,10 +281,15 @@
   function toggle(event, menu) {
     event.preventDefault(); event.stopPropagation();
     if (event.button !== 0 || event.ctrlKey || event.metaKey || (event.altKey && !['apple', 'sound'].includes(menu.menuId)) || !available(menu.menuId)) return;
+    if (menu.kind === 'clock' && onnotifications) {
+      if (notificationCenterAvailable) onnotifications();
+      return;
+    }
     if (menuState.menuId === menu.menuId) request('close', menu.menuId);
     else void openInvoker(menu, {}, event.altKey);
   }
   function hover(event, menu) {
+    if (menu.kind === 'clock' && onnotifications) return;
     if (menuState.menuId && menuState.menuId !== menu.menuId && available(menu.menuId)) void openInvoker(menu, {}, event.altKey);
   }
   function invokerKey(event, menu) {
@@ -293,6 +299,11 @@
       return;
     }
     if (!available(menu.menuId)) return;
+    if (menu.kind === 'clock' && onnotifications && ['Enter', ' '].includes(event.key)) {
+      event.preventDefault(); event.stopPropagation();
+      if (!event.repeat && notificationCenterAvailable) onnotifications();
+      return;
+    }
     const key = event.key === ' ' ? 'Space' : event.key;
     if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Enter', 'Space', 'Escape', 'Tab'].includes(key)) return;
     if ((key === 'Escape' || key === 'Tab') && !menuState.menuId) return;
@@ -370,14 +381,17 @@
 {/snippet}
 
 <div class="golden-shared-menu-bar" class:users={zone === 'users'} class:clock={zone === 'clock'} bind:this={root} data-menu-bar={zone}
-  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : zone === 'battery' ? 'Battery status menu' : zone === 'sound' ? 'Sound status menu' : zone === 'bluetooth' ? 'Bluetooth status menu' : zone === 'input' ? 'Fictional Input source menu' : zone === 'clock' ? 'Fictional Clock settings menu' : 'Application menu bar'}>
+  role="menubar" aria-label={zone === 'users' ? 'User menu' : zone === 'wifi' ? 'Wi-Fi status menu' : zone === 'battery' ? 'Battery status menu' : zone === 'sound' ? 'Sound status menu' : zone === 'bluetooth' ? 'Bluetooth status menu' : zone === 'input' ? 'Fictional Input source menu' : zone === 'clock' ? 'Clock and Notification Center' : 'Application menu bar'}>
   {#each rendered as menu (menu.menuId)}
     <button class="invoker" class:apple={menu.kind === 'apple'} class:application={menu.kind === 'application'} class:wifi={menu.kind === 'wifi'} class:battery={menu.kind === 'battery'} class:sound={menu.kind === 'sound'} class:bluetooth={menu.kind === 'bluetooth'} class:input={menu.kind === 'input'} class:clock={menu.kind === 'clock'}
       bind:this={invokers[menu.menuId]} type="button" role="menuitem" data-menu-invoker={menu.menuId} data-date-shown={menu.kind === 'clock' ? clockDateShown : undefined}
+      data-notification-invoker={menu.kind === 'clock' && onnotifications ? true : undefined}
       disabled={!menu.enabled || !foreground} aria-disabled={!menu.enabled || !foreground}
       class:located={location?.menuId === menu.menuId}
-      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.kind === 'battery' ? `Battery: ${menu.percent} percent, ${menu.statusLabel}${menu.criticalBattery ? ', Critically Low Battery' : menu.lowBattery ? ', Low Battery' : ''}` : menu.kind === 'sound' ? `Sound: ${menu.effectiveMuted ? 'muted' : `${menu.volume} percent`}, ${menu.outputName}` : menu.kind === 'bluetooth' ? `Bluetooth ${menu.powered ? 'on' : 'off'}${menu.connectedCount ? `, ${menu.connectedCount} connected` : ''}` : menu.kind === 'input' ? `Input source: ${menu.label} — fictional onscreen layouts` : menu.kind === 'clock' ? `Clock: ${menu.fullDate}, ${menu.fullTime}, ${menu.timeZone} — fictional settings shortcut` : menu.label}
-      aria-haspopup="menu" aria-expanded={Boolean(openMenu?.menuId === menu.menuId)} aria-controls={`golden-menu-${menu.menuId}-0`}
+      aria-label={menu.kind === 'apple' ? 'Apple menu' : menu.kind === 'users' ? `Fast user switching — ${menu.label}` : menu.kind === 'wifi' ? menu.status === 'off' ? 'Wi-Fi off' : menu.status === 'connected' ? `Wi-Fi connected — ${menu.connectedName}` : 'Wi-Fi not connected' : menu.kind === 'battery' ? `Battery: ${menu.percent} percent, ${menu.statusLabel}${menu.criticalBattery ? ', Critically Low Battery' : menu.lowBattery ? ', Low Battery' : ''}` : menu.kind === 'sound' ? `Sound: ${menu.effectiveMuted ? 'muted' : `${menu.volume} percent`}, ${menu.outputName}` : menu.kind === 'bluetooth' ? `Bluetooth ${menu.powered ? 'on' : 'off'}${menu.connectedCount ? `, ${menu.connectedCount} connected` : ''}` : menu.kind === 'input' ? `Input source: ${menu.label} — fictional onscreen layouts` : menu.kind === 'clock' ? `${onnotifications ? 'Notification Center' : 'Clock'}: ${menu.fullDate}, ${menu.fullTime}, ${menu.timeZone} — fictional scene clock` : menu.label}
+      aria-haspopup={menu.kind === 'clock' && onnotifications && !openMenu ? 'dialog' : 'menu'}
+      aria-expanded={Boolean(openMenu?.menuId === menu.menuId || menu.kind === 'clock' && notificationCenterId)}
+      aria-controls={menu.kind === 'clock' && notificationCenterId && !openMenu ? `notification-center-${notificationCenterId}` : `golden-menu-${menu.menuId}-0`}
       onpointerdown={invokerPointer} onpointerenter={event => hover(event, menu)} onclick={event => toggle(event, menu)}
       onkeydown={event => invokerKey(event, menu)} oncontextmenu={event => { suppressContext(event); if (menu.kind === 'clock' && available(menu.menuId)) request('open', menu.menuId); }}>
       {#if menu.kind === 'apple'}

@@ -23,6 +23,9 @@
     spotlightOpen = false,
     spotlightAvailable = false,
     onspotlight,
+    notificationCenterId = null,
+    notificationCenterAvailable = false,
+    onnotifications,
     children,
     desktopItems,
     desktopStacks = [],
@@ -536,7 +539,7 @@
       </button>
       <span class="golden-gate-control-center" aria-label="Control Center"><svg viewBox="0 0 22 20" aria-hidden="true"><rect x="2" y="2" width="18" height="6" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="6" cy="5" r="2" fill="currentColor"/><rect x="2" y="12" width="18" height="6" rx="3" fill="currentColor"/><circle cx="16" cy="15" r="2" fill="#707a54"/></svg></span>
       <GoldenGateMenuBar {profile} menus={clockMenus} state={menuBarState} execute={executeSession}
-        registerView={registerSessionView} {foreground} zone="clock" />
+        registerView={registerSessionView} {foreground} zone="clock" {notificationCenterId} {notificationCenterAvailable} {onnotifications} />
     </div>
   </header>
   <main class="golden-gate-workspace" bind:this={workspace} tabindex="-1" aria-label="macOS Golden Gate desktop" onpointerdown={focusDesktop}

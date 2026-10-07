@@ -404,7 +404,7 @@ Boundaries: authored bounded materials/layout, local scene data only, no host fi
 
 ## SPOT-02 — real private readers and canonical search policy
 
-Current Golden discovery406;57/286 complete,229 remaining:227 queued plus STATUS-07/STATUS-08 deferred. Next NOTIF-01. Seven additions; historical inventories170/178/163/190 unchanged.
+SPOT-02 checkpoint: Golden discovery406;57/286 complete,229 remaining:227 queued plus STATUS-07/STATUS-08 deferred. Its next slice was NOTIF-01. Seven additions; historical inventories170/178/163/190 unchanged.
 
 spotlight-answers is a256-unit/128-token/32-depth finite arithmetic parser, not eval. Explicit unit conversions include temperature offsets and case-sensitive bit/byte plus SI/IEC prefixes; ambiguous regional units reject. Currency shortcuts normalize into the same converter and disclose fixed fictional rates. Dictionary answers reuse the existing22-entry offline dictionary. spotlight-model adds eight eligible real label completions, without truncating search matches.
 
@@ -417,4 +417,18 @@ GoldenGateSpotlightSettings is an ordinary settingsPane:spotlight owner with rea
 Final578 tests/9190 assertions/51 files;662 modules/no Svelte warnings;406 strict pairs,112 Applied/114 retained requests, all seven additions applied/all requests and responses valid. Real guarded110-row Notes write/three-page export, Unicode PDF pages/scroll, actual text/contact/mail/image readers, native shortcuts/settings/privacy and live indexing reversibility pass. Repaired installed PDF6 teardown API, hidden accessible-text ancestor overflow, +budget math intent and currency shorthand. Final index-m7TY7RAi.js Light/Dark320×180/DPR1.25 native page-next/Back/Close hit ownership passes; very small reader space is disclosed.28 historical probes preserve inspect/DOM/focus;1,402 historical schemas compile. Final browser errors/broken images/external resources empty; owned browser fixtures cleared/tabs closed. Proof: local://spot02-shipped-proof.json.
 
 No host filesystem/background index, cloud/telemetry/market rates, full dictionary/native Quick Actions/clipboard/Siri, or completed standalone Preview reader is claimed.
+
+## NOTIF-01 — canonical arrivals and private current Notification Center
+
+Current Golden discovery414;58/286 complete,228 remaining:226 queued plus STATUS-07/STATUS-08 deferred. Next NOTIF-02. Eight additions; historical inventories170/178/163/190 unchanged.
+
+Primary27 Get notifications guidance and its screenshot establish a combined center opened by date/time, app stacks, click expansion/Show Less, single X and held-X app clearing. Retired Mojave Today/Notifications tabs are not recreated. Native date Return/Space opens the center; context menu/ArrowDown retain actual Clock settings. Root owns GoldenGateNotificationCenter and native facade/placement; no Widget/banner/action/DND placeholders.
+
+Required system.notifications is closed {nextId,entries}, with at most256 {id,appId,title,body,createdAt} records. Registered-profile apps, literal one-line256-unit titles, one-Mi bodies, bounded scene timestamps and monotonically nonreusable notification ordinals validate descriptor-first. Newest timestamp/numeric-ordinal ordering groups real original records. Explicit notifications.post uses the current scene clock by default and checks exact complete-scene string/key growth. Mutation leases materialize only already-validated reactive array/entry references before snapshotting; this fixes the reproduced first-event false-stale error caused by lazy wrapping during the quota scan, without weakening reentrant/descriptor guards.
+
+Eight notifications.* contracts own actual open/close/post/group expansion/dismiss/clear/focus/scroll. Original Root/pane/view/node and group/entry guards survive awaits; removed focused controls recover to the same center. Lock/local switching suspend IDs/expansion/scroll; accepted disposal/replacement retires them. Reciprocal Spotlight beforeOpen hooks close the incompatible overlay before capturing original focus; pending cutovers reject resumed/replaced owners. Shared exact transient return preserves actual Notes node/range0–4. Outside click does not steal destination focus.
+
+Actual canonical two-local saves/cold sign-in retain Alex notification7/next8 and Casey notification1/next2, then allocate8 and2 independently. Private center/expansion/focus/scroll and Guest events exclude; old missing-leaf save/seed rejects whole inspect/focus unchanged. Reset/fresh and uninspected cold graphs post successfully; old Root center cannot dismiss a replacement notification1.
+
+Final606 tests/9570 assertions/52 files;666 modules/no Svelte warnings;414 strict pairs.98 retained requests/58 Applied cover all eight names; one deliberate schema-invalid seed and the corrected pre-fix quota rejection remain explicit evidence. Native current-date/keyboard, stacks/Show Less/dismiss/held-X/Clear All, exact editor return, Spotlight cutovers, lock/local resume and Guest exclusion pass. Light/Dark320×180/DPR1.25 x8/y36/w304/h136 preserves actual Clear All/Close hits; full80-row body native/report scroll350→429 agrees. Final index-cyggGDDA.js has zero errors/broken images/external resources.32 historical probes preserve inspect/DOM/focus;1402 historical schemas compile. Both owned saved slots cleared and all proof tabs closed.
 

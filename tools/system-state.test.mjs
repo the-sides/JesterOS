@@ -1,10 +1,23 @@
 import { expect, test } from 'bun:test';
 import { systemDefaults, recordSystemRecent, clearSystemRecents, validateSystemState, systemStorageSummary } from '../frontend/src/system-state.js';
-import { getOSProfile } from '../frontend/src/os-profiles.js';
+import { getOSProfile, listOSProfiles } from '../frontend/src/os-profiles.js';
 import { setWifiPower, connectWifiNetwork, disconnectWifiNetwork } from '../frontend/src/wifi-model.js';
 import { setBatteryStatus, setBatteryEnergy, configureBatteryMenu, setBatteryLowPower, chargeBatteryToFull } from '../frontend/src/battery-model.js';
+import { notificationsDefaults, validateNotificationsState } from '../frontend/src/notification-model.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
+
+test('canonical notification records validate against each original profile inventory without enabling historical APIs', () => {
+  for (const original of listOSProfiles()) {
+    const state = notificationsDefaults(), appId = Object.keys(original.applications)[0];
+    state.nextId = 2;
+    state.entries.push({ id: 'notification-1', appId, title: 'Registered app', body: '', createdAt: 0 });
+    expect(validateNotificationsState(state, original)).toEqual({ ok: true });
+    state.entries[0].appId = 'foreign-profile-application';
+    expect(validateNotificationsState(state, original).ok).toBe(false);
+    if (original.id !== profile.id) expect(original.capabilities.includes('shell.notification-center')).toBe(false);
+  }
+});
 
 test('reusing an item moves it to the front once without changing the other category', () => {
   const state = systemDefaults(profile);
@@ -99,6 +112,44 @@ test('reopen-window preferences preserve explicit false and reject missing, coer
   const actor = { ...state };
   Object.defineProperty(actor, 'reopenWindows', { enumerable: true, get() { reads++; return false; } });
   expect(validateSystemState(actor, profile).ok).toBe(false);
+  expect(reads).toBe(0);
+});
+
+test('notification records require registered applications, monotonic allocation and closed descriptor-only data', () => {
+  const state = systemDefaults(profile);
+  state.notifications = { nextId: 8, entries: [
+    { id: 'notification-3', appId: 'notes', title: 'Literal 🎬 title', body: ' \r\nbody\u{1D11E} ', createdAt: 0 },
+    { id: 'notification-7', appId: 'mail', title: 'Later', body: '', createdAt: 42 },
+  ] };
+  expect(validateSystemState(JSON.parse(JSON.stringify(state)), profile)).toEqual({ ok: true });
+  for (const change of [
+    value => { delete value.notifications; },
+    value => { value.notifications.entries[0].appId = 'notepad'; },
+    value => { value.notifications.nextId = 7; },
+    value => { value.notifications.entries[1].id = 'notification-3'; },
+    value => { value.notifications.entries[0].createdAt = 8_640_000_000_000_000; },
+    value => { value.notifications.entries[0].action = 'open'; },
+    value => { value.notifications.expandedGroupIds = ['notes']; },
+    value => { value.notifications.entries.length = 3; },
+  ]) {
+    const candidate = structuredClone(state); change(candidate);
+    const before = structuredClone(candidate);
+    expect(validateSystemState(candidate, profile).ok).toBe(false);
+    expect(candidate).toEqual(before);
+  }
+  let reads = 0;
+  for (const level of ['system', 'leaf', 'array', 'entry']) {
+    const candidate = structuredClone(state);
+    const [owner, key] = level === 'system' ? [candidate, 'notifications']
+      : level === 'leaf' ? [candidate.notifications, 'entries']
+        : level === 'array' ? [candidate.notifications.entries, '0']
+          : [candidate.notifications.entries[0], 'title'];
+    Object.defineProperty(owner, key, { enumerable: true, get() { reads++; throw new Error('Getter must not run'); } });
+    expect(validateSystemState(candidate, profile).ok).toBe(false);
+  }
+  const incomplete = structuredClone(state); delete incomplete.notifications;
+  Object.defineProperty(incomplete, 'computerName', { enumerable: true, get() { reads++; throw new Error('Missing leaf must reject first'); } });
+  expect(validateSystemState(incomplete, profile).ok).toBe(false);
   expect(reads).toBe(0);
 });
 

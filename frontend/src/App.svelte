@@ -86,6 +86,8 @@
   import { spotlightFileExcluded } from './spotlight-preferences.js';
   import { prepareSpotlightPreview } from './spotlight-preview.js';
   import GoldenGateSpotlightSettings from './GoldenGateSpotlightSettings.svelte';
+  import { createNotificationCommands } from './notification-commands.js';
+  import GoldenGateNotificationCenter from './GoldenGateNotificationCenter.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -140,6 +142,7 @@
   const hasBluetooth = profile.capabilities.includes('status.bluetooth');
   const hasInput = profile.capabilities.includes('status.input');
   const hasSpotlight = profile.capabilities.includes('shell.spotlight');
+  const hasNotifications = profile.capabilities.includes('shell.notification-center');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
@@ -189,8 +192,11 @@
   let helpPane = $state(null), helpView = $state(null), helpViewer = $state.raw(null);
   let spotlightPane = $state(null), spotlightController = $state.raw(null);
   const spotlightViews = new Map();
-  $effect(() => { if (spotlightController && spotlightPane) spotlightController.reconcile(); });
+  $effect(() => { if (spotlightController) spotlightController.reconcile(); });
   let spotlightPreferencesController;
+  let notificationPane = $state(null), notificationController = $state.raw(null);
+  const notificationViews = new Map();
+  $effect(() => { if (notificationController) notificationController.reconcile(); });
   $effect(() => { if (helpViewer) { foreground; activeAppId; switching.switcher; presentation.pairing; fileDialogState.current; helpViewer.reconcile(); } });
   let services = $state.raw(null), serviceSources;
   let serviceLookup = $state.raw(null), serviceContext = $state.raw(null), servicePending = $state.raw(null), servicePreparation = $state.raw(null);
@@ -1214,8 +1220,15 @@
       activate: activateSpotlightSource,
       captureReturn: () => ({ snapshot: captureSessionDesktop(), appId: activeAppId,
         windowId: activeWindowId, window: windows.find(window => window.id === activeWindowId) ?? null }),
-      restoreReturn: restoreSpotlightReturn, dismissMenus: () => dismissMenuBar?.(),
+      restoreReturn: restoreTransientReturn, dismissMenus: () => dismissMenuBar?.(),
       settle: async () => { await tick(); await tick(); },
+      beforeOpen: async () => {
+        if (notificationPane) {
+          const result = await notificationController.handlers['notifications.close']({ centerId: notificationPane.centerId }, {});
+          if (result.status !== 'applied') return false;
+        }
+        return !disposed && spotlightInteractionsAvailable();
+      },
     });
     spotlightController = ownedSpotlight;
     Object.assign(handlers, ownedSpotlight.handlers);
@@ -1230,6 +1243,29 @@
       },
     });
     Object.assign(handlers, spotlightPreferencesController.handlers);
+  }
+  if (hasNotifications) {
+    const ownedNotifications = createNotificationCommands({
+      profile, namespace: untrack(() => `${windowNamespace || 'local'}-${crypto.randomUUID()}`),
+      alive: () => !disposed, available: notificationInteractionsAvailable,
+      getState: () => systemState.notifications, getSceneTime: () => macFiles.sceneTime,
+      canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
+      getPane: () => notificationPane, setPane: pane => { notificationPane = pane; },
+      getView: () => notificationViews.get(notificationPane?.centerId),
+      captureFocus: () => ({ snapshot: captureSessionDesktop(), appId: activeAppId,
+        windowId: activeWindowId, window: windows.find(window => window.id === activeWindowId) ?? null }),
+      restoreFocus: restoreTransientReturn, settle: async () => { await tick(); await tick(); },
+      beforeOpen: async () => {
+        if (spotlightPane) {
+          const result = await spotlightController.handlers['spotlight.close']({ spotlightId: spotlightPane.spotlightId }, {});
+          if (result.status !== 'applied') return false;
+        }
+        dismissMenuBar?.();
+        return !disposed && notificationInteractionsAvailable();
+      },
+    });
+    notificationController = ownedNotifications;
+    Object.assign(handlers, ownedNotifications.handlers);
   }
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
     profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
@@ -1330,6 +1366,7 @@
       ...(hasBluetooth ? { bluetooth: bluetoothController.targets() } : {}),
       ...(hasInput ? { input: inputController.targets() } : {}),
       ...(hasSpotlight ? { spotlight: spotlightController.summary() } : {}),
+      ...(hasNotifications ? { notifications: notificationController.summary() } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1346,6 +1383,7 @@
       ...(hasClock ? { clock: clockController.targets() } : {}),
       ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
       ...(hasBluetooth ? { bluetooth: bluetoothController.targets() } : {}),
+      ...(hasNotifications ? { notifications: notificationController.targets() } : {}),
       ...(hasAppearance ? { appearance: appearanceTargets(profile, appearanceState) } : {
         appearance: { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent,
           scope: 'full', highlight: null, customHighlight: false,
@@ -1613,9 +1651,14 @@
     return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view && !dashboardOpen;
   }
 
-  function spotlightInteractionsAvailable() {
-    return hasSpotlight && windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
+  function transientInteractionsAvailable() {
+    return windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
       && !servicePending && !switching.switcher && !presentation.pairing && !forceQuitConfirmation && !storageConfirmation;
+  }
+  function spotlightInteractionsAvailable() { return hasSpotlight && transientInteractionsAvailable(); }
+  function notificationInteractionsAvailable() { return hasNotifications && transientInteractionsAvailable(); }
+  function notificationNativeAvailable() {
+    return notificationInteractionsAvailable() && !spotlightPane && !menuBarState?.menuId;
   }
   function spotlightPrivacyFolders() {
     return macFiles.files.filter(file => file.kind === 'folder').map(file => {
@@ -1746,10 +1789,10 @@
     return result.status === 'applied'
       ? { status: 'applied', target: { appId, windowId: windowId ?? null, itemId: source.id } } : result;
   }
-  async function restoreSpotlightReturn(original, guard) {
+  async function restoreTransientReturn(original, guard) {
     await tick(); await tick();
     const token = original?.snapshot?.focus, node = token?.node;
-    if (!guard() || !spotlightInteractionsAvailable() || activeAppId !== original.appId
+    if (!guard() || !transientInteractionsAvailable() || activeAppId !== original.appId
       || activeWindowId !== original.windowId || (windows.find(window => window.id === original.windowId) ?? null) !== original.window
       || !node?.isConnected || !sceneRoot?.contains(node) || node.closest('[inert]')
       || !node.getClientRects().length || getComputedStyle(node).visibility !== 'visible'
@@ -1793,6 +1836,18 @@
     if (!spotlightPane || !spotlightInteractionsAvailable() || spotlightPane.busy
       || event.target?.closest?.('[data-spotlight-id], [data-spotlight-invoker]')) return;
     void commands.execute({ command: 'spotlight.close', target: { spotlightId: spotlightPane.spotlightId }, payload: { restoreFocus: false } });
+  }
+  function toggleNotifications() {
+    if (!notificationInteractionsAvailable()) return;
+    void commands.execute(notificationPane
+      ? { command: 'notifications.close', target: { centerId: notificationPane.centerId } }
+      : { command: 'notifications.open' });
+  }
+  function notificationOutside(event) {
+    if (!notificationPane || !notificationNativeAvailable()
+      || event.target?.closest?.('[data-notification-center-id], [data-notification-invoker]')) return;
+    void commands.execute({ command: 'notifications.close', target: { centerId: notificationPane.centerId },
+      payload: { restoreFocus: false } });
   }
 
   function getApplicationView(windowId) {
@@ -3612,6 +3667,7 @@
     bluetoothController?.clear();
     inputController?.clear();
     spotlightController?.clear();
+    notificationController?.clear();
     if (!reopenWindows) {
       // Close real native views using their existing lifecycle; never replace
       // the document/files/communications models with startup seed data.
@@ -4285,9 +4341,9 @@
     // global input. Session-native controls have their own command/focus owner.
     function listen(target, type, handler, capture = false) {
       const listener = event => {
-        // Spotlight owns its native field, not the underlying app's accelerators.
+        // Private overlays own their keyboard controls, not app accelerators.
         // Keep the existing global input-source and application-switching keys.
-        if (type === 'keydown' && event.target?.closest?.('[data-spotlight-id]')
+        if (type === 'keydown' && event.target?.closest?.('[data-spotlight-id], [data-notification-center-id]')
           && ![spotlightKeydown, inputSourceKeydown, switchingKeydown].includes(handler)) return;
         if (foreground && !event.target?.closest?.('[data-session-control], [data-session-control-root], [data-session-menu], [data-session-surface]')) handler(event);
       };
@@ -4297,6 +4353,7 @@
     const stopListeners = [
       listen(window, 'keydown', spotlightKeydown, true),
       listen(document, 'pointerdown', spotlightOutside, true),
+      listen(document, 'pointerdown', notificationOutside, true),
       listen(window, 'keydown', serviceKeydown, true),
       listen(window, 'keydown', event => helpView?.keydown(event), true),
       listen(sceneRoot, 'contextmenu', serviceContextMenu, true),
@@ -4348,6 +4405,7 @@
       bluetoothController?.clear();
       inputController?.dispose();
       spotlightController?.dispose(); spotlightViews.clear();
+      notificationController?.dispose(); notificationViews.clear();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -4963,6 +5021,8 @@
   viewState={desktopState}
   {...(hasServices ? { contextMenuItems: getDesktopContextMenuItems() } : {})}
   {...(hasSpotlight ? { spotlightOpen: Boolean(spotlightPane), spotlightAvailable: spotlightInteractionsAvailable(), onspotlight: toggleSpotlight } : {})}
+  {...(hasNotifications ? { notificationCenterId: notificationPane?.centerId ?? null,
+    notificationCenterAvailable: notificationInteractionsAvailable(), onnotifications: toggleNotifications } : {})}
   {desktopItems}
   {desktopDetails}
   {desktopStacks}
@@ -5092,6 +5152,17 @@
         registerView={view => { if (view) spotlightViews.set(spotlightId, view); else spotlightViews.delete(spotlightId); }} />
     </div>
   {/if}
+  {#if hasNotifications && notificationPane}
+    {@const centerId = notificationPane.centerId}
+    <div class="notification-placement" style:top={`${stageArea.menuHeight + 8}px`}
+      style:width={`${Math.max(1, Math.min(360, stageArea.width - 16))}px`}
+      style:height={`${Math.max(1, stageArea.height - stageArea.menuHeight - 16)}px`}
+      style:visibility={!notificationNativeAvailable() ? 'hidden' : undefined}>
+      <GoldenGateNotificationCenter pane={notificationPane} groups={notificationController.groups()} clock={clockContext}
+        foreground={notificationNativeAvailable()} execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+        registerView={view => { if (view) notificationViews.set(centerId, view); else notificationViews.delete(centerId); }} />
+    </div>
+  {/if}
 {#if hasWifi && wifiPresentation.join}
   <div class="status-sheet-backdrop">
     <GoldenGateWifiJoin pending={wifiPresentation.join} execute={commands.execute} {foreground} bind:this={wifiJoinView} />
@@ -5126,6 +5197,7 @@
 <style>
   .scene-root { position: absolute; inset: 0; }
   .spotlight-placement { position:absolute; z-index:25000; transform:translateX(-50%); }
+  .notification-placement { position:absolute; right:8px; z-index:25000; }
   .desktop-interaction-root { height:100%; }
   .status-sheet-backdrop { position:absolute; inset:0; z-index:30000; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:8px; background:#0003; overflow:hidden; }
   .help-placement { position:absolute; left:50%; transform:translateX(-50%); width:min(700px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:11500; display:flex; justify-content:center; }

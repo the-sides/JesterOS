@@ -12,6 +12,21 @@ import { applicationBundleId, createMacApplicationFiles } from '../frontend/src/
 import { finderPresentationDefaults, notesPresentationDefaults } from '../frontend/src/viewing-state.js';
 import { draftPreview, createCommunicationDraft, submitCommunicationDraft, communicationEntry } from '../frontend/src/communication-state.js';
 import { storageViewDefaults } from '../frontend/src/storage-model.js';
+import { postNotification, dismissNotification, clearNotifications } from '../frontend/src/notification-model.js';
+
+test('individually valid notification bodies cannot bypass the saved-session serialized budget', async () => {
+  const snapshot = fixture(), storage = memoryStorage(), model = snapshot.locals[0].scene.seed.system.notifications;
+  model.nextId = 3;
+  model.entries = Array.from({ length: 2 }, (_, index) => ({
+    id: `notification-${index + 1}`, appId: 'mail', title: 'Bounded record',
+    body: 'n'.repeat(1024 * 1024), createdAt: 0,
+  }));
+  const before = structuredClone(snapshot);
+  const handlers = commands({ storage, capture: async () => snapshot });
+  expect((await execute(handlers, 'save')).error.code).toBe('invalid_arguments');
+  expect(storage.calls).toEqual([]);
+  expect(snapshot).toEqual(before);
+});
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const bounds = () => ({ x: 140, y: 80, width: 848, height: 592, scale: 0.8 });
@@ -193,6 +208,78 @@ function memoryStorage(initial = null) {
 function commands({ storage = memoryStorage(), beforeCapture, capture = async () => fixture(), replace = async () => {}, available = () => true, selectedProfile = profile } = {}) {
   return createSavedSessionCommands({ profile: selectedProfile, available, storage: () => storage, beforeCapture, capture, replace });
 }
+
+test('explicit save and restore retain independent local notification bytes and never reuse dismissed or cleared identities', async () => {
+  const snapshot = fixture(true), storage = memoryStorage(), replacements = [];
+  const alex = snapshot.locals[0].scene.seed.system.notifications;
+  const casey = snapshot.locals[1].scene.seed.system.notifications;
+  const sceneTime = snapshot.locals[0].scene.seed.files.sceneTime;
+  postNotification(alex, profile, 'mail', { title: 'Literal 🎬', body: '\ufeff \r\n\u{1D11E} exact ' }, sceneTime, () => true);
+  postNotification(alex, profile, 'notes', { title: 'Dismiss me', body: '' }, sceneTime, () => true);
+  dismissNotification(alex, 'notification-2');
+  postNotification(casey, profile, 'calendar', { title: 'Clear me', body: '' }, sceneTime, () => true);
+  clearNotifications(casey);
+  const expected = structuredClone(snapshot);
+  const handlers = commands({ storage, capture: async () => snapshot, replace: async value => { replacements.push(value); } });
+  expect((await execute(handlers, 'save')).status).toBe('applied');
+  expect(JSON.parse(storage.values.get(savedSessionStorageKey(profile)))).toEqual(expected);
+  expect((await execute(handlers, 'restore')).status).toBe('applied');
+  expect(replacements[0]).toEqual(expected);
+  const restoredAlex = replacements[0].locals[0].scene.seed.system.notifications;
+  const restoredCasey = replacements[0].locals[1].scene.seed.system.notifications;
+  expect(restoredAlex).toEqual({ nextId: 3, entries: [
+    { id: 'notification-1', appId: 'mail', title: 'Literal 🎬', body: '\ufeff \r\n\u{1D11E} exact ', createdAt: sceneTime },
+  ] });
+  postNotification(restoredAlex, profile, 'mail', { title: 'Next Alex', body: '' }, sceneTime, () => true);
+  postNotification(restoredCasey, profile, 'calendar', { title: 'Next Casey', body: '' }, sceneTime, () => true);
+  expect(restoredAlex.entries.map(entry => entry.id).sort()).toEqual(['notification-1', 'notification-3']);
+  expect(restoredCasey.entries.map(entry => entry.id)).toEqual(['notification-2']);
+  expect(snapshot).toEqual(expected);
+});
+
+test('invalid saved notification models and private panes reject atomically without replacing or overwriting storage', async () => {
+  const valid = fixture(true), storage = memoryStorage(JSON.stringify(valid)), replacements = [];
+  valid.locals[0].scene.seed.system.notifications = { nextId: 5, entries: [
+    { id: 'notification-4', appId: 'notes', title: 'Saved', body: 'literal body', createdAt: 0 },
+  ] };
+  for (const change of [
+    value => { delete value.baseline.seed.system.notifications; },
+    value => { delete value.locals[0].scene.seed.system.notifications; },
+    value => { delete value.locals[1].scene.seed.system.notifications; },
+    value => { value.locals[0].scene.seed.system.notifications.nextId = 4; },
+    value => { value.locals[0].scene.seed.system.notifications.entries[0].appId = 'notepad'; },
+    value => { value.locals[0].scene.seed.system.notifications.entries[0].body = null; },
+    value => { value.locals[0].scene.seed.system.notifications.entries[0].expanded = true; },
+    value => { value.locals[0].scene.seed.system.notifications.entries.length = 2; },
+    value => { value.locals[0].scene.notificationPane = { centerId: 'center-1', expandedGroupIds: ['notes'] }; },
+    value => { value.locals[0].scene.views.messages.scroll.push({ key: 'notification-center', top: 0, left: 0 }); },
+    value => { value.locals.push({ userId: 'guest', scene: root() }); },
+  ]) {
+    const candidate = structuredClone(valid); change(candidate);
+    const before = structuredClone(candidate), stored = storage.values.get(savedSessionStorageKey(profile));
+    const handlers = commands({ storage, capture: async () => candidate, replace: async value => { replacements.push(value); } });
+    expect((await execute(handlers, 'save')).error.code).toBe('invalid_arguments');
+    expect(storage.values.get(savedSessionStorageKey(profile))).toBe(stored);
+    storage.values.set(savedSessionStorageKey(profile), JSON.stringify(candidate));
+    expect((await execute(handlers, 'restore')).error.code).toBe('invalid_arguments');
+    expect(replacements).toHaveLength(0);
+    expect(candidate).toEqual(before);
+    storage.values.set(savedSessionStorageKey(profile), stored);
+  }
+  let reads = 0;
+  for (const level of ['system', 'leaf', 'array', 'entry']) {
+    const candidate = structuredClone(valid), system = candidate.locals[0].scene.seed.system;
+    const [owner, key] = level === 'system' ? [system, 'notifications']
+      : level === 'leaf' ? [system.notifications, 'entries']
+        : level === 'array' ? [system.notifications.entries, '0']
+          : [system.notifications.entries[0], 'body'];
+    Object.defineProperty(owner, key, { enumerable: true, get() { reads++; throw new Error('Getter must not run'); } });
+    const handlers = commands({ storage, capture: async () => candidate });
+    expect((await execute(handlers, 'save')).error.code).toBe('invalid_arguments');
+  }
+  expect(reads).toBe(0);
+  expect(storage.calls.every(([action]) => action === 'get')).toBe(true);
+});
 const execute = (handlers, action, target = {}, payload = {}) => handlers[`scene.session.${action}`](target, payload);
 
 function localDraft(scene, kind, fields, attachments = []) {

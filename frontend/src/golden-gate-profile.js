@@ -16,7 +16,7 @@ export const goldenGateProfile = {
     'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.menu-bar', 'shell.application-menu', 'shell.appearance',
     'shell.file-workflows', 'shell.edit-workflows', 'shell.view-workflows', 'shell.window-extensions',
     'shell.help-workflows', 'shell.services-workflows', 'shell.apple-menu', 'status.wifi', 'status.battery', 'status.clock', 'status.sound', 'status.bluetooth', 'status.input',
-    'shell.spotlight',
+    'shell.spotlight', 'shell.notification-center',
     'scene.profile-selection', 'scene.seed', 'scene.saved-session', 'session.fictional', 'session.power', 'notes.plain-text', 'notes.presentation', 'messages.sample',
   ],
   applications: {

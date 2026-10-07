@@ -10,6 +10,17 @@ import { draftPreview, createCommunicationDraft, submitCommunicationDraft } from
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const fixture = () => createDefaultSceneSeed(profile);
 const validate = seed => validateSceneSeed(seed, profile);
+
+test('notification bodies participate in the complete seed aggregate text budget', () => {
+  const seed = fixture();
+  seed.system.notifications = { nextId: 5, entries: Array.from({ length: 4 }, (_, index) => ({
+    id: `notification-${index + 1}`, appId: 'mail', title: 'Bounded record',
+    body: 'n'.repeat(1024 * 1024), createdAt: seed.files.sceneTime,
+  })) };
+  const before = structuredClone(seed);
+  expect(validate(seed).ok).toBe(false);
+  expect(seed).toEqual(before);
+});
 function commitDraft(seed, preview) {
   const result = createCommunicationDraft(seed.communications, preview, () => true, seed.files.sceneTime);
   if (result.status === 'applied') seed.files.sceneTime = Math.max(seed.files.sceneTime, seed.communications.timeBase);
@@ -88,6 +99,44 @@ test('seed replacement preserves complete local draft bytes and rejects invalid 
   expect(validate(transparentProxy).ok).toBe(false);
   expect((await handlers['scene.replaceSeed']({}, { seed: transparentProxy })).status).toBe('rejected');
   expect(replacements).toHaveLength(1);
+});
+
+test('replacement accepts canonical notifications but rejects incomplete, malformed and accessor records before disposal', async () => {
+  const seed = fixture(), replacements = [];
+  seed.system.notifications = { nextId: 10, entries: [
+    { id: 'notification-9', appId: 'mail', title: 'Exact 🎬', body: ' \r\nliteral body ', createdAt: seed.files.sceneTime },
+  ] };
+  const handlers = createSceneSeedCommands({ profile, available: () => true,
+    replaceScene: async value => { replacements.push(value); } });
+  expect((await handlers['scene.replaceSeed']({}, { seed })).status).toBe('applied');
+  expect(replacements[0].system.notifications).toEqual(seed.system.notifications);
+  for (const change of [
+    value => { delete value.system.notifications; },
+    value => { value.system.notifications.nextId = 9; },
+    value => { value.system.notifications.entries[0].appId = 'notepad'; },
+    value => { value.system.notifications.entries[0].title = 'Two\nlines'; },
+    value => { value.system.notifications.entries[0].createdAt = -1; },
+    value => { value.system.notifications.entries[0].url = 'https://example.test'; },
+    value => { value.system.notifications.entries.push({ ...value.system.notifications.entries[0] }); },
+    value => { value.system.notifications.entries.length = 2; },
+  ]) {
+    const candidate = structuredClone(seed); change(candidate);
+    const before = structuredClone(candidate);
+    expect((await handlers['scene.replaceSeed']({}, { seed: candidate })).error.code).toBe('invalid_arguments');
+    expect(candidate).toEqual(before);
+    expect(replacements).toHaveLength(1);
+  }
+  let reads = 0;
+  for (const level of ['system', 'entry', 'array']) {
+    const candidate = structuredClone(seed);
+    const [owner, key] = level === 'system' ? [candidate.system, 'notifications']
+      : level === 'entry' ? [candidate.system.notifications.entries[0], 'body']
+        : [candidate.system.notifications.entries, '0'];
+    Object.defineProperty(owner, key, { enumerable: true, get() { reads++; throw new Error('Getter must not run'); } });
+    expect((await handlers['scene.replaceSeed']({}, { seed: candidate })).error.code).toBe('invalid_arguments');
+    expect(replacements).toHaveLength(1);
+  }
+  expect(reads).toBe(0);
 });
 
 test('complete custom seeds accept empty models and independent null note selection without merging', () => {

@@ -172,6 +172,11 @@ export function createSpotlightCommands(ctx) {
       let pane = owned(); const reused = !!pane;
       if (pane?.busy) return fail('disabled');
       if (!pane) {
+        if (ctx.beforeOpen) {
+          reconcile();
+          const generation = epoch, version = revision;
+          if (await ctx.beforeOpen() !== true || !available() || epoch !== generation || revision !== version || owned()) return fail('unavailable');
+        }
         const token = ctx.captureReturn(); ctx.dismissMenus(); epoch++; revision++; wasAvailable = true;
         ownerId = `${namespace}-spotlight-${++sequence}`; returnToken = token; owners.clear();
         ctx.setPane({ spotlightId: ownerId, query: '', selectedResultId: null, results: [], suggestions: [], answer: null,
