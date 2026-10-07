@@ -1,8 +1,9 @@
 <script>
   import { onMount, onDestroy, tick, untrack } from 'svelte';
   import GoldenGateIcon from './GoldenGateIcon.svelte';
+  import GoldenGateWidgets from './GoldenGateWidgets.svelte';
 
-  let { pane, groups, clock, foreground = true, execute, registerView } = $props();
+  let { pane, groups, clock, widgetState, widgetUi, foreground = true, execute, registerView } = $props();
   let panel = $state(null), scroller = $state(null), nativeError = $state(null);
   let disposed = false, requestSequence = 0, held = null, suppressClick = null;
   const dateFormat = $derived(new Intl.DateTimeFormat('en-US', { timeZone: clock.timeZone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: !clock.use24Hour }));
@@ -37,7 +38,9 @@
     const controls = nodes();
     return { controlIds: controls.map(node => node.dataset.notificationControl),
       focusedControl: controls.find(node => node.ownerDocument.activeElement === node)?.dataset.notificationControl ?? null,
-      scroll: position() };
+      scroll: position(),
+      widgetScrolls: available() ? [...panel.querySelectorAll('[data-widget-id]')].filter(mounted)
+        .map(node => ({ widgetId: node.dataset.widgetId, top: node.scrollTop, left: node.scrollLeft })) : [] };
   }
   async function prepare(id, guard) {
     const owner = lease(), original = control(id);
@@ -64,7 +67,16 @@
     owner.scroller.scrollTop = offsets.top; owner.scroller.scrollLeft = offsets.left;
     return valid(owner, guard) ? position() : null;
   }
-  const facade = { available, describe, prepare, focus, scroll };
+  async function scrollWidget(widgetId, offsets, guard) {
+    const owner = lease(), original = control(`widget:${widgetId}:card`);
+    if (!original || !valid(owner, guard) || !Number.isFinite(offsets?.top) || !Number.isFinite(offsets?.left)
+      || offsets.top < 0 || offsets.left < 0 || offsets.top > Number.MAX_SAFE_INTEGER || offsets.left > Number.MAX_SAFE_INTEGER) return null;
+    await tick();
+    if (!valid(owner, guard) || control(`widget:${widgetId}:card`) !== original) return null;
+    original.scrollTop = offsets.top; original.scrollLeft = offsets.left;
+    return valid(owner, guard) ? { top: original.scrollTop, left: original.scrollLeft } : null;
+  }
+  const facade = { available, describe, prepare, focus, scroll, scrollWidget };
   onMount(() => { registerView(facade); });
   function cancelHold() { if (held) clearTimeout(held.timer); held = null; }
   onDestroy(() => { disposed = true; cancelHold(); registerView(null); });
@@ -84,6 +96,16 @@
     } catch (cause) {
       if (current(owner) && sequence === requestSequence) nativeError = cause?.message ?? 'The notification request could not be completed.';
       return null;
+    }
+  }
+  async function editWidgets() {
+    const owner = lease();
+    if (!available()) return;
+    try {
+      const result = await execute('widgets.editor.open', { centerId: owner.centerId }, {});
+      if (current(owner)) nativeError = result.status === 'rejected' ? result.error.message : null;
+    } catch (cause) {
+      if (current(owner)) nativeError = cause?.message ?? 'The widget editor could not be opened.';
     }
   }
   function holdRemove(event, groupId, notificationId) {
@@ -169,6 +191,10 @@
         {/if}
       </article>
     {/each}
+    {#if widgetState && widgetUi}
+      <GoldenGateWidgets state={widgetState} {clock} centerId={pane.centerId} ui={widgetUi} {foreground} {execute} onerror={message => nativeError = message} />
+      <div class="widget-actions"><button data-notification-control="edit-widgets" onclick={editWidgets}>Edit Widgets</button></div>
+    {/if}
   </div>
 </div>
 
@@ -207,5 +233,7 @@
   .empty { padding:30px 18px; text-align:center; border-radius:24px; background:var(--notification-material); backdrop-filter:blur(25px); color:inherit; }
   .empty span { font-size:28px; opacity:.5; }.empty p { margin:12px 0 0; }
   .error { flex-shrink:0; margin:0 5px 9px; padding:8px; border-radius:12px; color:#b3261e; background:#fff5f1; }
+  .widget-actions { display:flex; justify-content:center; margin:18px 0 0; }
+  .widget-actions button { padding:7px 16px; border-radius:14px; background:var(--notification-material); border:1px solid var(--appearance-light-edge,#fff8); backdrop-filter:blur(25px); font-size:12px; box-shadow:0 2px 8px #0002; }
   @media (prefers-reduced-motion:reduce) { .notification-center { scroll-behavior:auto; } }
 </style>

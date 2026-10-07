@@ -12,6 +12,7 @@ import { finderPresentationSchema, notesPresentationSchema } from './viewing-sta
 import { communicationEntry } from './communication-state.js';
 import { storageViewSchema } from './storage-catalog.js';
 import { storageInventory, storageRows } from './storage-model.js';
+import { widgetDataApps, widgetDataScope } from './notification-widget-model.js';
 
 const PROFILE_ID = 'macos-golden-gate-27.0.1';
 const STORAGE_KEY = `jesteros:${PROFILE_ID}:saved-session:v1`;
@@ -35,11 +36,11 @@ const bounds = object({ x: number(-MAX_COUNTER), y: number(-MAX_COUNTER), width:
 const desktopId = { ...identity, pattern: '^desktop-[1-9][0-9]*$' };
 const scrollPosition = object({ top: number(), left: number() });
 const scrollKey = choice('notes-list', 'notes-body', 'messages-conversations', 'messages-thread', 'finder-contents',
-  'window-content', 'settings-dock', 'settings-appearance', 'settings-about', 'settings-displays', 'settings-storage', 'settings-storage-list', 'settings-wifi', 'settings-sound', 'settings-bluetooth', 'settings-keyboard', 'settings-spotlight', 'sound-player', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel', 'system-about', 'system-force-quit', 'system-information', 'system-coverage');
+  'window-content', 'settings-dock', 'settings-appearance', 'settings-about', 'settings-displays', 'settings-storage', 'settings-storage-list', 'settings-wifi', 'settings-sound', 'settings-bluetooth', 'settings-keyboard', 'settings-spotlight', 'sound-player', 'widget-data', 'desktop-info', 'desktop-view-options', 'application-about', 'application-settings', 'printing-queue', 'service-panel', 'system-about', 'system-force-quit', 'system-information', 'system-coverage');
 const selectionKey = choice('notes-title', 'notes-body', 'notes-search',
   'service-name', 'service-email', 'service-phone', 'service-notes', 'service-to', 'service-subject', 'service-body', 'settings-computer-name');
 const viewToken = object({
-  scroll: array(object({ key: scrollKey, top: number(), left: number(), recordId: nullable(identity) }, ['key', 'top', 'left']), 10),
+  scroll: array(object({ key: scrollKey, top: number(), left: number(), recordId: nullable(identity), scopeId: string(1024, 1) }, ['key', 'top', 'left']), 10),
   selections: array(object({ key: selectionKey, noteId: nullable(identity), recordId: identity, start: counter(), end: counter(),
     direction: choice('forward', 'backward', 'none') }, ['key', 'noteId', 'start', 'end', 'direction']), 7),
   focusKey: nullable(selectionKey),
@@ -161,9 +162,12 @@ function validateView(view, window, seed) {
             : window.appId === 'printcenter' ? ['printing-queue'] : window.appId === 'systeminformation' ? ['system-information'] : ['window-content'];
   if (window.utilityKind || (window.appId !== 'notes' && window.appId !== 'messages')) allowed.push('window-content');
   if (!window.utilityKind && window.appId === 'settings' && window.settingsPane === 'storage' && window.storageView) allowed.push('settings-storage-list');
+  if (!window.utilityKind && widgetDataApps.includes(window.appId)) allowed.push('widget-data');
   if (view.scroll.some(scroll => !allowed.includes(scroll.key)
     || (scroll.key === 'service-panel' ? !Object.hasOwn(scroll, 'recordId') || scroll.recordId !== (entry?.id ?? null)
-      : Object.hasOwn(scroll, 'recordId')))) return false;
+      : Object.hasOwn(scroll, 'recordId'))
+    || (scroll.key === 'widget-data' ? scroll.scopeId !== widgetDataScope(window.appId, seed.system.widgets.selected)
+      : Object.hasOwn(scroll, 'scopeId')))) return false;
   if (service) {
     if (view.focusKey !== null && !view.selections.some(selection => selection.key === view.focusKey)) return false;
     return view.selections.every(selection => entry !== null && selection.noteId === null && selection.recordId === entry.id

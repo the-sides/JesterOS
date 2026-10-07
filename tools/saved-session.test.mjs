@@ -13,6 +13,7 @@ import { finderPresentationDefaults, notesPresentationDefaults } from '../fronte
 import { draftPreview, createCommunicationDraft, submitCommunicationDraft, communicationEntry } from '../frontend/src/communication-state.js';
 import { storageViewDefaults } from '../frontend/src/storage-model.js';
 import { postNotification, dismissNotification, clearNotifications } from '../frontend/src/notification-model.js';
+import { widgetsDefaults, addWidget, removeWidget, configureWidget, setWidgetReminderCompleted, widgetDataScope } from '../frontend/src/notification-widget-model.js';
 
 test('individually valid notification bodies cannot bypass the saved-session serialized budget', async () => {
   const snapshot = fixture(), storage = memoryStorage(), model = snapshot.locals[0].scene.seed.system.notifications;
@@ -89,6 +90,43 @@ function renameWindow(scene, window, id) {
   if (scene.activeWindowId === previous) scene.activeWindowId = id;
   for (const key of ['activationWindowIds', 'creationWindowIds']) scene.switching[key] = scene.switching[key].map(value => value === previous ? id : value);
 }
+
+test('saved widget-data read position cannot be borrowed by a different source or ordinary app', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene, widgets = scene.seed.system.widgets;
+  const [first, second] = widgets.sources.reminderLists;
+  widgets.selected.reminderListId = first.id;
+  const window = addWindow(scene, 'reminders');
+  const scroll = { key: 'widget-data', scopeId: widgetDataScope('reminders', widgets.selected), top: 96, left: 0 };
+  scene.views[window.id].scroll = [scroll];
+  expect(validate(snapshot).ok).toBe(true);
+  for (const change of [
+    candidate => { candidate.locals[0].scene.seed.system.widgets.selected.reminderListId = second.id; },
+    candidate => {
+      const owner = candidate.locals[0].scene, other = addWindow(owner, 'stocks');
+      owner.views[other.id].scroll = [structuredClone(scroll)];
+    },
+    candidate => { candidate.locals[0].scene.views[window.id].scroll[0].key = 'window-content'; },
+  ]) {
+    const candidate = structuredClone(snapshot); change(candidate);
+    const before = structuredClone(candidate);
+    expect(validate(candidate).ok).toBe(false);
+    expect(candidate).toEqual(before);
+  }
+});
+
+test('closed Clock read position is bound to the ordered selected cities, not only membership', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene, widgets = scene.seed.system.widgets;
+  widgets.selected.clockCityIds = widgets.sources.clockCities.slice(0, 2).map(city => city.id);
+  const view = { scroll: [{ key: 'widget-data', scopeId: widgetDataScope('clock', widgets.selected), top: 72, left: 0 }], selections: [], focusKey: null };
+  remember(scene, 'clock', {}, view);
+  expect(validate(snapshot).ok).toBe(true);
+  widgets.selected.clockCityIds.reverse();
+  const before = structuredClone(snapshot);
+  expect(validate(snapshot).ok).toBe(false);
+  expect(snapshot).toEqual(before);
+  view.scroll[0].scopeId = widgetDataScope('clock', widgets.selected);
+  expect(validate(snapshot).ok).toBe(true);
+});
 
 test('saved Spotlight pane and semantic scroll belong only to their exact ordinary live or closed Settings owner', () => {
   const snapshot = fixture(), scene = snapshot.locals[0].scene;
@@ -898,5 +936,53 @@ test('saved system utilities retain owned scroll and running-app selection witho
   ]) {
     const bad = structuredClone(snapshot); mutate(bad.locals[0].scene);
     expect(validate(bad).ok).toBe(false);
+  }
+});
+
+test('widget leaves round-trip independently across locals and never reuse removed allocations', async () => {
+  const snapshot = fixture(true), storage = memoryStorage(), replacements = [];
+  const alex = snapshot.locals[0].scene.seed.system.widgets;
+  const casey = snapshot.locals[1].scene.seed.system.widgets;
+  addWidget(alex, 'clock-city', 'small', () => true);
+  configureWidget(alex, 'widget-3', { locationId: 'cedar-creek', unit: 'fahrenheit' }, () => true);
+  setWidgetReminderCompleted(alex, 'reminder-2', true, () => true);
+  removeWidget(alex, 'widget-4', () => true);
+  expect(casey).toEqual(widgetsDefaults(profile));
+  const expected = structuredClone(snapshot);
+  const handlers = commands({ storage, capture: async () => snapshot, replace: async value => { replacements.push(value); } });
+  expect((await execute(handlers, 'save')).status).toBe('applied');
+  expect(JSON.parse(storage.values.get(savedSessionStorageKey(profile)))).toEqual(expected);
+  expect((await execute(handlers, 'restore')).status).toBe('applied');
+  const restoredAlex = replacements[0].locals[0].scene.seed.system.widgets;
+  expect(restoredAlex.nextId).toBe(8);
+  expect(restoredAlex.instances.map(row => row.id)).toEqual(['widget-1', 'widget-2', 'widget-3', 'widget-5', 'widget-6', 'widget-7']);
+  expect(restoredAlex.sources.reminders.find(row => row.id === 'reminder-2').completed).toBe(true);
+  expect(restoredAlex.sources.reminderLists).toHaveLength(2);
+  expect(replacements[0].locals[1].scene.seed.system.widgets).toEqual(widgetsDefaults(profile));
+  expect(addWidget(restoredAlex, 'date', 'small', () => true).target.widgetId).toBe('widget-8');
+  expect(snapshot).toEqual(expected);
+});
+
+test('corrupted saved widget leaves reject save and restore atomically without overwriting storage', async () => {
+  const valid = fixture(), storage = memoryStorage(JSON.stringify(valid)), replacements = [];
+  for (const change of [
+    value => { delete value.locals[0].scene.seed.system.widgets; },
+    value => { delete value.baseline.seed.system.widgets; },
+    value => { value.locals[0].scene.seed.system.widgets.instances[0].kind = 'calculator'; },
+    value => { value.locals[0].scene.seed.system.widgets.nextId = 6; },
+    value => { value.locals[0].scene.seed.system.widgets.selected.weatherLocationId = 'missing-location'; },
+    value => { value.locals[0].scene.seed.system.widgets.sources.reminders.length = 6; },
+    value => { value.locals[0].scene.seed.system.widgets.instances[1].configuration.unit = 'kelvin'; },
+  ]) {
+    const candidate = structuredClone(valid); change(candidate);
+    const before = structuredClone(candidate), stored = storage.values.get(savedSessionStorageKey(profile));
+    const handlers = commands({ storage, capture: async () => candidate, replace: async value => { replacements.push(value); } });
+    expect((await execute(handlers, 'save')).error.code).toBe('invalid_arguments');
+    expect(storage.values.get(savedSessionStorageKey(profile))).toBe(stored);
+    storage.values.set(savedSessionStorageKey(profile), JSON.stringify(candidate));
+    expect((await execute(handlers, 'restore')).error.code).toBe('invalid_arguments');
+    expect(replacements).toHaveLength(0);
+    expect(candidate).toEqual(before);
+    storage.values.set(savedSessionStorageKey(profile), stored);
   }
 });

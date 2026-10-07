@@ -348,3 +348,39 @@ test('Spotlight exclusions validate real retained and generated folder graph ide
     expect(candidate).toEqual(before);
   }
 });
+
+test('complete seeds carry canonical widget leaves and reject corrupted widget data atomically', () => {
+  const seed = fixture();
+  expect(validate(seed)).toEqual({ ok: true });
+  expect(seed.system.widgets.instances.map(row => row.kind)).toEqual(['date', 'calendar', 'weather', 'reminders', 'stock-symbol', 'clock-world']);
+  seed.system.widgets = {
+    nextId: 2, instances: [{ id: 'widget-1', kind: 'date', size: 'small', configuration: {} }],
+    sources: { calendars: [], events: [], reminderLists: [], reminders: [], weather: [], stocks: [], clockCities: [] },
+    selected: { calendarEventId: null, reminderListId: null, weatherLocationId: null, stockSymbolId: null, clockCityIds: [] },
+  };
+  expect(validate(seed)).toEqual({ ok: true });
+  for (const change of [
+    value => { delete value.system.widgets; },
+    value => { value.system.widgets.instances[0].id = 'widget-missing'; },
+    value => { value.system.widgets.instances[0].size = 'large'; },
+    value => { value.system.widgets.instances[0].configuration = { locationId: null }; },
+    value => { value.system.widgets.nextId = 1; },
+    value => { value.system.widgets.selected.calendarEventId = 'event-missing'; },
+  ]) {
+    const candidate = structuredClone(seed); change(candidate);
+    const before = structuredClone(candidate);
+    expect(validate(candidate).ok).toBe(false);
+    expect(candidate).toEqual(before);
+  }
+  let reads = 0;
+  for (const level of ['leaf', 'array', 'instance', 'row']) {
+    const candidate = structuredClone(seed);
+    const [owner, key] = level === 'leaf' ? [candidate.system, 'widgets']
+      : level === 'array' ? [candidate.system.widgets, 'instances']
+        : level === 'instance' ? [candidate.system.widgets.instances[0], 'kind']
+          : [candidate.system.widgets.sources, 'calendars'];
+    Object.defineProperty(owner, key, { enumerable: true, get() { reads++; throw new Error('Getter must not run'); } });
+    expect(validate(candidate).ok).toBe(false);
+  }
+  expect(reads).toBe(0);
+});

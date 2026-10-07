@@ -88,6 +88,10 @@
   import GoldenGateSpotlightSettings from './GoldenGateSpotlightSettings.svelte';
   import { createNotificationCommands } from './notification-commands.js';
   import GoldenGateNotificationCenter from './GoldenGateNotificationCenter.svelte';
+  import { createNotificationWidgetCommands } from './notification-widget-commands.js';
+  import GoldenGateWidgetGallery from './GoldenGateWidgetGallery.svelte';
+  import GoldenGateWidgetData from './GoldenGateWidgetData.svelte';
+  import { widgetDataApps, widgetDataScope } from './notification-widget-model.js';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -143,6 +147,7 @@
   const hasInput = profile.capabilities.includes('status.input');
   const hasSpotlight = profile.capabilities.includes('shell.spotlight');
   const hasNotifications = profile.capabilities.includes('shell.notification-center');
+  const hasWidgets = profile.capabilities.includes('shell.notification-widgets');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
@@ -197,6 +202,10 @@
   let notificationPane = $state(null), notificationController = $state.raw(null);
   const notificationViews = new Map();
   $effect(() => { if (notificationController) notificationController.reconcile(); });
+  const widgetUi = $state({ editor: null, editingWidgetId: null, contextWidgetId: null, scrolls: {} });
+  let widgetController = $state.raw(null), widgetOpening = $state.raw(null);
+  const widgetEditorViews = new Map(), widgetDataViews = new Map();
+  $effect(() => { if (widgetController) widgetController.reconcile(); });
   $effect(() => { if (helpViewer) { foreground; activeAppId; switching.switcher; presentation.pairing; fileDialogState.current; helpViewer.reconcile(); } });
   let services = $state.raw(null), serviceSources;
   let serviceLookup = $state.raw(null), serviceContext = $state.raw(null), servicePending = $state.raw(null), servicePreparation = $state.raw(null);
@@ -1267,6 +1276,22 @@
     notificationController = ownedNotifications;
     Object.assign(handlers, ownedNotifications.handlers);
   }
+  if (hasWidgets) {
+    const ownedWidgets = createNotificationWidgetCommands({
+      profile, namespace: untrack(() => `${windowNamespace || 'local'}-${crypto.randomUUID()}`),
+      alive: () => !disposed, available: notificationNativeAvailable,
+      getState: () => systemState.widgets, getUi: () => widgetUi,
+      getCenter: () => notificationPane, getCenterView: () => notificationViews.get(notificationPane?.centerId),
+      getEditorView: editorId => widgetEditorViews.get(editorId),
+      getDataOwner: widgetDataOwner, getDataView: windowId => widgetDataViews.get(windowId),
+      getDataTargets: widgetDataTargets, openData: openWidgetData,
+      closeCenter: pane => { if (notificationPane === pane) notificationController.clear(); },
+      canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
+      settle: async () => { await tick(); await tick(); },
+    });
+    widgetController = ownedWidgets;
+    Object.assign(handlers, ownedWidgets.handlers);
+  }
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
     profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
     getRunningAppIds: () => runningAppIds,
@@ -1367,6 +1392,7 @@
       ...(hasInput ? { input: inputController.targets() } : {}),
       ...(hasSpotlight ? { spotlight: spotlightController.summary() } : {}),
       ...(hasNotifications ? { notifications: notificationController.summary() } : {}),
+      ...(hasWidgets ? { widgets: widgetController.summary() } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1384,6 +1410,7 @@
       ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
       ...(hasBluetooth ? { bluetooth: bluetoothController.targets() } : {}),
       ...(hasNotifications ? { notifications: notificationController.targets() } : {}),
+      ...(hasWidgets ? { widgets: widgetController.targets() } : {}),
       ...(hasAppearance ? { appearance: appearanceTargets(profile, appearanceState) } : {
         appearance: { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent,
           scope: 'full', highlight: null, customHighlight: false,
@@ -1845,9 +1872,79 @@
   }
   function notificationOutside(event) {
     if (!notificationPane || !notificationNativeAvailable()
-      || event.target?.closest?.('[data-notification-center-id], [data-notification-invoker]')) return;
+      || event.target?.closest?.('[data-notification-center-id], [data-notification-invoker], [data-widget-editor-id]')) return;
     void commands.execute({ command: 'notifications.close', target: { centerId: notificationPane.centerId },
       payload: { restoreFocus: false } });
+  }
+  function widgetGalleryBounds() {
+    const width = Math.max(1, Math.min(860, stageArea.width - 16));
+    const height = Math.max(1, Math.min(440, stageArea.height - stageArea.menuHeight - 16));
+    return { left: 8, top: Math.max(stageArea.menuHeight + 8, stageArea.height - height - 8), width, height };
+  }
+  function widgetDataAvailable(window) {
+    return hasWidgets && notificationNativeAvailable() && !spotlightPane
+      && (!notificationPane || Boolean(widgetOpening)) && activeWindowId === window.id
+      && activeAppId === window.appId && windowInteractive(window) && !pendingQuitAppIds.includes(window.appId);
+  }
+  function widgetDataOwner(windowId) {
+    const window = windows.find(entry => entry.id === windowId && !entry.utilityKind && widgetDataApps.includes(entry.appId));
+    return window && widgetDataAvailable(window) ? { window, windowId, appId: window.appId } : null;
+  }
+  function widgetDataTargets() {
+    return windows.filter(window => !window.utilityKind && widgetDataApps.includes(window.appId)).map(window => {
+      const view = widgetDataViews.get(window.id), available = Boolean(widgetDataOwner(window.id) && view?.available());
+      const actual = available ? view.describe() : null;
+      return { appId: window.appId, windowId: window.id, available,
+        controlIds: actual?.controlIds ?? [], focusedControl: actual?.focusedControl ?? null, scroll: actual?.scroll ?? null };
+    });
+  }
+  async function openWidgetData(selection, guard, commitSelection) {
+    const stale = () => rejected('stale_target', 'The original widget source or destination has retired.');
+    if (widgetOpening || !guard()) return stale();
+    if (workflowTextSize() + systemRecentTextDelta(systemState, 'applications', selection.appId) > 4 * 1024 * 1024)
+      return rejected('limit_exceeded', 'Opening the widget source exceeds the complete-scene history budget.');
+    const snapshot = captureWindowPreparation();
+    // A destination rollback owns its windows, not asynchronously arriving
+    // notifications or other system records. Keep canonical leaf identities.
+    snapshot.system = null;
+    const originalSelected = systemState.widgets.selected, previousSelected = $state.snapshot(originalSelected);
+    const preparation = { appId: selection.appId, windowId: null, snapshot, createdIds: [] };
+    widgetOpening = preparation;
+    let committedSelection = null, completed = false;
+    try {
+      const result = await handlers['app.open']({ appId: selection.appId }, {});
+      if (result.status !== 'applied') return result;
+      preparation.windowId = result.target.windowId;
+      if (!snapshot.windows.some(window => window.id === preparation.windowId)) preparation.createdIds.push(preparation.windowId);
+      await tick(); await tick();
+      const owner = widgetDataOwner(preparation.windowId), view = widgetDataViews.get(preparation.windowId);
+      const current = () => guard() && widgetOpening === preparation
+        && widgetDataOwner(preparation.windowId)?.window === owner?.window && widgetDataViews.get(preparation.windowId) === view;
+      if (!owner || !view?.available() || !current() || await view.prepare('panel', current) !== true || !current()) return stale();
+      const selected = commitSelection();
+      if (selected.status !== 'applied') return selected;
+      committedSelection = systemState.widgets.selected;
+      await tick(); await tick();
+      // Canonical selection is our commit, so the precommit source snapshot is
+      // intentionally spent. Destination identity/foreground remain required.
+      const destinationCurrent = () => !disposed && widgetOpening === preparation && notificationNativeAvailable()
+        && widgetDataOwner(preparation.windowId)?.window === owner.window && widgetDataViews.get(preparation.windowId) === view;
+      ownedWindowFocus++;
+      try {
+        if (!destinationCurrent() || !view.available() || await view.focus('panel', destinationCurrent) !== true
+          || !destinationCurrent() || view.describe().focusedControl !== 'panel') return stale();
+      } finally { ownedWindowFocus--; }
+      completed = true;
+      return { status: 'applied', target: { appId: selection.appId, windowId: preparation.windowId } };
+    } finally {
+      if (!completed) {
+        if (committedSelection && systemState.widgets.selected === committedSelection) {
+          Object.assign(originalSelected, previousSelected); systemState.widgets.selected = originalSelected;
+        }
+        await rollbackWindowPreparation(preparation, guard);
+      }
+      if (widgetOpening === preparation) widgetOpening = null;
+    }
   }
 
   function getApplicationView(windowId) {
@@ -2474,6 +2571,8 @@
     const entry = hasServices && !window.utilityKind && ['contacts', 'mail', 'messages'].includes(window.appId)
       ? communicationEntry(communicationsState, window.appId) : null;
     return { noteId: notesState.selectedId, recordId: entry?.id ?? null, fields: entry?.fields ?? null,
+      widgetScope: hasWidgets && !window.utilityKind && widgetDataApps.includes(window.appId)
+        ? widgetDataScope(window.appId, systemState.widgets.selected) : null,
       computerName: hasAppleMenu && !window.utilityKind && window.appId === 'settings' && window.settingsPane === 'about'
         ? systemState.computerName : null, ...extra };
   }
@@ -3586,7 +3685,7 @@
   // Notes and Services commit edits into their canonical scene records. A
   // rejected/pending native edit or export must be resolved before sign-out.
   function canLeaveScene() {
-    if (disposed || !initialized || utilityPreparation || servicePreparation || servicePending
+    if (disposed || !initialized || utilityPreparation || servicePreparation || servicePending || widgetOpening
       || presentation.pairing || bluetoothPresentation.pair || fileDialogState.current || pendingQuitAppIds.length) return false;
     if (hasBattery) {
       const percentage = sceneRoot.querySelector('[data-battery-control="show-percentage"]');
@@ -3668,6 +3767,7 @@
     inputController?.clear();
     spotlightController?.clear();
     notificationController?.clear();
+    widgetController?.clear();
     if (!reopenWindows) {
       // Close real native views using their existing lifecycle; never replace
       // the document/files/communications models with startup seed data.
@@ -4343,7 +4443,7 @@
       const listener = event => {
         // Private overlays own their keyboard controls, not app accelerators.
         // Keep the existing global input-source and application-switching keys.
-        if (type === 'keydown' && event.target?.closest?.('[data-spotlight-id], [data-notification-center-id]')
+        if (type === 'keydown' && event.target?.closest?.('[data-spotlight-id], [data-notification-center-id], [data-widget-editor-id]')
           && ![spotlightKeydown, inputSourceKeydown, switchingKeydown].includes(handler)) return;
         if (foreground && !event.target?.closest?.('[data-session-control], [data-session-control-root], [data-session-menu], [data-session-surface]')) handler(event);
       };
@@ -4406,6 +4506,7 @@
       inputController?.dispose();
       spotlightController?.dispose(); spotlightViews.clear();
       notificationController?.dispose(); notificationViews.clear();
+      widgetController?.dispose(); widgetEditorViews.clear(); widgetDataViews.clear();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -4894,6 +4995,10 @@
           <GoldenGateServiceProvider appId={window.appId} windowId={window.id} model={serviceProviderModel(window.appId, window.id)}
             execute={executeServicePresentation} registerView={registerServiceView} active={active && interactive}
             available={id => Boolean(getServiceFrame(id, true))} />
+        {:else if hasWidgets && !window.utilityKind && widgetDataApps.includes(window.appId)}
+          <GoldenGateWidgetData windowId={window.id} appId={window.appId} state={systemState.widgets} clock={clockContext}
+            foreground={!preview && widgetDataAvailable(window)} execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={view => { if (!preview) { if (view) widgetDataViews.set(window.id, view); else widgetDataViews.delete(window.id); } }} />
         {:else if Applications}
           <Applications appId={window.appId} windowId={window.id} {profile} native={adapter.nativeForWindow(nativeState, window.id)} execute={commands.execute} registerView={registerApplicationView} />
         {:else if window.appId === 'messages'}
@@ -5159,8 +5264,20 @@
       style:height={`${Math.max(1, stageArea.height - stageArea.menuHeight - 16)}px`}
       style:visibility={!notificationNativeAvailable() ? 'hidden' : undefined}>
       <GoldenGateNotificationCenter pane={notificationPane} groups={notificationController.groups()} clock={clockContext}
+        {...(hasWidgets ? { widgetState: systemState.widgets, widgetUi } : {})}
         foreground={notificationNativeAvailable()} execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
         registerView={view => { if (view) notificationViews.set(centerId, view); else notificationViews.delete(centerId); }} />
+    </div>
+  {/if}
+  {#if hasWidgets && widgetUi.editor && notificationPane}
+    {@const editorId = widgetUi.editor.editorId}
+    {@const bounds = widgetGalleryBounds()}
+    <div class="widget-gallery-placement" style:left={`${bounds.left}px`} style:top={`${bounds.top}px`}
+      style:width={`${bounds.width}px`} style:height={`${bounds.height}px`}
+      style:visibility={!notificationNativeAvailable() ? 'hidden' : undefined}>
+      <GoldenGateWidgetGallery editor={widgetUi.editor} state={systemState.widgets} clock={clockContext}
+        foreground={notificationNativeAvailable()} execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+        registerView={view => { if (view) widgetEditorViews.set(editorId, view); else widgetEditorViews.delete(editorId); }} />
     </div>
   {/if}
 {#if hasWifi && wifiPresentation.join}
@@ -5198,6 +5315,7 @@
   .scene-root { position: absolute; inset: 0; }
   .spotlight-placement { position:absolute; z-index:25000; transform:translateX(-50%); }
   .notification-placement { position:absolute; right:8px; z-index:25000; }
+  .widget-gallery-placement { position:absolute; z-index:25100; border-radius:24px; overflow:hidden; border:1px solid var(--appearance-light-edge,#ffffff80); box-shadow:0 12px 45px #0004; }
   .desktop-interaction-root { height:100%; }
   .status-sheet-backdrop { position:absolute; inset:0; z-index:30000; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:8px; background:#0003; overflow:hidden; }
   .help-placement { position:absolute; left:50%; transform:translateX(-50%); width:min(700px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:11500; display:flex; justify-content:center; }

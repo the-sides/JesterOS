@@ -16,6 +16,7 @@ const scrollSelectors = {
   'settings-bluetooth': '[data-bluetooth-settings-scroll]',
   'settings-keyboard': '[data-input-settings-scroll]',
   'settings-spotlight': '[data-spotlight-settings-scroll]',
+  'widget-data': '[data-widget-data-window-id]',
   'sound-player': '[data-sound-player] [data-sound-media-scroll]',
   'desktop-info': '.info-inspector',
   'desktop-view-options': '.view-inspector',
@@ -74,6 +75,11 @@ function matchingServiceScroll(root, element, recordId) {
     && selectedNoteId(element.getAttribute('data-service-entry-id')) === recordId;
 }
 
+function matchingWidgetData(root, element, widgetScope) {
+  return typeof widgetScope === 'string' && root?.isConnected && element?.isConnected && root.contains(element)
+    && element.getAttribute('data-widget-data-scope') === widgetScope;
+}
+
 function matchingComputerName(root, element, computerName) {
   return typeof computerName === 'string' && root?.isConnected && element?.isConnected
     && root.contains(element) && element.value === computerName;
@@ -94,7 +100,7 @@ function canFocus(root, element) {
   return true;
 }
 
-export function captureRetainedView(root, { noteId = null, recordId = null, fields = null, computerName = null, focusElement = root?.ownerDocument.activeElement } = {}) {
+export function captureRetainedView(root, { noteId = null, recordId = null, fields = null, computerName = null, widgetScope = null, focusElement = root?.ownerDocument.activeElement } = {}) {
   const token = { scroll: [], selections: [], focusKey: null };
   noteId = selectedNoteId(noteId);
   recordId = selectedNoteId(recordId);
@@ -102,7 +108,8 @@ export function captureRetainedView(root, { noteId = null, recordId = null, fiel
     const element = find(root, scrollSelectors, key);
     if (recordId !== null && key.startsWith('messages-') && find(root, scrollSelectors, 'service-panel')) continue;
     if (key === 'service-panel' && !matchingServiceScroll(root, element, recordId)) continue;
-    if (element) token.scroll.push({ key, ...(key === 'service-panel' ? { recordId } : {}),
+    if (key === 'widget-data' && !matchingWidgetData(root, element, widgetScope)) continue;
+    if (element) token.scroll.push({ key, ...(key === 'service-panel' ? { recordId } : key === 'widget-data' ? { scopeId: widgetScope } : {}),
       top: position(element.scrollTop), left: position(element.scrollLeft) });
   }
   for (const key of Object.keys(controlSelectors)) {
@@ -123,7 +130,7 @@ export function captureRetainedView(root, { noteId = null, recordId = null, fiel
   return token;
 }
 
-export function restoreRetainedView(root, token, { noteId = null, recordId = null, fields = null, computerName = null, focus = false } = {}) {
+export function restoreRetainedView(root, token, { noteId = null, recordId = null, fields = null, computerName = null, widgetScope = null, focus = false } = {}) {
   if (!root || !token) return;
   noteId = selectedNoteId(noteId);
   recordId = selectedNoteId(recordId);
@@ -164,10 +171,12 @@ export function restoreRetainedView(root, token, { noteId = null, recordId = nul
     if (!scroll || !Number.isFinite(scroll.top) || scroll.top < 0
       || !Number.isFinite(scroll.left) || scroll.left < 0) continue;
     if (scroll.key === 'service-panel' && (!Object.hasOwn(scroll, 'recordId') || scroll.recordId !== recordId)) continue;
+    if (scroll.key === 'widget-data' && (!Object.hasOwn(scroll, 'scopeId') || scroll.scopeId !== widgetScope)) continue;
     if (scroll.key === 'notes-body' && !selections.some((selection) =>
       selection?.key === 'notes-body' && matchingSelection(selection, noteId))) continue;
     const element = find(root, scrollSelectors, scroll.key);
-    if (!element || (scroll.key === 'service-panel' && !matchingServiceScroll(root, element, recordId))) continue;
+    if (!element || (scroll.key === 'service-panel' && !matchingServiceScroll(root, element, recordId))
+      || (scroll.key === 'widget-data' && !matchingWidgetData(root, element, widgetScope))) continue;
     element.scrollTop = scroll.top;
     element.scrollLeft = scroll.left;
   }
