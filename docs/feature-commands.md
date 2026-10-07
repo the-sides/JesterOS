@@ -1148,6 +1148,32 @@ Proof:548 tests/8433 assertions/48 files;648 modules/no Svelte warnings;390 stri
 
 Sources: [Keyboard Viewer27](https://support.apple.com/guide/mac-help/use-the-keyboard-viewer-on-mac-mchlp1015/27/mac/27), [language/source shortcuts27](https://support.apple.com/guide/mac-help/write-in-another-language-on-mac-mchlp1406/27/mac/27), [Input menu27](https://support.apple.com/guide/mac-help/aside/glos52ed78a0/27/mac/27), [Emoji & Symbols](https://support.apple.com/en-ph/guide/mac-help/mchlp1560/mac). Boundaries: original badges/independent visibility, bounded Latin/spacing accents and catalogue; no native auto-show/single-source icon equivalence, dead-key/candidate conversion, full Unicode/favourites/history/Genmoji or host settings.
 
+### Local Spotlight overlay — SPOT-01
+
+Golden capability `shell.spotlight`; nine additions,399 total. Historical profiles reject with `unsupported_profile` before mutation.
+
+| Command | Target | Payload | Applied target |
+| --- | --- | --- | --- |
+| `spotlight.open` | `{}` | `{}` | `{spotlightId,reused}` |
+| `spotlight.close` | `{spotlightId}` | `{restoreFocus?}` boolean | `{spotlightId,closed:true}` |
+| `spotlight.query` | `{spotlightId}` | `{query}` max256 UTF-16 units | `{spotlightId,query,selectedResultId}` |
+| `spotlight.select` | `{spotlightId,resultId}` | `{}` | `{spotlightId,resultId}` |
+| `spotlight.navigate` | `{spotlightId}` | `{direction}` next/previous/first/last | `{spotlightId,selectedResultId}` |
+| `spotlight.openResult` | `{spotlightId,resultId}` | `{}` | `{spotlightId,resultId,action:"open",appId,windowId,itemId}` |
+| `spotlight.reveal` | `{spotlightId,resultId}` | `{}` | `{spotlightId,resultId,action:"reveal",appId,windowId,itemId}` |
+| `spotlight.focus` | `{spotlightId,controlId}` | `{start?,end?,direction?}` UTF-16 selection | `{spotlightId,controlId}` |
+| `spotlight.scroll` | `{spotlightId}` | `{top,left}` nonnegative finite safe values | `{spotlightId,top,left}` achieved |
+
+`state.spotlight` is null or detached spotlightId/query/selectedResultId/results/busy/error/scroll/focusedControl. `targets.spotlight` adds pane/results/enabled controls. Results carry kind-qualified app/file/note/contact/mail IDs, group/kind/label/secondary/logical icon/canReveal. Controls: search/close/open/reveal/result:&lt;resultId&gt;. Literal accent-insensitive AND-token queries use fixed applications/documents/contacts/mail groups, deterministic rank and no hidden cap. Empty query prompts, not fabricated suggestions.
+
+Open/reveal reuses actual app/Desktop/Finder/Notes/services writers. Notes preserves list/gallery with editor/card focus; Contacts/Mail selects existing entries. Preview retains actual file ID/title but its reader stays launch-only. Stale/replaced sources, foreign/locked owners, composition and concurrent activation cannot borrow another record/control; failed activation preserves query/error.
+
+Command-Space toggles; Up/Down, Return, Command-R, Escape/double-click share commands. Native focus/scroll read achieved state; nondirectional selection permits browser orientation normalization with exact offsets. Escape restores only a still-valid original node/range, outside click never steals destination focus. Lock/local switching suspend, accepted scene replacement/disposal retires. Private IDs/query/selection/DOM ownership exclude from saves.
+
+Proof:554 tests/8464 assertions/49 files;652 modules/no Svelte warnings;399 strict pairs,118 Applied/128 exercise requests, all nine additions applied/every response valid. Intentional257-unit query is structurally invalid. Native source/final keyboard, all ten real routes, exact Notes caret, synthetic composition, actual scroll, two-local isolation/original-owner return, private-save/cold exclusion and320×180/DPR1.25 Close ownership pass.36 final historical calls preserve inspect/DOM/native focus and170/178/163/190 inventories. Final index-CRb4Y7hZ.js has no errors/broken images/external resources.
+
+Sources: [Spotlight27](https://support.apple.com/guide/mac-help/find-what-you-need-with-spotlight-mchlp1008/27/mac/27), [shortcuts27](https://support.apple.com/guide/mac-help/spotlight-keyboard-shortcuts-mh26783/27/mac/27). Original bounded layout, not factory pixels/full native Spotlight. SPOT-02 retains previews/calculator/conversions/dictionary/local suggestions/indexing/privacy; no host index/cloud/clipboard/Quick Actions/Siri.
+
 ## Working notes
 
 1. **CORE-01 implementation.** Added a small handler registry with request validation, explicit rejections, DOM-settled applied results, and detached inspection. Routed existing Dock/file app-open actions through the same command handler as direct requests. Native UI behavior and artwork are unchanged; existing window-management and Notes research remains applicable ([fidelity](mojave-fidelity.md), [Notes](notes-mojave.md)).

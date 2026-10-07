@@ -381,3 +381,15 @@ Evidence:548 tests/8433 assertions/48 files,648 modules/no Svelte warnings;390 s
 
 Only original bounded Latin/spacing-accent layouts and48 characters are implemented; host keyboard/IME, dead-key/candidate conversion, full Unicode/Genmoji/favourites/history and host settings are outside this slice. Badge and independent visibility policies are disclosed rather than presented as exact single-source/native auto-show behavior. STATUS-07/STATUS-08 remain deferred, not complete; next SPOT-01.
 
+## SPOT-01 — private search over existing canonical domains
+
+Root-private modeless controller/view, not an application or saved subtree. Golden shell.spotlight and nine typed commands admit exact private owner/result/control IDs. Menu-bar/Command-Space actors share handlers. Detached inspection exposes query/results/selection/busy/error and actual focus/achieved scroll, never source/editor tokens.
+
+Root sources are real application bundles, eligible document files, live Notes and local Contacts/Mail drafts/offline outbox. Literal256-unit accent-insensitive AND tokens and fixed groups rank deterministically, without hidden truncation or fake data. Original replaced sources tombstone until a fresh query; logical communication revision/value checks permit unrelated immutable selection updates. Existing file residency/access changes from opening are not mistaken for replacement.
+
+Activation reuses existing desktop/app/Finder/Notes/services writers. Pending activation excludes duplicates and rechecks original Root/source/native ownership after preparation; failures preserve query/error. Native facade preparation/query/focus/reveal/scroll checks exact panel/control ownership, preserves composing drafts and reads achieved DOM state. Original-node return checks original app/window/value/revision/range, never a fallback selector; outside click closes without return focus. Nondirectional selection accepts browser orientation normalization while checking offsets.
+
+Lock/local switching suspend private state; same-user authentication resumes it. Accepted scene departure/disposal clears it. Saved V1 remains unchanged: canonical domains and ordinary views serialize, Spotlight IDs/query/selection/leases never do. Actual independent Casey/Alex roots and explicit cold restore prove isolation without manufactured source fixtures.
+
+Evidence:554 tests/8464 assertions/49 files;652 modules/no Svelte warnings;399 strict pairs,118 Applied/128 exercise requests, all nine additions applied/all responses valid. Intentional oversized query rejects structurally. Native source/final keyboard, all ten real routes, Notes caret, synthetic composition, achieved scroll, private-save/cold exclusion, local suspension/return and320×180 Close ownership pass.36 final historical calls preserve full inspect/DOM/native focus and170/178/163/190 discovery. Final index-CRb4Y7hZ.js has no errors/broken images/external resources. Original bounded materials/layout, not factory-pixel/full Spotlight/host index. Next SPOT-02; STATUS-07/STATUS-08 stay deferred.
+

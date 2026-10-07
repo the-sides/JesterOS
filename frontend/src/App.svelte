@@ -44,7 +44,7 @@
   import MacDesktopViewOptions from './MacDesktopViewOptions.svelte';
   import { createNotesCommands } from './notes-commands.js';
   import { commandCatalog } from './command-catalog.js';
-  import { visibleNotes, createNote, nextNoteTimestamp } from './notes-state.js';
+  import { visibleNotes, createNote, nextNoteTimestamp, noteTitle } from './notes-state.js';
   import { appCommandMenuProviders } from './app-command-menus.js';
   import { APPLICATION_MENU_UTILITY_SIZES, goldenApplicationMenuItems, createApplicationMenuCommands } from './application-menu.js';
   import { SYSTEM_UTILITY_SIZES } from './apple-menu.js';
@@ -80,6 +80,8 @@
   import { createInputCommands } from './input-commands.js';
   import GoldenGateInputSettings from './GoldenGateInputSettings.svelte';
   import GoldenGateInputViewer from './GoldenGateInputViewer.svelte';
+  import { createSpotlightCommands } from './spotlight-commands.js';
+  import GoldenGateSpotlight from './GoldenGateSpotlight.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -133,6 +135,7 @@
   const hasSound = profile.capabilities.includes('status.sound');
   const hasBluetooth = profile.capabilities.includes('status.bluetooth');
   const hasInput = profile.capabilities.includes('status.input');
+  const hasSpotlight = profile.capabilities.includes('shell.spotlight');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
   const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
@@ -180,6 +183,9 @@
   let viewWorkflows = $state.raw(null);
   let viewPresentation = $state({ options: null, nextOptionsId: 1, error: null });
   let helpPane = $state(null), helpView = $state(null), helpViewer = $state.raw(null);
+  let spotlightPane = $state(null), spotlightController = $state.raw(null);
+  const spotlightViews = new Map();
+  $effect(() => { if (spotlightController && spotlightPane) spotlightController.reconcile(); });
   $effect(() => { if (helpViewer) { foreground; activeAppId; switching.switcher; presentation.pairing; fileDialogState.current; helpViewer.reconcile(); } });
   let services = $state.raw(null), serviceSources;
   let serviceLookup = $state.raw(null), serviceContext = $state.raw(null), servicePending = $state.raw(null), servicePreparation = $state.raw(null);
@@ -1191,6 +1197,22 @@
   $effect(() => {
     if (inputController) { activeAppId; activeWindowId; windows.length; inputController.reconcile(); }
   });
+  if (hasSpotlight) {
+    const ownedSpotlight = createSpotlightCommands({
+      profile, namespace: untrack(() => `${windowNamespace || 'local'}-${crypto.randomUUID()}`),
+      getPane: () => spotlightPane, setPane: pane => { spotlightPane = pane; },
+      getView: () => spotlightViews.get(spotlightPane?.spotlightId),
+      alive: () => !disposed, available: spotlightInteractionsAvailable,
+      getSources: getSpotlightSources, isSourceCurrent: spotlightSourceCurrent,
+      activate: activateSpotlightSource,
+      captureReturn: () => ({ snapshot: captureSessionDesktop(), appId: activeAppId,
+        windowId: activeWindowId, window: windows.find(window => window.id === activeWindowId) ?? null }),
+      restoreReturn: restoreSpotlightReturn, dismissMenus: () => dismissMenuBar?.(),
+      settle: async () => { await tick(); await tick(); },
+    });
+    spotlightController = ownedSpotlight;
+    Object.assign(handlers, ownedSpotlight.handlers);
+  }
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
     profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
     getRunningAppIds: () => runningAppIds,
@@ -1289,6 +1311,7 @@
       ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
       ...(hasBluetooth ? { bluetooth: bluetoothController.targets() } : {}),
       ...(hasInput ? { input: inputController.targets() } : {}),
+      ...(hasSpotlight ? { spotlight: spotlightController.summary() } : {}),
       ...(macFiles ? { files: macFiles.files } : {}),
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
@@ -1460,6 +1483,7 @@
       ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
       ...(hasHelpWorkflows ? { helpViewer: helpViewer.targets() } : {}),
       ...(hasServices ? { services: services.targets() } : {}),
+      ...(hasSpotlight ? { spotlight: spotlightController.targets() } : {}),
       ...(hasAppleMenu ? { system: systemTargets() } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
@@ -1568,6 +1592,170 @@
   }
   function windowInteractionsAvailable() {
     return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view && !dashboardOpen;
+  }
+
+  function spotlightInteractionsAvailable() {
+    return hasSpotlight && windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
+      && !servicePending && !switching.switcher && !presentation.pairing && !forceQuitConfirmation && !storageConfirmation;
+  }
+  function getSpotlightSources() {
+    const live = liveMacFileRecords(macFiles), byId = new Map(live.map(file => [file.id, file])), sources = [];
+    for (const app of Object.values(applications)) {
+      const bundle = byId.get(applicationBundleId(app.id));
+      if (!bundle) continue;
+      sources.push({ kind: 'app', id: app.id, label: app.name, secondary: 'Application',
+        icon: app.icon, terms: [app.id], canReveal: Boolean(byId.get(bundle.parentId)),
+        token: { app, bundle } });
+    }
+    for (const file of live) {
+      if (file.kind !== 'document') continue;
+      sources.push({ kind: 'file', id: file.id, label: file.name,
+        secondary: byId.get(file.parentId)?.name ?? 'Document', icon: file.icon ?? 'document',
+        terms: [...(file.tags ?? []), ...(file.format === 'pdf' ? [] : [file.content ?? ''])],
+        canReveal: Boolean(byId.get(file.parentId)), token: { record: file, name: file.name,
+          parentId: file.parentId, content: file.content, appId: file.appId, tags: [...(file.tags ?? [])] } });
+    }
+    for (const note of notesState.notes) {
+      if (note.deleted) continue;
+      sources.push({ kind: 'note', id: note.id, label: noteTitle(note), secondary: 'Notes',
+        icon: 'notes', terms: [note.text], canReveal: true,
+        token: { record: note, updatedAt: note.updatedAt, text: note.text } });
+    }
+    for (const collection of [communicationsState.contacts, communicationsState.drafts, communicationsState.outbox]) {
+      for (const entry of collection) {
+        if (!['contact', 'mail'].includes(entry.kind)) continue;
+        const contact = entry.kind === 'contact', fields = entry.fields;
+        sources.push({ kind: entry.kind, id: entry.id,
+          label: (contact ? fields.name : fields.subject) || (contact ? 'Untitled Contact' : '(No Subject)'),
+          secondary: (contact ? fields.email || fields.phone : fields.to) || (contact ? 'Contacts' : 'Mail'),
+          icon: contact ? 'contacts' : 'mail', terms: Object.values(fields), canReveal: true,
+          token: { revision: entry.revision, updatedAt: entry.updatedAt, fields: { ...fields } } });
+      }
+    }
+    return sources;
+  }
+  function spotlightSourceCurrent(source) {
+    if (!hasSpotlight || disposed || !source?.token) return false;
+    const token = source.token;
+    if (source.kind === 'app') return applications[source.id] === token.app
+      && liveFile(macFiles, applicationBundleId(source.id)) === token.bundle;
+    if (source.kind === 'file') {
+      const file = liveFile(macFiles, source.id);
+      // Residency/access timestamps may change during our own open without
+      // changing the exact document or its searchable content.
+      return file === token.record && file.kind === 'document' && file.name === token.name
+        && file.parentId === token.parentId && file.content === token.content && file.appId === token.appId
+        && (file.tags ?? []).length === token.tags.length
+        && token.tags.every((tag, index) => file.tags[index] === tag);
+    }
+    if (source.kind === 'note') {
+      const note = notesState.notes.find(note => note.id === source.id);
+      return note === token.record && !note.deleted && note.updatedAt === token.updatedAt && note.text === token.text;
+    }
+    if (source.kind === 'contact' || source.kind === 'mail') {
+      const entry = communicationEntry(communicationsState, source.kind === 'contact' ? 'contacts' : 'mail', source.id);
+      return Boolean(entry && entry.revision === token.revision && entry.updatedAt === token.updatedAt
+        && Object.entries(token.fields).every(([key, value]) => entry.fields[key] === value));
+    }
+    return false;
+  }
+  async function activateSpotlightSource(source, action, guard) {
+    const stale = () => rejected('stale_target', 'The original Spotlight destination is no longer current.');
+    const invoke = async (command, target, payload = {}) => {
+      if (!guard()) return stale();
+      const result = await handlers[command](target, payload);
+      return guard() ? result : stale();
+    };
+    let result, appId, windowId;
+    if (source.kind === 'app' || source.kind === 'file') {
+      const fileId = source.kind === 'app' ? applicationBundleId(source.id) : source.id;
+      if (!guard()) return stale();
+      if (action === 'reveal') {
+        result = await revealStorageFile(null, fileId);
+        appId = 'finder'; windowId = result.target?.finderWindowId;
+      } else {
+        result = await invoke('desktop.open', { fileId });
+        appId = result.target?.appId; windowId = result.target?.windowId;
+      }
+    } else {
+      appId = source.kind === 'note' ? 'notes' : source.kind === 'contact' ? 'contacts' : 'mail';
+      result = await invoke('app.open', { appId });
+      if (result.status !== 'applied') return result;
+      windowId = result.target.windowId;
+      await tick(); await tick();
+      if (!guard()) return stale();
+      if (source.kind === 'note') {
+        result = await invoke('notes.search', {}, { query: '' });
+        if (result.status !== 'applied') return result;
+        result = await invoke('notes.selectFolder', { folder: 'notes' });
+        if (result.status !== 'applied') return result;
+        if (action === 'open') result = await invoke('notes.view.openNote', { windowId, noteId: source.id });
+        else {
+          result = await invoke('notes.select', { noteId: source.id });
+          if (result.status !== 'applied') return result;
+          const window = windows.find(window => window.id === windowId);
+          if (window.notesPresentation?.mode === 'gallery' && window.notesPresentation.documentVisible) {
+            result = await invoke('notes.view.return', { windowId });
+            if (result.status !== 'applied') return result;
+          }
+          result = await invoke('notes.focus', { control: 'row', noteId: source.id });
+        }
+      } else {
+        result = await invoke('services.provider.select', { appId, windowId }, { entryId: source.id });
+        if (result.status === 'applied') result = await invoke('services.panel.focus', { appId, windowId, control: 'panel' });
+      }
+    }
+    if (!guard()) return stale();
+    return result.status === 'applied'
+      ? { status: 'applied', target: { appId, windowId: windowId ?? null, itemId: source.id } } : result;
+  }
+  async function restoreSpotlightReturn(original, guard) {
+    await tick(); await tick();
+    const token = original?.snapshot?.focus, node = token?.node;
+    if (!guard() || !spotlightInteractionsAvailable() || activeAppId !== original.appId
+      || activeWindowId !== original.windowId || (windows.find(window => window.id === original.windowId) ?? null) !== original.window
+      || !node?.isConnected || !sceneRoot?.contains(node) || node.closest('[inert]')
+      || !node.getClientRects().length || getComputedStyle(node).visibility !== 'visible'
+      || Object.hasOwn(token, 'sourceValue') && node.value !== token.sourceValue) return false;
+    if (node.dataset.notesControl === 'search' && textEditing.targets().searchRevision !== token.noteRevision) return false;
+    if (token.noteId && (node.dataset.noteId !== token.noteId || notesState.selectedId !== token.noteId
+      || notesState.notes.find(note => note.id === token.noteId)?.updatedAt !== token.noteRevision)) return false;
+    if (token.serviceEntryId) {
+      const entry = communicationEntry(communicationsState, token.serviceAppId);
+      if (entry?.id !== token.serviceEntryId || entry.revision !== token.serviceRevision
+        || node.dataset.serviceEntryId !== token.serviceEntryId) return false;
+    }
+    ownedWindowFocus++;
+    try {
+      node.focus({ preventScroll: true });
+      if (!guard() || document.activeElement !== node) return false;
+      if (token.selection) node.setSelectionRange(token.selection.start, token.selection.end, token.selection.direction);
+      return guard() && document.activeElement === node;
+    } finally { ownedWindowFocus--; }
+  }
+  function spotlightBounds() {
+    const width = Math.max(1, Math.min(680, stageArea.width - 16));
+    const height = Math.max(1, Math.min(440, stageArea.height - 16));
+    return { width, height, left: stageArea.width / 2,
+      top: Math.min(Math.max(stageArea.menuHeight + 24, stageArea.height * .17), Math.max(8, stageArea.height - height - 8)) };
+  }
+  function toggleSpotlight() {
+    if (!spotlightInteractionsAvailable()) return;
+    void commands.execute(spotlightPane
+      ? { command: 'spotlight.close', target: { spotlightId: spotlightPane.spotlightId } }
+      : { command: 'spotlight.open' });
+  }
+  function spotlightKeydown(event) {
+    if (!spotlightInteractionsAvailable() || event.defaultPrevented || event.isComposing
+      || !event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || ![' ', 'Spacebar'].includes(event.key)
+      || !sceneRoot?.contains(event.target) && ![document.body, document.documentElement].includes(event.target)) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (!event.repeat) toggleSpotlight();
+  }
+  function spotlightOutside(event) {
+    if (!spotlightPane || !spotlightInteractionsAvailable() || spotlightPane.busy
+      || event.target?.closest?.('[data-spotlight-id], [data-spotlight-invoker]')) return;
+    void commands.execute({ command: 'spotlight.close', target: { spotlightId: spotlightPane.spotlightId }, payload: { restoreFocus: false } });
   }
 
   function getApplicationView(windowId) {
@@ -3385,6 +3573,7 @@
     soundMediaController?.clear();
     bluetoothController?.clear();
     inputController?.clear();
+    spotlightController?.clear();
     if (!reopenWindows) {
       // Close real native views using their existing lifecycle; never replace
       // the document/files/communications models with startup seed data.
@@ -4058,12 +4247,18 @@
     // global input. Session-native controls have their own command/focus owner.
     function listen(target, type, handler, capture = false) {
       const listener = event => {
+        // Spotlight owns its native field, not the underlying app's accelerators.
+        // Keep the existing global input-source and application-switching keys.
+        if (type === 'keydown' && event.target?.closest?.('[data-spotlight-id]')
+          && ![spotlightKeydown, inputSourceKeydown, switchingKeydown].includes(handler)) return;
         if (foreground && !event.target?.closest?.('[data-session-control], [data-session-control-root], [data-session-menu], [data-session-surface]')) handler(event);
       };
       target.addEventListener(type, listener, capture);
       return () => target.removeEventListener(type, listener, capture);
     }
     const stopListeners = [
+      listen(window, 'keydown', spotlightKeydown, true),
+      listen(document, 'pointerdown', spotlightOutside, true),
       listen(window, 'keydown', serviceKeydown, true),
       listen(window, 'keydown', event => helpView?.keydown(event), true),
       listen(sceneRoot, 'contextmenu', serviceContextMenu, true),
@@ -4114,6 +4309,7 @@
       soundMediaController?.clear();
       bluetoothController?.clear();
       inputController?.dispose();
+      spotlightController?.dispose(); spotlightViews.clear();
       for (const stop of stopListeners) stop();
       if (dashboardTimer !== null) clearInterval(dashboardTimer);
       if (printingTimer !== null) clearInterval(printingTimer);
@@ -4725,6 +4921,7 @@
   {activeApp}
   viewState={desktopState}
   {...(hasServices ? { contextMenuItems: getDesktopContextMenuItems() } : {})}
+  {...(hasSpotlight ? { spotlightOpen: Boolean(spotlightPane), spotlightAvailable: spotlightInteractionsAvailable(), onspotlight: toggleSpotlight } : {})}
   {desktopItems}
   {desktopDetails}
   {desktopStacks}
@@ -4842,6 +5039,17 @@
       </div>
     {/each}
   {/if}
+  {#if hasSpotlight && spotlightPane}
+    {@const spotlightId = spotlightPane.spotlightId}
+    {@const bounds = spotlightBounds()}
+    <div class="spotlight-placement" style:left={`${bounds.left}px`} style:top={`${bounds.top}px`}
+      style:width={`${bounds.width}px`} style:height={`${bounds.height}px`}
+      style:visibility={!spotlightInteractionsAvailable() || spotlightPane.busy ? 'hidden' : undefined}>
+      <GoldenGateSpotlight pane={spotlightPane} foreground={spotlightInteractionsAvailable()}
+        execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+        registerView={view => { if (view) spotlightViews.set(spotlightId, view); else spotlightViews.delete(spotlightId); }} />
+    </div>
+  {/if}
 {#if hasWifi && wifiPresentation.join}
   <div class="status-sheet-backdrop">
     <GoldenGateWifiJoin pending={wifiPresentation.join} execute={commands.execute} {foreground} bind:this={wifiJoinView} />
@@ -4875,6 +5083,7 @@
 
 <style>
   .scene-root { position: absolute; inset: 0; }
+  .spotlight-placement { position:absolute; z-index:25000; transform:translateX(-50%); }
   .desktop-interaction-root { height:100%; }
   .status-sheet-backdrop { position:absolute; inset:0; z-index:30000; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:8px; background:#0003; overflow:hidden; }
   .help-placement { position:absolute; left:50%; transform:translateX(-50%); width:min(700px,calc(100% - 8px)); max-height:calc(100% - 8px); z-index:11500; display:flex; justify-content:center; }

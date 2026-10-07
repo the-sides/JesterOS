@@ -386,3 +386,19 @@ Final548 tests/8433 assertions/48 files;648 modules/no Svelte warnings;390 stric
 
 Boundaries: real host keyboard/IME unchanged; only authored Latin/spacing-accent layers and bounded catalogue, no dead-key conversion, candidates, Genmoji, full Unicode/favourites/history or host settings. Badges/independent visibility are explicit simulator policies; full Keyboard Preferences and shared formatting panels remain separately queued.
 
+## SPOT-01 — private live-source Spotlight
+
+Current Golden discovery399;56/286 complete,230 remaining:228 queued plus STATUS-07/STATUS-08 deferred. Next SPOT-02. Nine Golden-only spotlight.* commands; historical inventories170/178/163/190 unchanged.
+
+spotlight-model owns256-unit literal accent-insensitive AND-token matching and deterministic applications/documents/contacts/mail groups, without a hidden cap or full-text concatenation allocation. Root collects current bundles, eligible file documents/live Notes and actual canonical Contacts/Mail; no fake communications. Public results use kind-qualified IDs/logical icons; source tokens stay private.
+
+spotlight-commands owns UUID/sequence identity, original-source leases, pending activation exclusion and native preparation. Reconciliation tombstones replaced originals until a fresh query; logical communication IDs/revisions tolerate unrelated immutable selection updates without borrowing changed records. Real desktop/app/Finder, Notes view/card/editor and services provider writers open/reveal exact destinations. File residency/access updates from its own opening do not spuriously invalidate the source.
+
+GoldenGateSpotlight is private/modeless, not a managed app window. Native controls carry exact owner IDs; focus/scroll summaries read actual DOM. Composing drafts are not overwritten. Nondirectional caret checks exact offsets without requiring Chromium to retain “none” orientation. Escape restores only the valid original app/window/node/value/revision/range, never a fallback selector; outside-click does not return focus.
+
+Lock and foreign foreground block operations while retaining private state. Actual Casey search returns only app:notes and rejects Alex's owner; Alex native reauthentication resumes the same ID/query/five results. Saved canonical records persist but private IDs/query/control markers exclude; explicit fresh-context restore/native sign-in starts without a search.
+
+Final554 tests/8464 assertions/49 files;652 modules/no Svelte warnings;399 strict pairs,118 Applied/128 exercise requests, all nine additions applied. All responses validate; intentional oversized query is structurally invalid. Native keyboard/all ten routes/Notes caret/synthetic composition/actual scroll/local isolation/private-save/cold exclusion and final320×180/DPR1.25 bounds/Close ownership pass.36 final historical calls preserve inspect/DOM/native focus;1,402 historical schemas compile. Final index-CRb4Y7hZ.js has no errors/broken images/external resources. Proof: local://spot01-shipped-proof.json.
+
+Boundaries: authored bounded materials/layout, local scene data only, no host filesystem/index, network search, fake communications, cloud/clipboard/Siri/full Quick Actions. Preview remains launch-only. SPOT-02 owns previews/calculation/conversion/dictionary/suggestions/indexing/privacy.
+

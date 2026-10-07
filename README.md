@@ -628,5 +628,17 @@ Verification:548 tests/8,433 assertions/48 files;648 modules, no Svelte warnings
 
 Primary sources: [Keyboard Viewer27](https://support.apple.com/guide/mac-help/use-the-keyboard-viewer-on-mac-mchlp1015/27/mac/27), [write in another language27](https://support.apple.com/guide/mac-help/write-in-another-language-on-mac-mchlp1406/27/mac/27), [Input menu27](https://support.apple.com/guide/mac-help/aside/glos52ed78a0/27/mac/27), [Emoji & Symbols](https://support.apple.com/en-ph/guide/mac-help/mchlp1560/mac).
 
-`STATUS-07` and `STATUS-08` are deferred for now at the user's request, not completed. Next sequential feature: `SPOT-01`.
+`STATUS-07` and `STATUS-08` are deferred for now at the user's request, not completed. Next sequential feature: `SPOT-02`.
+
+## Local Spotlight overlay — SPOT-01
+
+Command-Space or the menu-bar button opens a Root-owned modeless Spotlight. Literal accent-insensitive AND-token queries group applications, live document files/Notes, actual local Contacts, and Mail drafts/offline outbox. Empty queries show a prompt; there are no fabricated communications or hidden result cap. Up/Down selects, Return/double-click opens, Command-R reveals the exact item, and Escape restores only a still-valid original native node/range. Outside-click dismissal does not steal destination focus.
+
+Nine Golden-only `spotlight.*` commands expose detached results, exact private owner IDs, actual native focus and achieved scroll. Destinations reuse existing application, Finder selection, Notes document/card and Contacts/Mail provider writers. Associated Preview opening retains the real file ID/title; its reader remains launch-only. Changed sources, locked/foreign roots, composing fields and duplicate pending activation cannot redirect to another item/control.
+
+Private query/selection/IDs/native leases never serialize. Lock/local switching suspend the original search; same-user authentication restores it. Explicit cold restore retains real records without an overlay. Exercised Casey `notes` search returns only the application, not Alex's custom records; Alex reauthentication resumes the same private ID/query/five results.
+
+Verification:554 tests/8,464 assertions/49 files;652 modules, zero Svelte warnings, existing chunk-size advisory.399 strict schema pairs;118 Applied/128 recorded exercise requests cover every new name. Every response validates; the intentional257-unit query fails request validation. Native source/final production keyboard, all ten open/reveal routes, exact Notes caret, synthetic composition, actual scroll, outside-click dismissal, local isolation and private-save/cold exclusion pass. Final `index-CRb4Y7hZ.js` at320×180/DPR1.25 fits x8/y8/w304/h164 with actual Close hit ownership.36 final historical probes preserve full inspect/DOM/native focus and170/178/163/190 inventories. Final production has no browser errors, broken images or external resources.
+
+Primary27 sources: [Spotlight search](https://support.apple.com/guide/mac-help/find-what-you-need-with-spotlight-mchlp1008/27/mac/27), [keyboard shortcuts](https://support.apple.com/guide/mac-help/spotlight-keyboard-shortcuts-mh26783/27/mac/27). Original bounded materials/layout, not factory-pixel equivalence or a host index. Previews/calculator/conversions/dictionary/local suggestions/indexing/privacy remain `SPOT-02`; cloud, clipboard, Quick Actions and Siri are not claimed.
 

@@ -20,6 +20,9 @@
     menuBarState,
     menuBarMenus = [],
     foreground = true,
+    spotlightOpen = false,
+    spotlightAvailable = false,
+    onspotlight,
     children,
     desktopItems,
     desktopStacks = [],
@@ -526,7 +529,11 @@
         registerView={registerSessionView} {foreground} zone="input" />
       <GoldenGateMenuBar {profile} menus={wifiMenus} state={menuBarState} execute={executeSession}
         registerView={registerSessionView} {foreground} zone="wifi" />
-      <span class="golden-gate-spotlight" aria-label="Spotlight"><svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg></span>
+      <button type="button" class="golden-gate-spotlight" data-spotlight-invoker aria-label="Spotlight" aria-haspopup="dialog"
+        aria-expanded={spotlightOpen} disabled={!foreground || !spotlightAvailable}
+        onpointerdown={event => { if (event.button === 0) event.preventDefault(); }} onclick={onspotlight}>
+        <svg viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg>
+      </button>
       <span class="golden-gate-control-center" aria-label="Control Center"><svg viewBox="0 0 22 20" aria-hidden="true"><rect x="2" y="2" width="18" height="6" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="6" cy="5" r="2" fill="currentColor"/><rect x="2" y="12" width="18" height="6" rx="3" fill="currentColor"/><circle cx="16" cy="15" r="2" fill="#707a54"/></svg></span>
       <GoldenGateMenuBar {profile} menus={clockMenus} state={menuBarState} execute={executeSession}
         registerView={registerSessionView} {foreground} zone="clock" />
@@ -576,6 +583,8 @@
 <style>
   .golden-gate-workspace { outline: none; }
   .golden-gate-file { touch-action: none; user-select: none; }
+  .golden-gate-spotlight { display:grid; place-items:center; padding:0; border:0; border-radius:4px; background:transparent; color:inherit; cursor:default; }
+  .golden-gate-spotlight:focus-visible { outline:2px solid var(--appearance-focus,#bfdcff); outline-offset:3px; }
   @media (max-width: 745px) { .golden-gate-spotlight, .golden-gate-control-center { display: none; } }
   .mac-desktop-rename { position: absolute; z-index: 1; box-sizing: border-box; padding: 0 3px; border: 1px solid #7f9fca; border-radius: 3px; background: white; color: #111; font: inherit; font-size: 12px; line-height: 16px; text-align: center; outline: none; }
   .mac-desktop-rename:focus { box-shadow: 0 0 0 2px rgb(119 173 240 / 60%); }
