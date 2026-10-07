@@ -1,6 +1,9 @@
 import { rejected } from './feature-commands.js';
 import { defineCommand, object, empty, identity, flag, choice } from './command-schema.js';
-import { rankSpotlightSources, publicSpotlightResult, spotlightResultId, spotlightQueryLimit } from './spotlight-model.js';
+import { rankSpotlightSources, publicSpotlightResult, spotlightResultId, spotlightQueryLimit, spotlightLocalSuggestions } from './spotlight-model.js';
+import { spotlightAnswer } from './spotlight-answers.js';
+import { lookupOfflineDefinition } from './offline-dictionary.js';
+import { spotlightPreferencesCatalog } from './spotlight-preferences-commands.js';
 
 const fields = (value, required, optional = []) => value !== null && typeof value === 'object' && !Array.isArray(value)
   && Reflect.ownKeys(value).every(key => typeof key === 'string' && [...required, ...optional].includes(key)
@@ -18,7 +21,15 @@ const directions = ['forward', 'backward', 'none'];
 export function createSpotlightCommands(ctx) {
   const namespace = ctx.namespace ?? globalThis.crypto.randomUUID();
   let sequence = 0, epoch = 0, revision = 0, disposed = false, wasAvailable = false, ownerId = null, returnToken;
-  let owners = new Map();
+  let owners = new Map(), suggestionOwners = new Map(), previewResource = null, previewSequence = 0, preparingPreview = false;
+  let answerKey = null, cachedAnswer = null;
+  function clearPreview(pane = owned()) {
+    if (pane) pane.preview = null;
+    const resource = previewResource; previewResource = null;
+    // Destroying the private renderer also cancels any original in-flight render.
+    const completion = resource?.destroy?.();
+    if (completion?.catch) void completion.catch(() => {});
+  }
   const supported = () => ctx.profile.id === 'macos-golden-gate-27.0.1';
   const alive = () => !disposed && supported() && ctx.alive() === true;
   const available = () => alive() && ctx.available() === true;
@@ -30,9 +41,13 @@ export function createSpotlightCommands(ctx) {
   const live = (view, guard) => guard() && ctx.getView() === view && view.available() === true;
   function describe(view) { return view.describe(); }
   function controls(view) {
-    const pane = owned(), allowed = new Set(['search', 'close', ...(pane && !pane.busy && pane.selectedResultId ? ['open'] : []),
+    const pane = owned(), allowed = new Set(['search', 'close', 'settings',
+      ...(pane && !pane.busy && pane.selectedResultId ? ['open', 'preview'] : []),
       ...(pane && !pane.busy && pane.results.some(result => result.resultId === pane.selectedResultId && result.canReveal) ? ['reveal'] : []),
-      ...(pane && !pane.busy ? pane.results.map(result => `result:${result.resultId}`) : [])]);
+      ...(pane && !pane.busy ? pane.results.map(result => `result:${result.resultId}`) : []),
+      ...(pane && !pane.busy ? pane.suggestions.map(item => `suggestion:${item.suggestionId}`) : []),
+      ...(pane?.preview ? ['preview-reader', 'preview-close', ...(pane.preview.kind === 'pdf'
+        ? [...(pane.preview.page > 1 ? ['preview-previous'] : []), ...(pane.preview.page < pane.preview.pageCount ? ['preview-next'] : [])] : [])] : [])]);
     const values = describe(view).controlIds;
     return Array.isArray(values) ? values.filter(value => allowed.has(value)) : [];
   }
@@ -48,9 +63,28 @@ export function createSpotlightCommands(ctx) {
     return await native(() => view.focus(controlId, selection, guard)) === true && live(view, guard)
       && describe(view).focusedControl === controlId;
   }
+  function answer(query, preferences) {
+    const categories = preferences.enabledCategories;
+    const key = `${categories.includes('calculator')}:${categories.includes('conversions')}:${categories.includes('dictionary')}:${query}`;
+    if (key === answerKey) return cachedAnswer;
+    answerKey = key; cachedAnswer = null;
+    const computed = spotlightAnswer(query);
+    if (computed && categories.includes(computed.kind === 'calculation' ? 'calculator' : 'conversions')) cachedAnswer = computed;
+    else if (!computed && categories.includes('dictionary')) {
+      const explicit = /^(?:define|definition of)\s+(.+)$/iu.exec(query.trim());
+      const term = explicit ? explicit[1] : query;
+      const entry = lookupOfflineDefinition(term);
+      if (entry || explicit) cachedAnswer = { kind: 'dictionary', query, value: null,
+        text: entry?.definition ?? '', detail: entry ? `${entry.term} · ${entry.partOfSpeech} · Original local dictionary` : 'Original local dictionary',
+        error: entry ? null : 'No entry for this word or phrase in the original offline dictionary.' };
+    }
+    return cachedAnswer;
+  }
   function refresh(pane, fresh = false) {
+    const sources = ctx.getSources().filter(source => ctx.isSourceCurrent(source));
+    const preferences = ctx.getPreferences();
     const next = new Map(fresh ? [] : owners), matched = [];
-    for (const source of rankSpotlightSources(ctx.getSources(), pane.query)) {
+    for (const source of rankSpotlightSources(sources, pane.query)) {
       const resultId = spotlightResultId(source), original = next.get(resultId);
       if (original && !ctx.isSourceCurrent(original)) continue;
       const retained = original ?? source;
@@ -62,8 +96,28 @@ export function createSpotlightCommands(ctx) {
     if (pane.results.length !== matched.length || matched.some((result, index) =>
       keys.some(key => pane.results[index][key] !== result[key]))) pane.results = matched;
     if (pane.selectedResultId !== null && !matched.some(result => result.resultId === pane.selectedResultId)) pane.selectedResultId = null;
+    const nextAnswer = answer(pane.query, preferences);
+    if (pane.answer === null ? nextAnswer !== null : nextAnswer === null
+      || ['kind', 'query', 'value', 'text', 'detail', 'error'].some(key => pane.answer[key] !== nextAnswer[key])) pane.answer = nextAnswer;
+    const proposed = preferences.indexingEnabled && preferences.enabledCategories.includes('suggestions')
+      ? spotlightLocalSuggestions(sources, pane.query) : [];
+    const originalSuggestions = fresh ? new Map() : suggestionOwners, currentSources = new Map(sources.map(source => [spotlightResultId(source), source]));
+    const kept = [], nextSuggestions = new Map(originalSuggestions);
+    for (const item of proposed) {
+      const original = originalSuggestions.get(item.suggestionId), source = original ?? currentSources.get(item.suggestionId);
+      if (!source || !ctx.isSourceCurrent(source)) continue;
+      nextSuggestions.set(item.suggestionId, source); kept.push(item);
+    }
+    suggestionOwners = nextSuggestions;
+    if (pane.suggestions.length !== kept.length || kept.some((item, index) =>
+      ['suggestionId', 'label', 'query'].some(key => pane.suggestions[index][key] !== item[key]))) pane.suggestions = kept;
+    if (pane.preview && (pane.preview.resultId !== pane.selectedResultId
+      || !ctx.isSourceCurrent(owners.get(pane.preview.resultId)))) clearPreview(pane);
   }
-  function retire() { epoch++; revision++; ownerId = null; returnToken = undefined; owners.clear(); ctx.setPane(null); }
+  function retire() {
+    clearPreview(); epoch++; revision++; ownerId = null; returnToken = undefined;
+    owners.clear(); suggestionOwners.clear(); answerKey = null; cachedAnswer = null; ctx.setPane(null);
+  }
   function reconcile() {
     if (!alive()) { if (ownerId !== null) retire(); return; }
     const foreground = available();
@@ -80,6 +134,8 @@ export function createSpotlightCommands(ctx) {
     refresh(pane);
     if (resultId !== null && !pane.results.some(result => result.resultId === resultId)) return fail('stale_target');
     if (!await focus(view, 'search', undefined, guard)) return failure(pane);
+    if (pane.preview) { clearPreview(pane); await ctx.settle(); }
+    if (!live(view, guard)) return failure(pane);
     if (resultId !== null && (await native(() => view.reveal(resultId, guard)) !== true || !live(view, guard))) return failure(pane);
     if (resultId !== null && !ctx.isSourceCurrent(owners.get(resultId))) return fail('stale_target');
     pane.selectedResultId = resultId; pane.focusedControl = 'search';
@@ -118,9 +174,10 @@ export function createSpotlightCommands(ctx) {
       if (!pane) {
         const token = ctx.captureReturn(); ctx.dismissMenus(); epoch++; revision++; wasAvailable = true;
         ownerId = `${namespace}-spotlight-${++sequence}`; returnToken = token; owners.clear();
-        ctx.setPane({ spotlightId: ownerId, query: '', selectedResultId: null, results: [], busy: false, error: null,
-          scroll: { top: 0, left: 0 }, focusedControl: null });
+        ctx.setPane({ spotlightId: ownerId, query: '', selectedResultId: null, results: [], suggestions: [], answer: null,
+          preview: null, busy: false, error: null, scroll: { top: 0, left: 0 }, focusedControl: null });
         pane = owned();
+        refresh(pane, true);
       }
       const guard = lease(pane); await ctx.settle();
       const view = guard() ? await prepare(pane, 'search', guard) : null;
@@ -149,6 +206,7 @@ export function createSpotlightCommands(ctx) {
       const guard = lease(pane), view = await prepare(pane, 'search', guard); if (!view) return failure(pane);
       if (!await focus(view, 'search', undefined, guard)) return failure(pane);
       if (await native(() => view.setQuery(payload.query, guard)) !== true || !live(view, guard) || describe(view).composing) return failure(pane);
+      clearPreview(pane);
       pane.query = payload.query; pane.error = null; refresh(pane, true); pane.selectedResultId = pane.results[0]?.resultId ?? null;
       pane.focusedControl = 'search'; await ctx.settle();
       if (!live(view, guard)) return failure(pane);
@@ -173,6 +231,84 @@ export function createSpotlightCommands(ctx) {
     },
     'spotlight.openResult': (target, payload) => activate(target, payload, 'open'),
     'spotlight.reveal': (target, payload) => activate(target, payload, 'reveal'),
+    'spotlight.suggestion.apply': async (target, payload) => {
+      if (!targetPane(target, ['suggestionId']) || !id(target.suggestionId) || !fields(payload, [])) return fail('invalid_arguments');
+      const pane = get(target); if (!pane) return fail('stale_target');
+      refresh(pane);
+      const item = pane.suggestions.find(item => item.suggestionId === target.suggestionId);
+      const original = suggestionOwners.get(target.suggestionId);
+      if (!item || !original || !ctx.isSourceCurrent(original)) return fail('stale_target');
+      return handlers['spotlight.query']({ spotlightId: pane.spotlightId }, { query: item.query });
+    },
+    'spotlight.preview': async (target, payload) => {
+      if (!targetPane(target, ['resultId']) || !id(target.resultId) || !fields(payload, [])) return fail('invalid_arguments');
+      const pane = get(target); if (!pane) return fail('stale_target');
+      if (!available()) return fail('unavailable');
+      if (pane.busy || preparingPreview) return fail('disabled');
+      const source = owners.get(target.resultId);
+      if (!source || !pane.results.some(result => result.resultId === target.resultId) || !ctx.isSourceCurrent(source)) return fail('stale_target');
+      const base = lease(pane), guard = () => base() && ctx.isSourceCurrent(source);
+      const view = await prepare(pane, 'search', guard); if (!view) return failure(pane);
+      preparingPreview = true;
+      let prepared;
+      try { prepared = await ctx.preparePreview(source, guard); }
+      finally { preparingPreview = false; }
+      if (prepared.status !== 'applied') { if (guard()) pane.error = prepared.error.message; return prepared; }
+      if (!guard()) { await prepared.resource?.destroy?.(); return fail('stale_target'); }
+      clearPreview(pane); previewResource = prepared.resource;
+      pane.selectedResultId = target.resultId;
+      pane.preview = { ...prepared.descriptor, previewId: `${pane.spotlightId}-preview-${++previewSequence}`, scroll: { top: 0, left: 0 } };
+      const preview = pane.preview; pane.error = null;
+      await ctx.settle();
+      if (!live(view, guard) || pane.preview !== preview
+        || await native(() => view.renderPreview(preview.previewId, guard)) !== true
+        || !live(view, guard) || pane.preview !== preview) {
+        if (owned() === pane && pane.preview === preview) clearPreview(pane);
+        return failure(pane);
+      }
+      if (!await focus(view, 'preview-reader', undefined, guard)) return failure(pane);
+      return applied({ spotlightId: pane.spotlightId, resultId: preview.resultId, previewId: preview.previewId,
+        kind: preview.kind, page: preview.page, pageCount: preview.pageCount });
+    },
+    'spotlight.preview.close': async (target, payload) => {
+      if (!targetPane(target, ['previewId']) || !id(target.previewId) || !fields(payload, [])) return fail('invalid_arguments');
+      const pane = get(target); if (!pane || pane.preview?.previewId !== target.previewId) return fail('stale_target');
+      const guard = lease(pane), view = await prepare(pane, 'search', guard); if (!view) return failure(pane);
+      clearPreview(pane); await ctx.settle();
+      if (!await focus(view, 'search', undefined, guard)) return failure(pane);
+      return applied({ spotlightId: pane.spotlightId, previewId: target.previewId, closed: true });
+    },
+    'spotlight.preview.page': async (target, payload) => {
+      if (!targetPane(target, ['previewId']) || !id(target.previewId) || !fields(payload, ['page'])
+        || !Number.isSafeInteger(payload.page) || payload.page < 1) return fail('invalid_arguments');
+      const pane = get(target), preview = pane?.preview;
+      if (!pane || preview?.previewId !== target.previewId) return fail('stale_target');
+      if (preview.kind !== 'pdf') return fail('disabled');
+      if (payload.page > preview.pageCount) return fail('invalid_arguments');
+      const guard = lease(pane), view = await prepare(pane, 'search', guard); if (!view) return failure(pane);
+      const oldPage = preview.page; preview.page = payload.page; await ctx.settle();
+      if (pane.preview !== preview || !live(view, guard)
+        || await native(() => view.renderPreview(preview.previewId, guard)) !== true
+        || pane.preview !== preview || !live(view, guard)) {
+        if (owned() === pane && pane.preview === preview && guard()) preview.page = oldPage;
+        return failure(pane);
+      }
+      preview.scroll = { top: 0, left: 0 };
+      if (!await focus(view, 'preview-reader', undefined, guard)) return failure(pane);
+      return applied({ spotlightId: pane.spotlightId, previewId: preview.previewId, page: preview.page, pageCount: preview.pageCount });
+    },
+    'spotlight.preview.scroll': async (target, payload) => {
+      if (!targetPane(target, ['previewId']) || !id(target.previewId) || !offsets(payload)) return fail('invalid_arguments');
+      const pane = get(target), preview = pane?.preview;
+      if (!pane || preview?.previewId !== target.previewId) return fail('stale_target');
+      const guard = lease(pane), view = await prepare(pane, 'search', guard, true); if (!view) return failure(pane);
+      const actual = await native(() => view.scrollPreview(preview.previewId, payload, guard));
+      const observed = live(view, guard) ? describe(view).preview : null;
+      if (pane.preview !== preview || observed?.previewId !== preview.previewId || !offsets(actual) || !offsets(observed.scroll)
+        || actual.top !== observed.scroll.top || actual.left !== observed.scroll.left) return failure(pane);
+      preview.scroll = { ...actual };
+      return applied({ spotlightId: pane.spotlightId, previewId: preview.previewId, ...actual });
+    },
     'spotlight.focus': async (target, payload) => {
       if (!targetPane(target, ['controlId']) || !id(target.controlId) || !fields(payload, [], ['start', 'end', 'direction'])) return fail('invalid_arguments');
       const pane = get(target); if (!pane) return fail('stale_target');
@@ -200,11 +336,17 @@ export function createSpotlightCommands(ctx) {
     const view = available() ? ctx.getView() : null;
     const observed = view?.available() === true ? describe(view) : null;
     const focusedControl = observed?.controlIds?.includes(observed.focusedControl) ? observed.focusedControl : null;
+    const preview = pane.preview ? { ...pane.preview, fields: pane.preview.fields.map(field => ({ ...field })),
+      scroll: { ...(observed?.preview?.previewId === pane.preview.previewId ? observed.preview.scroll : pane.preview.scroll) },
+      rendered: observed?.preview?.previewId === pane.preview.previewId && observed.preview.rendered === true } : null;
     return { spotlightId: pane.spotlightId, query: pane.query, selectedResultId: pane.selectedResultId,
       results: pane.results.map(result => ({ ...result })), busy: pane.busy, error: pane.error,
+      answer: pane.answer ? { ...pane.answer } : null, suggestions: pane.suggestions.map(item => ({ ...item })), preview,
       scroll: { ...(offsets(observed?.scroll) ? observed.scroll : pane.scroll) }, focusedControl };
   }
   return { handlers, summary, reconcile,
+    preferencesChanged() { revision++; const pane = owned(); if (pane) refresh(pane); },
+    previewResource(previewId) { return previewId && owned()?.preview?.previewId === previewId ? previewResource : null; },
     targets() { const pane = summary(), view = available() && pane ? ctx.getView() : null;
       return { spotlightId: pane?.spotlightId ?? null, pane, results: pane?.results.map(result => ({ ...result })) ?? [],
         controls: view?.available() === true ? controls(view) : [] }; },
@@ -221,7 +363,7 @@ const paneTarget = object({ spotlightId: identity }), resultTarget = object({ sp
 const catalog = (name, target, payload, output) => defineCommand(profiles, `spotlight.${name}`, capability, target, payload,
   ['current foreground nonmodal Root', 'original live Spotlight owner and canonical source'], ['transient authored offline Spotlight'], [], [], object(output));
 const destination = { spotlightId: identity, resultId: identity, action: choice('open', 'reveal'), appId: identity, windowId: nullableId, itemId: identity };
-export const spotlightCatalog = Object.fromEntries([
+export const spotlightCatalog = { ...spotlightPreferencesCatalog, ...Object.fromEntries([
   catalog('open', empty, empty, { spotlightId: identity, reused: flag }),
   catalog('close', paneTarget, object({ restoreFocus: flag }, []), { spotlightId: identity, closed: { const: true } }),
   catalog('query', paneTarget, object({ query }), { spotlightId: identity, query, selectedResultId: nullableId }),
@@ -229,7 +371,20 @@ export const spotlightCatalog = Object.fromEntries([
   catalog('navigate', paneTarget, object({ direction: choice('next', 'previous', 'first', 'last') }), { spotlightId: identity, selectedResultId: nullableId }),
   catalog('openResult', resultTarget, empty, { ...destination, action: { const: 'open' } }),
   catalog('reveal', resultTarget, empty, { ...destination, action: { const: 'reveal' } }),
+  catalog('suggestion.apply', object({ spotlightId: identity, suggestionId: identity }), empty,
+    { spotlightId: identity, query, selectedResultId: nullableId }),
+  catalog('preview', resultTarget, empty, { spotlightId: identity, resultId: identity, previewId: identity,
+    kind: choice('application', 'text', 'fields', 'image', 'pdf', 'empty'), page: { type: 'integer', minimum: 1, maximum: 1024 },
+    pageCount: { type: 'integer', minimum: 1, maximum: 1024 } }),
+  catalog('preview.close', object({ spotlightId: identity, previewId: identity }), empty,
+    { spotlightId: identity, previewId: identity, closed: { const: true } }),
+  catalog('preview.page', object({ spotlightId: identity, previewId: identity }),
+    object({ page: { type: 'integer', minimum: 1, maximum: 1024 } }),
+    { spotlightId: identity, previewId: identity, page: { type: 'integer', minimum: 1, maximum: 1024 },
+      pageCount: { type: 'integer', minimum: 1, maximum: 1024 } }),
+  catalog('preview.scroll', object({ spotlightId: identity, previewId: identity }), object({ top: offset, left: offset }),
+    { spotlightId: identity, previewId: identity, top: offset, left: offset }),
   catalog('focus', object({ spotlightId: identity, controlId: identity }), object({ start: { type: 'integer', minimum: 0, maximum: 256 },
     end: { type: 'integer', minimum: 0, maximum: 256 }, direction: choice(...directions) }, []), { spotlightId: identity, controlId: identity }),
   catalog('scroll', paneTarget, object({ top: offset, left: offset }), { spotlightId: identity, top: offset, left: offset }),
-]);
+]) };

@@ -388,7 +388,7 @@ Boundaries: real host keyboard/IME unchanged; only authored Latin/spacing-accent
 
 ## SPOT-01 — private live-source Spotlight
 
-Current Golden discovery399;56/286 complete,230 remaining:228 queued plus STATUS-07/STATUS-08 deferred. Next SPOT-02. Nine Golden-only spotlight.* commands; historical inventories170/178/163/190 unchanged.
+SPOT-01 checkpoint: Golden discovery399;56/286 complete,230 remaining:228 queued plus STATUS-07/STATUS-08 deferred. Nine Golden-only spotlight.* commands; historical inventories170/178/163/190 unchanged. Current checkpoint is SPOT-02 below.
 
 spotlight-model owns256-unit literal accent-insensitive AND-token matching and deterministic applications/documents/contacts/mail groups, without a hidden cap or full-text concatenation allocation. Root collects current bundles, eligible file documents/live Notes and actual canonical Contacts/Mail; no fake communications. Public results use kind-qualified IDs/logical icons; source tokens stay private.
 
@@ -400,5 +400,21 @@ Lock and foreign foreground block operations while retaining private state. Actu
 
 Final554 tests/8464 assertions/49 files;652 modules/no Svelte warnings;399 strict pairs,118 Applied/128 exercise requests, all nine additions applied. All responses validate; intentional oversized query is structurally invalid. Native keyboard/all ten routes/Notes caret/synthetic composition/actual scroll/local isolation/private-save/cold exclusion and final320×180/DPR1.25 bounds/Close ownership pass.36 final historical calls preserve inspect/DOM/native focus;1,402 historical schemas compile. Final index-CRb4Y7hZ.js has no errors/broken images/external resources. Proof: local://spot01-shipped-proof.json.
 
-Boundaries: authored bounded materials/layout, local scene data only, no host filesystem/index, network search, fake communications, cloud/clipboard/Siri/full Quick Actions. Preview remains launch-only. SPOT-02 owns previews/calculation/conversion/dictionary/suggestions/indexing/privacy.
+Boundaries: authored bounded materials/layout, local scene data only, no host filesystem/index, network search, fake communications, cloud/clipboard/Siri/full Quick Actions. Standalone Preview remains launch-only; SPOT-02 below adds inline previews/calculation/conversion/dictionary/suggestions/indexing/privacy.
+
+## SPOT-02 — real private readers and canonical search policy
+
+Current Golden discovery406;57/286 complete,229 remaining:227 queued plus STATUS-07/STATUS-08 deferred. Next NOTIF-01. Seven additions; historical inventories170/178/163/190 unchanged.
+
+spotlight-answers is a256-unit/128-token/32-depth finite arithmetic parser, not eval. Explicit unit conversions include temperature offsets and case-sensitive bit/byte plus SI/IEC prefixes; ambiguous regional units reject. Currency shortcuts normalize into the same converter and disclose fixed fictional rates. Dictionary answers reuse the existing22-entry offline dictionary. spotlight-model adds eight eligible real label completions, without truncating search matches.
+
+spotlight-preview prepares exact original canonical text/fields/application metadata/image bytes/PDF bytes. Lazy bundled PDF.js6.4.299 renders real pages and accessible Unicode text; its loading task owns destruction, not PDFDocumentProxy. Opaque resources never enter public state or saves. Private reader/page/scroll commands recheck original Root/source/preview/native ownership. GoldenGateSpotlightPreview contains accessible text inside its reader so actual reader scroll cannot displace pinned Back/page controls. Command-Y/eye and focused-row Space preview; Escape closes the reader first.
+
+Required system.spotlight has closed unique enabledCategories/apps/documents/contacts/mail/calculator/conversions/dictionary/suggestions, excludedFolderIds and indexingEnabled. Descriptor-first partial configuration preserves original leaf/array authority, validates actual retained/readonly folders and coupled4 Mi string growth before writes. Root filters scene sources before public result/suggestion creation, with exact file/bundle ancestor privacy and full-path folder labels. Disk/index-off hides all indexed domains; other folders do not manufacture Notes/Contacts/Mail storage paths. Answer categories are independent. Purging excluded folders clears obsolete identities; trash retains exclusions.
+
+GoldenGateSpotlightSettings is an ordinary settingsPane:spotlight owner with real native controls, panel focus/scroll and retained settings-spotlight view kind. Source snapshots and complete saved V1 require the leaf; old missing-leaf payloads reject unchanged, without shims. Actual cold native sign-in restores independent Alex all-categories versus Casey conversions-only/disk-excluded policy; private readers/search and Guest policy exclude. Lock/local switching retain the original private search/PDF; same-user authentication resumes it.
+
+Final578 tests/9190 assertions/51 files;662 modules/no Svelte warnings;406 strict pairs,112 Applied/114 retained requests, all seven additions applied/all requests and responses valid. Real guarded110-row Notes write/three-page export, Unicode PDF pages/scroll, actual text/contact/mail/image readers, native shortcuts/settings/privacy and live indexing reversibility pass. Repaired installed PDF6 teardown API, hidden accessible-text ancestor overflow, +budget math intent and currency shorthand. Final index-m7TY7RAi.js Light/Dark320×180/DPR1.25 native page-next/Back/Close hit ownership passes; very small reader space is disclosed.28 historical probes preserve inspect/DOM/focus;1,402 historical schemas compile. Final browser errors/broken images/external resources empty; owned browser fixtures cleared/tabs closed. Proof: local://spot02-shipped-proof.json.
+
+No host filesystem/background index, cloud/telemetry/market rates, full dictionary/native Quick Actions/clipboard/Siri, or completed standalone Preview reader is claimed.
 

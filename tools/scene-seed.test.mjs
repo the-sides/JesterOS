@@ -277,3 +277,25 @@ test('fictional server locations remain serializable when unavailable but never 
   seed.system.servers[0].folderId = 'itinerary';
   expect(validate(seed).ok).toBe(false);
 });
+
+test('Spotlight exclusions validate real retained and generated folder graph identities without merging old leaves', () => {
+  const seed = fixture(), folder = seed.files.files.find(file => file.id === 'downloads');
+  seed.files.files.push({ ...structuredClone(folder), id: 'file-100', name: 'Private folder', deleted: true });
+  seed.files.nextFileId = Math.max(seed.files.nextFileId, 101);
+  seed.system.spotlight = { enabledCategories: [], excludedFolderIds: ['file-100', 'mac-application-folder:System/Applications'], indexingEnabled: false };
+  expect(validate(seed).ok).toBe(true);
+  for (const change of [
+    value => { delete value.system.spotlight; },
+    value => { delete value.system.spotlight.indexingEnabled; },
+    value => { value.system.spotlight.excludedFolderIds = ['missing']; },
+    value => { value.system.spotlight.excludedFolderIds = ['itinerary']; },
+    value => { value.system.spotlight.excludedFolderIds = ['mac-application:notes']; },
+    value => { value.system.spotlight.excludedFolderIds = ['mac-application-folder:NotInstalled']; },
+    value => { value.system.spotlight.query = 'private query'; },
+  ]) {
+    const candidate = structuredClone(seed); change(candidate);
+    const before = structuredClone(candidate);
+    expect(validate(candidate).ok).toBe(false);
+    expect(candidate).toEqual(before);
+  }
+});

@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { rankSpotlightSources, searchSpotlightSources } from '../frontend/src/spotlight-model.js';
 import { createSpotlightCommands } from '../frontend/src/spotlight-commands.js';
+import { spotlightPreferencesDefaults } from '../frontend/src/spotlight-preferences.js';
 
 const source = (kind, id, label, terms = []) => ({ kind, id, label, terms, secondary: '', icon: null, canReveal: kind === 'file', token: {} });
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
@@ -12,6 +13,7 @@ function fixture(initial = [source('file', 'one', 'Résumé')]) {
   const ctx = { profile: { id: 'macos-golden-gate-27.0.1' }, namespace: 'test', getPane: () => pane,
     setPane(value) { pane = value; view = value ? createView(value) : null; }, getView: () => view,
     available: () => foreground, alive: () => root, getSources: () => sources, isSourceCurrent: item => sources.includes(item),
+    getPreferences: spotlightPreferencesDefaults,
     captureReturn: () => token, restoreReturn: async (value, guard) => { if (guard()) restored.push(value); }, dismissMenus() {}, settle: async () => {},
     async activate(item, action, guard) {
       activationStarted.resolve();

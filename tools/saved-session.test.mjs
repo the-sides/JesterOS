@@ -75,6 +75,56 @@ function renameWindow(scene, window, id) {
   for (const key of ['activationWindowIds', 'creationWindowIds']) scene.switching[key] = scene.switching[key].map(value => value === previous ? id : value);
 }
 
+test('saved Spotlight pane and semantic scroll belong only to their exact ordinary live or closed Settings owner', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  const window = addWindow(scene, 'settings', { settingsPane: 'spotlight' });
+  scene.views[window.id].scroll = [{ key: 'settings-spotlight', top: 128, left: 4 }];
+  expect(validateSavedSession(snapshot, profile).ok).toBe(true);
+  for (const change of [
+    value => { value.locals[0].scene.windows.find(item => item.id === window.id).settingsPane = 'keyboard'; },
+    value => { value.locals[0].scene.windows.find(item => item.id === window.id).appId = 'mail'; },
+    value => { value.locals[0].scene.windows.find(item => item.id === window.id).utilityKind = 'system-coverage'; },
+    value => { value.locals[0].scene.views[window.id].scroll[0].recordId = null; },
+    value => { value.locals[0].scene.views[window.id].focusKey = 'settings-computer-name'; },
+    value => { value.locals[0].scene.views[window.id].scroll.push({ key: 'settings-keyboard', top: 0, left: 0 }); },
+    value => { value.locals[0].scene.windows.find(item => item.id === window.id).spotlightQuery = 'private'; },
+  ]) {
+    const candidate = structuredClone(snapshot); change(candidate);
+    expect(validateSavedSession(candidate, profile).ok).toBe(false);
+  }
+  const closed = fixture(), closedScene = closed.locals[0].scene;
+  remember(closedScene, 'settings', { settingsPane: 'spotlight' },
+    { scroll: [{ key: 'settings-spotlight', top: 192, left: 0 }], selections: [], focusKey: null });
+  expect(validateSavedSession(closed, profile).ok).toBe(true);
+  closedScene.closedWindows.settings.window.settingsPane = 'keyboard';
+  expect(validateSavedSession(closed, profile).ok).toBe(false);
+});
+
+test('saved locals retain independent complete Spotlight preferences and reject old leaves or private search data', () => {
+  const snapshot = fixture(true);
+  snapshot.locals[0].scene.seed.system.spotlight = {
+    enabledCategories: ['calculator', 'dictionary'], excludedFolderIds: ['disk'], indexingEnabled: false,
+  };
+  const restored = JSON.parse(JSON.stringify(snapshot));
+  expect(validateSavedSession(restored, profile).ok).toBe(true);
+  expect(restored.locals[0].scene.seed.system.spotlight.enabledCategories).toEqual(['calculator', 'dictionary']);
+  expect(restored.locals[1].scene.seed.system.spotlight.indexingEnabled).toBe(true);
+  expect(restored.locals[1].scene.seed.system.spotlight.excludedFolderIds).toEqual([]);
+  for (const change of [
+    value => { delete value.baseline.seed.system.spotlight; },
+    value => { delete value.locals[0].scene.seed.system.spotlight; },
+    value => { delete value.locals[1].scene.seed.system.spotlight.excludedFolderIds; },
+    value => { value.locals[0].scene.seed.system.spotlight.query = 'secret'; },
+    value => { value.locals[0].scene.seed.system.spotlight.previewId = 'secret-preview'; },
+    value => { value.locals[0].scene.spotlightAnswer = { value: 2 }; },
+  ]) {
+    const candidate = structuredClone(restored); change(candidate);
+    const before = structuredClone(candidate);
+    expect(validateSavedSession(candidate, profile).ok).toBe(false);
+    expect(candidate).toEqual(before);
+  }
+});
+
 test('saved About name caret and coverage belong only to their exact native Settings owners', () => {
   const snapshot = fixture(), scene = snapshot.locals[0].scene;
   scene.seed.system.computerName = 'Studio 🎬 Mac';

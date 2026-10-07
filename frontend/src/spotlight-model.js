@@ -32,3 +32,18 @@ export function rankSpotlightSources(sources, query) {
   return ranked.map(entry => entry.source);
 }
 export const searchSpotlightSources = (sources, query) => rankSpotlightSources(sources, query).map(publicSpotlightResult);
+
+/** Bounded local query completions, never invented records or online suggestions. */
+export function spotlightLocalSuggestions(sources, query) {
+  const needle = fold(query.trim()), seen = new Set(), suggestions = [];
+  const candidates = needle ? rankSpotlightSources(sources, query) : sources.filter(source => source.kind === 'app')
+    .sort((a, b) => compare(fold(a.label), fold(b.label)) || compare(a.id, b.id));
+  for (const source of candidates) {
+    const label = fold(source.label);
+    if (label === needle || seen.has(label) || needle && !label.startsWith(needle)) continue;
+    seen.add(label);
+    suggestions.push({ suggestionId: spotlightResultId(source), label: source.label, query: source.label });
+    if (suggestions.length === 8) break;
+  }
+  return suggestions;
+}

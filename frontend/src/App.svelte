@@ -82,6 +82,10 @@
   import GoldenGateInputViewer from './GoldenGateInputViewer.svelte';
   import { createSpotlightCommands } from './spotlight-commands.js';
   import GoldenGateSpotlight from './GoldenGateSpotlight.svelte';
+  import { createSpotlightPreferencesCommands } from './spotlight-preferences-commands.js';
+  import { spotlightFileExcluded } from './spotlight-preferences.js';
+  import { prepareSpotlightPreview } from './spotlight-preview.js';
+  import GoldenGateSpotlightSettings from './GoldenGateSpotlightSettings.svelte';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
   import { createNotesFileCommands } from './notes-file-commands.js';
@@ -186,6 +190,7 @@
   let spotlightPane = $state(null), spotlightController = $state.raw(null);
   const spotlightViews = new Map();
   $effect(() => { if (spotlightController && spotlightPane) spotlightController.reconcile(); });
+  let spotlightPreferencesController;
   $effect(() => { if (helpViewer) { foreground; activeAppId; switching.switcher; presentation.pairing; fileDialogState.current; helpViewer.reconcile(); } });
   let services = $state.raw(null), serviceSources;
   let serviceLookup = $state.raw(null), serviceContext = $state.raw(null), servicePending = $state.raw(null), servicePreparation = $state.raw(null);
@@ -378,6 +383,7 @@
   let messagesState = $state(initialData.messages);
   let communicationsState = $state(hasServices ? initialData.communications : undefined);
   const systemState = $state(hasAppleMenu ? initialData.system : undefined);
+  const spotlightFileIndex = $derived(new Map((macFiles?.files ?? []).map(file => [file.id, file])));
   const wifiPresentation = $state({ otherNetworks: false, join: null });
   let wifiJoinView = $state(null), wifiController;
   const batteryPresentation = $state({ options: null });
@@ -1204,6 +1210,7 @@
       getView: () => spotlightViews.get(spotlightPane?.spotlightId),
       alive: () => !disposed, available: spotlightInteractionsAvailable,
       getSources: getSpotlightSources, isSourceCurrent: spotlightSourceCurrent,
+      getPreferences: () => systemState.spotlight, preparePreview: prepareSpotlightPreview,
       activate: activateSpotlightSource,
       captureReturn: () => ({ snapshot: captureSessionDesktop(), appId: activeAppId,
         windowId: activeWindowId, window: windows.find(window => window.id === activeWindowId) ?? null }),
@@ -1212,6 +1219,17 @@
     });
     spotlightController = ownedSpotlight;
     Object.assign(handlers, ownedSpotlight.handlers);
+    spotlightPreferencesController = createSpotlightPreferencesCommands({
+      profile, getState: () => systemState.spotlight, available: spotlightInteractionsAvailable,
+      getFolders: spotlightPrivacyFolders, canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
+      onChanged: () => ownedSpotlight.preferencesChanged(),
+      openSettings: async () => {
+        const result = await openWindowPanel('settings', undefined, 'Spotlight', 'spotlight');
+        if (result.status === 'applied') ownedSpotlight.clear();
+        return result;
+      },
+    });
+    Object.assign(handlers, spotlightPreferencesController.handlers);
   }
   if (hasAppleMenu) Object.assign(handlers, createAppleCommands({
     profile, available: () => windowInteractionsAvailable() && !utilityPreparation && !switching.switcher && !presentation.pairing,
@@ -1483,7 +1501,8 @@
       ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
       ...(hasHelpWorkflows ? { helpViewer: helpViewer.targets() } : {}),
       ...(hasServices ? { services: services.targets() } : {}),
-      ...(hasSpotlight ? { spotlight: spotlightController.targets() } : {}),
+      ...(hasSpotlight ? { spotlight: { ...spotlightController.targets(),
+        preferences: spotlightPreferencesController.summary(), folders: spotlightPrivacyFolders() } } : {}),
       ...(hasAppleMenu ? { system: systemTargets() } : {}),
       ...(adapter.readTargets ? adapter.readTargets(nativeState, { native: nativeState, getApplicationView, getDesktopView: () => desktopView, getDesktopItems, getWindows: () => windows, getProfile: () => profile }) : {}),
     }), () => profile, commandCatalog);
@@ -1598,32 +1617,48 @@
     return hasSpotlight && windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
       && !servicePending && !switching.switcher && !presentation.pairing && !forceQuitConfirmation && !storageConfirmation;
   }
+  function spotlightPrivacyFolders() {
+    return macFiles.files.filter(file => file.kind === 'folder').map(file => {
+      const names = [file.name];
+      for (let parent = spotlightFileIndex.get(file.parentId); parent && names.length <= macFiles.files.length;
+        parent = spotlightFileIndex.get(parent.parentId)) names.unshift(parent.name);
+      return { fileId: file.id, label: names.join(' / '), deleted: file.deleted === true };
+    });
+  }
+  function spotlightSourceAllowed(kind, fileId) {
+    const preferences = systemState.spotlight;
+    if (!preferences.indexingEnabled || preferences.excludedFolderIds.includes('disk')) return false;
+    const category = kind === 'app' ? 'apps' : kind === 'file' || kind === 'note' ? 'documents'
+      : kind === 'contact' ? 'contacts' : 'mail';
+    return preferences.enabledCategories.includes(category)
+      && (!fileId || !spotlightFileExcluded(fileId, spotlightFileIndex, preferences.excludedFolderIds));
+  }
   function getSpotlightSources() {
     const live = liveMacFileRecords(macFiles), byId = new Map(live.map(file => [file.id, file])), sources = [];
     for (const app of Object.values(applications)) {
       const bundle = byId.get(applicationBundleId(app.id));
-      if (!bundle) continue;
+      if (!bundle || !spotlightSourceAllowed('app', bundle.id)) continue;
       sources.push({ kind: 'app', id: app.id, label: app.name, secondary: 'Application',
         icon: app.icon, terms: [app.id], canReveal: Boolean(byId.get(bundle.parentId)),
         token: { app, bundle } });
     }
     for (const file of live) {
-      if (file.kind !== 'document') continue;
+      if (!['document', 'image'].includes(file.kind) || !spotlightSourceAllowed('file', file.id)) continue;
       sources.push({ kind: 'file', id: file.id, label: file.name,
         secondary: byId.get(file.parentId)?.name ?? 'Document', icon: file.icon ?? 'document',
-        terms: [...(file.tags ?? []), ...(file.format === 'pdf' ? [] : [file.content ?? ''])],
-        canReveal: Boolean(byId.get(file.parentId)), token: { record: file, name: file.name,
+        terms: [...(file.tags ?? []), ...(!/^data:/i.test(file.content ?? '') ? [file.content ?? ''] : [])],
+        canReveal: Boolean(byId.get(file.parentId)), token: { record: file, kind: file.kind, name: file.name,
           parentId: file.parentId, content: file.content, appId: file.appId, tags: [...(file.tags ?? [])] } });
     }
     for (const note of notesState.notes) {
-      if (note.deleted) continue;
+      if (note.deleted || !spotlightSourceAllowed('note')) continue;
       sources.push({ kind: 'note', id: note.id, label: noteTitle(note), secondary: 'Notes',
         icon: 'notes', terms: [note.text], canReveal: true,
         token: { record: note, updatedAt: note.updatedAt, text: note.text } });
     }
     for (const collection of [communicationsState.contacts, communicationsState.drafts, communicationsState.outbox]) {
       for (const entry of collection) {
-        if (!['contact', 'mail'].includes(entry.kind)) continue;
+        if (!['contact', 'mail'].includes(entry.kind) || !spotlightSourceAllowed(entry.kind)) continue;
         const contact = entry.kind === 'contact', fields = entry.fields;
         sources.push({ kind: entry.kind, id: entry.id,
           label: (contact ? fields.name : fields.subject) || (contact ? 'Untitled Contact' : '(No Subject)'),
@@ -1636,6 +1671,8 @@
   }
   function spotlightSourceCurrent(source) {
     if (!hasSpotlight || disposed || !source?.token) return false;
+    if (!spotlightSourceAllowed(source.kind, source.kind === 'app' ? applicationBundleId(source.id)
+      : source.kind === 'file' ? source.id : null)) return false;
     const token = source.token;
     if (source.kind === 'app') return applications[source.id] === token.app
       && liveFile(macFiles, applicationBundleId(source.id)) === token.bundle;
@@ -1643,7 +1680,7 @@
       const file = liveFile(macFiles, source.id);
       // Residency/access timestamps may change during our own open without
       // changing the exact document or its searchable content.
-      return file === token.record && file.kind === 'document' && file.name === token.name
+      return file === token.record && file.kind === token.kind && file.name === token.name
         && file.parentId === token.parentId && file.content === token.content && file.appId === token.appId
         && (file.tags ?? []).length === token.tags.length
         && token.tags.every((tag, index) => file.tags[index] === tag);
@@ -2082,7 +2119,7 @@
     node = find(getWindowPanel(entry.window.id));
     if (!node?.isConnected || node.disabled || node.closest('[inert]') || !node.getClientRects().length) return false;
     const native = applicationViews.get(entry.window.id);
-    if (control !== 'panel' && entry.window.appId === 'settings' && ['sound', 'menu-bar', 'bluetooth', 'keyboard'].includes(entry.window.settingsPane)
+    if (control !== 'panel' && entry.window.appId === 'settings' && ['sound', 'menu-bar', 'bluetooth', 'keyboard', 'spotlight'].includes(entry.window.settingsPane)
       && native?.focus) return native.focus(control);
     node.focus();
     await tick();
@@ -3135,6 +3172,7 @@
       }
       for (const fileId of removedIds) delete desktopState.positions[fileId];
       clipboardState.fileIds = clipboardState.fileIds.filter(fileId => !removed.has(fileId));
+      if (hasSpotlight) systemState.spotlight.excludedFolderIds = systemState.spotlight.excludedFolderIds.filter(id => !removed.has(id));
     }
     reconcileFinderLocations(before);
     const liveIds = new Set(liveMacFileRecords(macFiles).map(file => file.id));
@@ -4771,6 +4809,9 @@
         {:else if hasInput && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'keyboard'}
           <GoldenGateInputSettings {profile} {window} input={inputController.summary()}
             execute={commands.execute} registerView={registerApplicationView} />
+        {:else if hasSpotlight && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'spotlight'}
+          <GoldenGateSpotlightSettings {profile} {window} preferences={systemState.spotlight} folders={spotlightPrivacyFolders()}
+            execute={commands.execute} registerView={registerApplicationView} />
         {:else if hasSound && !window.utilityKind && ['music', 'quicktime'].includes(window.appId)}
           <GoldenGateAudioPlayer {profile} {window} sound={soundController.summary()} {foreground} {preview}
             playback={preview ? soundController.targets().media.find(player => player.windowId === window.id) ?? null : null}
@@ -5046,6 +5087,7 @@
       style:width={`${bounds.width}px`} style:height={`${bounds.height}px`}
       style:visibility={!spotlightInteractionsAvailable() || spotlightPane.busy ? 'hidden' : undefined}>
       <GoldenGateSpotlight pane={spotlightPane} foreground={spotlightInteractionsAvailable()}
+        previewResource={spotlightController.previewResource(spotlightPane.preview?.previewId)}
         execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
         registerView={view => { if (view) spotlightViews.set(spotlightId, view); else spotlightViews.delete(spotlightId); }} />
     </div>

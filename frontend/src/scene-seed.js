@@ -6,6 +6,7 @@ import { viewingDefaults, viewingSchema, validateViewing } from './viewing-state
 import { communicationDefaults, communicationsSchema, validateCommunications } from './communication-state.js';
 import { systemDefaults, systemStateSchema, validateSystemState } from './system-state.js';
 import { createMacDesktopFileStore, validMacDesktopName, liveMacFileRecords } from './desktop-file-state.js';
+import { createMacApplicationFiles } from './mac-application-files.js';
 import { appearanceDefaults, appearancePresets } from './appearance.js';
 import { macDockDefaults } from './mac-dock-model.js';
 import { dockFolderItemId } from './mac-dock-folders.js';
@@ -216,6 +217,11 @@ export function validateSceneSeed(seed, profile) {
     if (file.localResident === false && file.inCloud !== true && !visited.has('icloud-drive') && !visited.has('mail-cache'))
       return invalid('A nonresident payload requires actual retained cloud backing or a Mail-cache ancestor.');
   }
+  const generatedFolders = new Set(createMacApplicationFiles(profile, store.sceneTime)
+    .filter(file => file.kind === 'folder').map(file => file.id));
+  if (seed.system.spotlight.excludedFolderIds.some(id => files.has(id)
+    ? files.get(id).kind !== 'folder' : !generatedFolders.has(id)))
+    return invalid('Spotlight exclusions must refer to retained canonical folders, including trashed folders, or generated readonly installation folders.');
   for (const server of seed.system.servers) {
     const folder = files.get(server.folderId);
     if (folder && folder.kind !== 'folder')
