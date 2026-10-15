@@ -1,0 +1,118 @@
+.dvd-app {
+  position: relative; display: flex; flex-direction: column; width: 100%; height: 100%;
+  min-width: 440px; min-height: 360px; background: #090909; color: #eee;
+  font: 12px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; overflow: hidden;
+}
+.dvd-app button, .dvd-app input, .dvd-app select { font: inherit; }
+.dvd-app button { cursor: default; }
+.dvd-app button:disabled { opacity: .38; }
+.dvd-app button:focus-visible, .dvd-app input:focus-visible, .dvd-app select:focus-visible, .dvd-app summary:focus-visible { outline: 2px solid #5ca9ed; outline-offset: 2px; }
+.dvd-app .dvd-menu-strip { display: flex; flex-shrink: 0; gap: 2px; padding: 2px 8px; background: linear-gradient(#efefef, #d4d4d4); color: #151515; border-bottom: 1px solid #111; z-index: 6; }
+.dvd-app .dvd-menu-owner { position: relative; }
+.dvd-app .dvd-menu-owner > button { border: 0; background: none; color: inherit; padding: 3px 7px; }
+.dvd-app .dvd-menu-owner > button.chosen { background: #3076d8; color: white; }
+.dvd-app .dvd-menu-popup { position: absolute; top: 100%; left: 0; min-width: 220px; max-height: 290px; overflow: auto; padding: 5px 0; background: #f5f5f5f5; color: #1c1c1c; border: 1px solid #aaa; border-radius: 0 0 5px 5px; box-shadow: 0 7px 18px #0008; z-index: 20; }
+.dvd-app .dvd-menu-popup button { display: flex; align-items: center; width: 100%; white-space: nowrap; text-align: left; border: 0; background: none; color: inherit; padding: 5px 15px 5px 5px; }
+.dvd-app .dvd-menu-popup button:hover:not(:disabled) { background: #3275d6; color: #fff; }
+.dvd-app .dvd-menu-check { width: 18px; flex-shrink: 0; }
+.dvd-app .dvd-disclosure { padding: 5px 12px; flex-shrink: 0; color: #aaa; font-size: 10px; line-height: 1.35; background: #171717; border-bottom: 1px solid #262626; }
+.dvd-app .dvd-cinema { position: relative; display: flex; justify-content: center; align-items: center; flex: 1; min-height: 150px; background: #000; overflow: hidden; }
+.dvd-app video { display: block; width: 100%; height: 100%; max-height: 100%; object-fit: contain; }
+.dvd-app .dvd-cinema.fill video { object-fit: cover; }
+.dvd-app .dvd-cinema.actual video { width: 192px; height: 108px; flex-shrink: 0; }
+.dvd-app audio { display: none; }
+.dvd-app .dvd-no-disc, .dvd-app .dvd-disc-menu { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; background: #070d12ed; text-align: center; padding: 18px; overflow: auto; }
+.dvd-app .dvd-no-disc { background: #070707; }
+.dvd-app .dvd-disc-symbol { display: grid; place-items: center; width: 64px; height: 64px; background: radial-gradient(circle, #121212 0 10%, #c4c9d0 11% 15%, #69737d 16% 17%, #b0b3b8 18% 32%, #9ca4b2 33% 34%, #e5e8ed 35% 42%, #798696 43% 45%, #c1c5cc 46%); border-radius: 50%; color: #202329; font-weight: 700; font-size: 13px; letter-spacing: -1px; box-shadow: 0 1px 5px #000; }
+.dvd-app .dvd-no-disc h2 { margin: 4px 0; font-size: 17px; font-weight: 400; color: #ccc; }
+.dvd-app .dvd-no-disc p { margin: 0 0 6px; color: #929292; line-height: 1.6; }
+.dvd-app .dvd-no-disc button { background: linear-gradient(#f4f4f4, #cfcfcf); border: 1px solid #888; color: #222; border-radius: 4px; padding: 5px 14px; }
+.dvd-app .dvd-disc-kicker { font-size: 10px; letter-spacing: 3px; color: #86a6b6; margin: 0; }
+.dvd-app .dvd-disc-menu h1 { font-family: Georgia, "Times New Roman", serif; font-size: 36px; font-weight: 400; letter-spacing: 1px; margin: 0; color: #f3dfac; }
+.dvd-app .dvd-disc-menu > p:not(.dvd-disc-kicker) { margin: 0; color: #a5c0cf; font-size: 12px; }
+.dvd-app .dvd-disc-menu h3 { font-size: 11px; font-weight: 400; letter-spacing: 2px; color: #d2be8c; margin: 4px 0 0; text-transform: uppercase; }
+.dvd-app .dvd-disc-menu button { color: #ece4d4; background: #173b4b; border: 1px solid #4d6a73; border-radius: 3px; padding: 6px 18px; }
+.dvd-app .dvd-disc-menu button:hover { background: #28586c; }
+.dvd-app .dvd-disc-menu > button { font-size: 15px; min-width: 155px; }
+.dvd-app .dvd-scene-buttons { display: flex; gap: 7px; }
+.dvd-app .dvd-scene-buttons button { padding: 6px 9px; }
+.dvd-app .dvd-scene-buttons small { display: block; font-size: 10px; color: #a2bfcc; margin-top: 4px; }
+.dvd-app .dvd-disc-menu label { font-size: 11px; color: #b8c6cd; }
+.dvd-app .dvd-disc-menu select { margin-left: 8px; background: #102d3c; color: #e7edf0; border: 1px solid #4d6a73; max-width: 270px; }
+.dvd-app .dvd-disc-menu > small { font-size: 9px; color: #728e9d; }
+.dvd-app .dvd-controller { flex-shrink: 0; padding: 7px 12px 9px; border-top: 1px solid #464646; background: linear-gradient(#303030, #1c1c1c); box-shadow: 0 -1px 5px #0009; }
+.dvd-app .dvd-display { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 7px; margin-bottom: 5px; background: #101010; border: 1px solid #080808; border-radius: 3px; font-size: 10px; color: #a0b7c6; }
+.dvd-app .dvd-display span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dvd-app .dvd-display output { font: 11px "Menlo", monospace; white-space: nowrap; color: #d7e2e8; }
+.dvd-app .dvd-transport { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.dvd-app .dvd-transport button { min-width: 26px; height: 26px; border: 1px solid #101010; border-radius: 4px; color: #eee; text-shadow: 0 -1px #000; background: linear-gradient(#4c4c4c, #292929); box-shadow: inset 0 1px #ffffff20; }
+.dvd-app .dvd-transport .dvd-play { width: 35px; height: 30px; font-size: 16px; }
+.dvd-app .dvd-timeline { display: flex; align-items: center; gap: 12px; margin-top: 7px; font-size: 10px; font-variant-numeric: tabular-nums; }
+.dvd-app .dvd-timeline input { flex: 1; min-width: 70px; height: 14px; accent-color: #acbcc7; }
+.dvd-app .dvd-shared-sound { display: flex; align-items: center; gap: 6px; color: #a9a9a9; font-size: 11px; }
+.dvd-app .dvd-shared-sound meter { width: 65px; height: 7px; }
+.dvd-app .dvd-controller-drawer summary { padding: 5px 2px 0; color: #999; font-size: 9px; cursor: default; }
+.dvd-app .dvd-options { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; font-size: 9px; color: #b1b1b1; }
+.dvd-app .dvd-options label { display: flex; align-items: center; gap: 4px; }
+.dvd-app .dvd-options select { max-width: 150px; font-size: 10px; border: 1px solid #090909; border-radius: 3px; padding: 2px; color: #dedede; background: #303030; }
+/* Mojave's 6.0 floating charcoal controller; Sonoma/qualified 26 reveal on pointer/focus. */
+.dvd-app .dvd-overlay-controller { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); width: min(620px, calc(100% - 42px)); box-sizing: border-box; border: 0; border-radius: 5px; background: #333333ec; box-shadow: none; z-index: 3; }
+.dvd-app .dvd-overlay-controller .dvd-display { background: transparent; border: 0; padding: 0; font-size: 9px; }
+.dvd-app .dvd-overlay-controller .dvd-transport button { background: none; border: 0; color: #b0b0b0; box-shadow: none; text-shadow: none; font-size: 18px; }
+.dvd-app .dvd-overlay-controller .dvd-transport button:first-child { font-size: 12px; border: 1px solid #777; height: 22px; }
+.dvd-app .dvd-overlay-controller .dvd-transport .dvd-play { font-size: 26px; }
+.dvd-app .dvd-autohide-controller { opacity: 0; transition: opacity .15s; pointer-events: none; }
+.dvd-app:hover .dvd-autohide-controller, .dvd-app:focus-within .dvd-autohide-controller { opacity: 1; pointer-events: auto; }
+.dvd-app .dvd-error { padding: 6px 12px; color: #f5a59f; background: #3e1818; font-size: 11px; flex-shrink: 0; z-index: 4; }
+.dvd-app .dvd-sheet { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); width: min(470px, calc(100% - 32px)); max-height: calc(100% - 75px); overflow: auto; background: #ededed; color: #222; border: 1px solid #aaa; border-radius: 6px; box-shadow: 0 9px 26px #000b; z-index: 8; }
+.dvd-app .dvd-sheet > header { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 9px 13px; background: linear-gradient(#f6f6f6, #ddd); border-bottom: 1px solid #bbb; z-index: 1; }
+.dvd-app .dvd-sheet > header strong { font-size: 12px; font-weight: 600; }
+.dvd-app .dvd-sheet > header button { border: 0; background: none; font-size: 19px; line-height: 1; color: #666; }
+.dvd-app .dvd-sheet button:not(header button) { border: 1px solid #b6b6b6; border-radius: 4px; padding: 4px 8px; background: linear-gradient(#fff, #eee); color: #222; }
+.dvd-app .dvd-preferences, .dvd-app .dvd-help { padding: 12px 18px; line-height: 1.5; }
+.dvd-app .dvd-preferences h3, .dvd-app .dvd-help h3 { font-size: 12px; margin: 5px 0 10px; }
+.dvd-app .dvd-preferences label { display: flex; align-items: center; gap: 7px; margin: 9px 0; font-size: 11px; }
+.dvd-app .dvd-preferences label select { margin-left: auto; max-width: 245px; font-size: 11px; }
+.dvd-app .dvd-preferences p, .dvd-app .dvd-help p { font-size: 11px; color: #555; }
+.dvd-app .dvd-bookmark-add { display: flex; gap: 7px; padding: 12px; }
+.dvd-app .dvd-bookmark-add input { min-width: 0; flex: 1; padding: 4px; border: 1px solid #aaa; border-radius: 3px; }
+.dvd-app .dvd-bookmark-add button { font-size: 10px; }
+.dvd-app .dvd-bookmarks { list-style: none; padding: 0; margin: 0 12px 12px; border: 1px solid #bbb; }
+.dvd-app .dvd-bookmarks li { display: flex; align-items: center; gap: 5px; padding: 6px; background: #fff; border-bottom: 1px solid #ddd; }
+.dvd-app .dvd-bookmarks li:last-child { border-bottom: 0; }
+.dvd-app .dvd-bookmarks li > input { min-width: 0; flex: 1; }
+.dvd-app .dvd-bookmarks button.dvd-bookmark-go { flex: 1; text-align: left; background: none; border: 0; }
+.dvd-app .dvd-bookmark-go strong { display: block; font-size: 11px; font-weight: 500; }
+.dvd-app .dvd-bookmark-go small { display: block; margin-top: 3px; color: #777; font-size: 10px; }
+.dvd-app .dvd-bookmarks li > button:not(.dvd-bookmark-go) { font-size: 10px; }
+.dvd-app .dvd-empty { padding: 8px 18px; color: #777; font-size: 11px; }
+/* 5.8's silver controller and pale LCD are distinct from Mojave's overlay. */
+.dvd-app.dvd-high-sierra { font-family: "Lucida Grande", "Helvetica Neue", sans-serif; }
+.dvd-app.dvd-high-sierra .dvd-controller { background: linear-gradient(#d5d5d5, #a9a9a9); border-top: 1px solid #f5f5f5; color: #222; border-radius: 14px 14px 0 0; }
+.dvd-app.dvd-high-sierra .dvd-transport button { background: linear-gradient(#f6f6f6, #a8a8a8); border-color: #686868; color: #222; text-shadow: 0 1px #eee; border-radius: 50%; box-shadow: inset 0 1px white; }
+.dvd-app.dvd-high-sierra .dvd-transport button:first-child { border-radius: 5px; }
+.dvd-app.dvd-high-sierra .dvd-transport .dvd-play { height: 34px; }
+.dvd-app.dvd-high-sierra .dvd-display { min-height: 28px; background: #f2f4d9; border-color: #697277; color: #424a45; box-shadow: inset 0 2px 4px #0004; }
+.dvd-app.dvd-high-sierra .dvd-display output { color: #424a45; }
+.dvd-app.dvd-high-sierra .dvd-options, .dvd-app.dvd-high-sierra .dvd-controller-drawer summary { color: #444; }
+.dvd-app.dvd-high-sierra .dvd-options select { color: #222; background: #e4e4e4; border-color: #888; }
+.dvd-app.dvd-windows { font-family: "Segoe UI", sans-serif; }
+.dvd-app.dvd-windows .dvd-menu-strip { background: #f4f4f4; padding: 4px 12px; border-bottom-color: #ccc; }
+.dvd-app.dvd-windows .dvd-menu-owner > button { padding: 5px 8px; border-radius: 4px; }
+.dvd-app.dvd-windows .dvd-menu-owner > button.chosen { background: #e6eef7; color: #111; }
+.dvd-app.dvd-windows .dvd-menu-popup { border-radius: 7px; background: #f8f8f8; }
+.dvd-app.dvd-windows .dvd-sheet { border-radius: 8px; background: #f7f7f7; }
+.dvd-app.dvd-golden .dvd-menu-strip { background: #e6e9edeb; }
+.dvd-app.dvd-golden .dvd-sheet { border-radius: 10px; }
+.dvd-app.dvd-fill-window .dvd-menu-strip { display: none; }
+.dvd-app.dvd-fill-window .dvd-controller-drawer { display: none; }
+.dvd-app .dvd-exit-expanded { position: absolute; top: 48px; right: 12px; z-index: 5; border: 1px solid #777; border-radius: 4px; padding: 4px 8px; background: #333d; color: #ddd; font-size: 10px; }
+.dvd-app .dvd-transport { flex-wrap: wrap; }
+.dvd-app.dvd-high-sierra .dvd-controller { position: relative; padding-left: 118px; }
+.dvd-app .dvd-compass { position: absolute; left: 10px; top: 18px; width: 96px; height: 96px; display: grid; grid-template-columns: 28px 40px 28px; grid-template-rows: 28px 40px 28px; border: 1px solid #888; border-radius: 50%; background: linear-gradient(#fff, #b9b9b9); box-shadow: inset 0 2px 3px #fff, 0 1px 2px #555; }
+.dvd-app .dvd-compass button { border: 0; background: none; color: #333; padding: 0; font-size: 14px; }
+.dvd-app .dvd-compass .dvd-compass-up { grid-column: 2; grid-row: 1; }
+.dvd-app .dvd-compass .dvd-compass-left { grid-column: 1; grid-row: 2; }
+.dvd-app .dvd-compass .dvd-compass-enter { grid-column: 2; grid-row: 2; border: 1px solid #888; border-radius: 50%; background: linear-gradient(#fafafa, #b7b7b7); font-size: 12px; box-shadow: inset 0 1px #fff; }
+.dvd-app .dvd-compass .dvd-compass-right { grid-column: 3; grid-row: 2; }
+.dvd-app .dvd-compass .dvd-compass-down { grid-column: 2; grid-row: 3; }

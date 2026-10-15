@@ -1,0 +1,36 @@
+import {object,choice,flag} from './command-schema.js';
+import {canonicalStringUnits,copyCanonicalData} from './canonical-data.js';
+import {previewSchemaValid} from './preview-state.js';
+export const AUDIO_VOICE_PROFILES=['macos-high-sierra-10.13','macos-mojave-10.14','macos-sonoma-14.0','macos-golden-gate-27.0.1','windows11-23h2-22631.2428'];
+export const avId={type:'string',minLength:1,maxLength:128,pattern:'^[A-Za-z0-9][A-Za-z0-9._-]*$',not:{enum:[...Object.getOwnPropertyNames(Object.prototype),'prototype']}};
+export const avText=(maxLength=256,minLength=0)=>({type:'string',maxLength,minLength});
+export const avInt=(minimum,maximum)=>({type:'integer',minimum,maximum});
+export const avArray=(items,maxItems)=>({type:'array',items,maxItems});
+export const avNullable=s=>({anyOf:[{type:'null'},s]});
+const channels=avArray(object({id:avId,gain:avInt(0,100)}),32);
+const format=object({id:avId,direction:choice('input','output'),sampleRate:choice(44100,48000,96000),bitDepth:choice(16,24,32),channels,speakers:avArray(avInt(1,32),32)});
+const composite=object({id:avId,name:avText(128,1),kind:choice('aggregate','multi-output'),memberIds:{...avArray(avId,16),minItems:2,uniqueItems:true},clockId:avId,driftIds:{...avArray(avId,16),uniqueItems:true}});
+export const audioMidiMetadataSchema=object({formats:avArray(format,256),composites:avArray(composite,32),nextId:avInt(1,Number.MAX_SAFE_INTEGER-1),alertDeviceId:avId});
+export function createAudioMidiMetadata(sound){return {formats:[...sound.inputs.map(d=>({id:d.id,direction:'input',sampleRate:48000,bitDepth:24,channels:[{id:'channel-1',gain:100}],speakers:[]})),...sound.outputs.map(d=>({id:d.id,direction:'output',sampleRate:48000,bitDepth:24,channels:[{id:'channel-1',gain:100},{id:'channel-2',gain:100}],speakers:[1,2]}))],composites:[],nextId:1,alertDeviceId:sound.outputDeviceId};}
+export function validateAudioMidiMetadata(data,sound){
+ const bad=message=>({ok:false,message});if(!previewSchemaValid(data,audioMidiMetadataSchema))return bad('Invalid closed audio metadata.');
+ const keys=new Set();for(const f of data.formats){const rows=f.direction==='input'?sound.inputs:sound.outputs,key=f.direction+':'+f.id;if(keys.has(key)||!rows.some(d=>d.id===f.id)||f.channels.length<1||new Set(f.channels.map(c=>c.id)).size!==f.channels.length||f.speakers.some(n=>n>f.channels.length)||f.direction==='input'&&f.speakers.length||f.direction==='output'&&f.speakers.length!==f.channels.length)return bad('Dangling device format or channel assignment.');keys.add(key);}
+ if(data.formats.length!==sound.inputs.length+sound.outputs.length)return bad('Every authoritative sound device needs one format.');
+ if(!sound.outputs.some(d=>d.id===data.alertDeviceId&&d.available))return bad('Unavailable alert route.');
+ const ids=new Set();for(const c of data.composites){if(ids.has(c.id)||[...sound.inputs,...sound.outputs].some(d=>d.id===c.id)||!/^audio-composite-[1-9][0-9]*$/.test(c.id)||Number(c.id.slice(16))>=data.nextId||!c.memberIds.includes(c.clockId)||c.driftIds.some(id=>!c.memberIds.includes(id)||id===c.clockId))return bad('Invalid composite identity or clock.');for(const id of c.memberIds){const rows=c.kind==='multi-output'?sound.outputs:[...sound.inputs,...sound.outputs];if(!rows.some(d=>d.id===id&&d.available))return bad('A composite member is unavailable.');}ids.add(c.id);}
+ return {ok:true};
+}
+export const audioMidiWindowSchema=object({windowId:avId,appId:choice('audiomidi'),pane:choice('audio','midi'),deviceId:avNullable(avId),direction:choice('input','output'),configurationId:avId,midiDeviceId:avNullable(avId),sheet:choice('none','speakers','properties','preferences','help'),menu:avNullable(avText(64)),testMode:flag,litIds:avArray(avId,64),status:avText(512),revision:avInt(0,Number.MAX_SAFE_INTEGER-1)});
+const midiDevice=object({id:avId,name:avText(128,1),manufacturer:avText(128),model:avText(128),inputPorts:avInt(0,16),outputPorts:avInt(0,16),channel:avInt(1,16),x:avInt(0,1200),y:avInt(0,900)});
+const connection=object({id:avId,from:avId,output:avInt(1,16),to:avId,input:avInt(1,16)});
+export const audioMidiSchema=object({version:{const:1},profileId:choice(...AUDIO_VOICE_PROFILES),nextId:avInt(1,Number.MAX_SAFE_INTEGER-1),configurations:{...avArray(object({id:avId,name:avText(128,1),devices:avArray(midiDevice,64),connections:avArray(connection,128)}),16),minItems:1},preferences:object({testNote:avInt(0,127),testVelocity:avInt(1,127),playTests:flag}),windows:avArray(audioMidiWindowSchema,32)});
+export function createAudioMidiState(profile,{sceneTime=0}={}){return {version:1,profileId:typeof profile==='string'?profile:profile.id,nextId:3,configurations:[{id:'midi-1',name:'Default',devices:[{id:'midi-2',name:'Local MIDI Keyboard',manufacturer:'Jester',model:'Scene Keys',inputPorts:1,outputPorts:1,channel:1,x:100,y:70}],connections:[]}],preferences:{testNote:60,testVelocity:80,playTests:true},windows:[]};}
+export function validateAudioMidiState(state,profile){
+ if(!previewSchemaValid(state,audioMidiSchema)||state.profileId!==(typeof profile==='string'?profile:profile?.id??state.profileId)||canonicalStringUnits(state)>262144)return {ok:false,message:'Invalid or oversized Audio MIDI graph.'};
+ const ids=new Set();for(const c of state.configurations){for(const row of [c,...c.devices,...c.connections]){if(ids.has(row.id)||!/^midi-[1-9][0-9]*$/.test(row.id)||Number(row.id.slice(5))>=state.nextId)return {ok:false,message:'Duplicate or colliding MIDI identity.'};ids.add(row.id);}const edges=new Set();for(const e of c.connections){const a=c.devices.find(d=>d.id===e.from),b=c.devices.find(d=>d.id===e.to),key=[e.from,e.output,e.to,e.input].join(':');if(!a||!b||a===b||e.output>a.outputPorts||e.input>b.inputPorts||edges.has(key))return {ok:false,message:'Invalid MIDI port connection.'};edges.add(key);}}
+ if(new Set(state.windows.map(w=>w.windowId)).size!==state.windows.length||state.windows.some(w=>!state.configurations.some(c=>c.id===w.configurationId)||w.midiDeviceId&&!state.configurations.find(c=>c.id===w.configurationId).devices.some(d=>d.id===w.midiDeviceId)))return {ok:false,message:'Dangling MIDI window selection.'};return {ok:true};
+}
+export function audioMidiCapabilities(profile){const id=typeof profile==='string'?profile:profile.id;return {windows:id.startsWith('windows'),classic:/high-sierra|mojave/.test(id),golden:id.includes('golden-gate'),label:id.startsWith('windows')?'Audio / MIDI Studio — local equivalent':'Audio MIDI Setup',disclosure:id.startsWith('windows')?'Functional local equivalent; Audio MIDI Setup is not bundled with Windows.':id.includes('golden-gate')?'Qualified nearest macOS 26 styling; native 27 pixels not certified.':'Versioned Apple utility layout; all equipment is authored local fiction.'};}
+export const audioMidiWindowMetadata=profile=>({appId:'audiomidi',title:audioMidiCapabilities(profile).label,utilityKind:'audiomidi',width:760,height:540,minWidth:620,minHeight:420,component:'AudioMidiApp.svelte'});
+export function audioMidiSessionData(state){const copy=copyCanonicalData(state);for(const w of copy.windows){w.menu=null;w.sheet='none';w.testMode=false;w.litIds=[];w.status='';}return copy;}
+export function restoreAudioMidiState(data,profile){if(!validateAudioMidiState(data,profile).ok)throw new TypeError('Invalid Audio MIDI session data.');return audioMidiSessionData(data);}

@@ -1,12 +1,10 @@
 import { isRecord, rejected } from './feature-commands.js';
 import { applicationMenuItems } from './application-switching.js';
-import { notesPreferencesSchema } from './notes-preferences.js';
 
 export const APPLICATION_MENU_UTILITY_SIZES = {
   'application-about': { width: 360, height: 360, minimumSize: { width: 280, height: 240 } },
-  'application-settings': { width: 480, height: 360, minimumSize: { width: 300, height: 240 } },
 };
-const supported = profile => profile.renderer === 'golden-gate' && profile.capabilities.includes('shell.application-menu');
+const supported = profile => profile.family === 'macos' && profile.capabilities.includes('messages.conversations');
 const fields = (value, keys) => isRecord(value) && Object.keys(value).every(key => keys.includes(key));
 const identity = value => typeof value === 'string' && value.length > 0;
 const invalid = () => rejected('invalid_arguments', 'Use the closed application-menu target and documented payload.');
@@ -34,13 +32,15 @@ export function goldenApplicationMenuItems({ state, profile, appId, runningAppId
     });
 }
 
-/** Panel geometry/lifetime remains in App; preferences are complete seeded data. */
+/** About geometry remains in App; Notes preferences belong to its managed session. */
 export function createApplicationMenuCommands(ctx) {
   const guard = () => !supported(ctx.profile)
-    ? rejected('unsupported_profile', 'Only Golden Gate supports application-menu panels.')
+    ? rejected('unsupported_profile', 'Application About panels require a supported Mac scene.')
     : !ctx.available() ? unavailable() : null;
   function currentApp(appId) {
     if (!Object.hasOwn(ctx.profile.applications, appId)) return rejected('not_found', 'The application is not registered.');
+    if (ctx.profile.renderer !== 'golden-gate' && appId !== 'messages')
+      return rejected('disabled', 'Only Messages has a represented About utility in this profile.');
     if (ctx.getActiveAppId() !== appId || !ctx.getRunningAppIds().includes(appId)
       || ctx.isHidden(appId) || ctx.isQuitting(appId)) return rejected('disabled', 'The current live visible application must own its app-menu utility.');
     return null;
@@ -54,31 +54,23 @@ export function createApplicationMenuCommands(ctx) {
     const error = guard(); if (error) return error;
     if (!fields(target, ['appId']) || !identity(target.appId) || !fields(payload, [])) return invalid();
     const ownerError = currentApp(target.appId); if (ownerError) return ownerError;
-    if (kind === 'application-settings' && target.appId !== 'notes') return rejected('disabled', 'This application has no represented working Settings panel.');
+    if (kind === 'application-settings') {
+      if (!ctx.profile.capabilities.includes('shell.application-menu')) return rejected('unsupported_profile', 'Native application Settings utilities are not supported in this profile.');
+      if (target.appId !== 'notes') return rejected('disabled', 'This application has no represented working Settings panel.');
+      if (typeof ctx.openNotesPreferences !== 'function') return unavailable();
+      return ctx.openNotesPreferences({ appId: target.appId });
+    }
     return ctx.openPanel(target.appId, kind);
   }
   return {
     'app.about.open': (target, payload) => open(target, payload, 'application-about'),
     'app.settings.open': (target, payload) => open(target, payload, 'application-settings'),
-    'app.settings.set': (target, payload) => {
-      const error = guard(); if (error) return error;
-      const properties = notesPreferencesSchema.properties;
-      if (!fields(target, ['appId']) || target.appId !== 'notes' || !fields(payload, Object.keys(properties))
-        || Object.keys(payload).length === 0
-        || (Object.hasOwn(payload, 'sortBy') && !properties.sortBy.enum.includes(payload.sortBy))
-        || (Object.hasOwn(payload, 'groupByDate') && typeof payload.groupByDate !== 'boolean')
-        || (Object.hasOwn(payload, 'textSize') && (!Number.isInteger(payload.textSize)
-          || payload.textSize < properties.textSize.minimum || payload.textSize > properties.textSize.maximum))) return invalid();
-      Object.assign(ctx.notes.preferences, payload);
-      return applied({ appId: 'notes' });
-    },
     'app.panel.focus': async (target, payload) => {
       const error = guard(); if (error) return error;
       if (!fields(target, ['windowId', 'control']) || !identity(target.windowId)
-        || !['panel', 'sort-by', 'group-by-date', 'text-size'].includes(target.control) || !fields(payload, [])) return invalid();
+        || target.control !== 'panel' || !fields(payload, [])) return invalid();
       const entry = panel(target.windowId); if (!entry) return unavailable();
-      if (target.control !== 'panel' && entry.window.utilityKind !== 'application-settings')
-        return rejected('not_found', 'This About utility has no preference controls.');
+      if (entry.window.utilityKind !== 'application-about') return unavailable();
       return await ctx.focusPanel(entry, target.control) ? applied({ windowId: target.windowId, control: target.control }) : unavailable();
     },
     'app.panel.scroll': (target, payload) => {

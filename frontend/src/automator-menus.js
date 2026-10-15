@@ -1,0 +1,8 @@
+import { automatorSession, automatorAvailability } from './automator-state.js';
+export function automatorMenuItems(state,windowId) {const w=automatorSession(state,windowId),busy=w?.status==='running',item=(id,label,command,payload={},enabled=true)=>({id,label,command,payload,target:{windowId},enabled});return [
+ {id:'automator-app',label:automatorAvailability(state.profileId).label,items:[item('auto-settings',/sonoma|golden-gate/u.test(state.profileId)?'Settings…':'Preferences…','automator.panel',{panel:'preferences'},!busy),item('auto-help','Automator Help','automator.panel',{panel:'help'},!busy)]},
+ {id:'automator-file',label:'File',items:[item('auto-new','New…','automator.panel',{panel:'new'},!busy),item('auto-open','Open…','automator.open',{},!busy),item('auto-save','Save','automator.save',{},!busy),item('auto-save-as','Save As…','automator.panel',{panel:'save'},!busy)]},
+ {id:'automator-edit',label:'Edit',items:[item('auto-delete','Delete Action','automator.deleteAction',{actionId:w?.selected??'none'},!!w?.selected&&!busy),item('auto-up','Move Action Up','automator.moveAction',{actionId:w?.selected??'none',index:Math.max(0,(w?.actions.findIndex(a=>a.id===w.selected)??0)-1)},!!w?.selected&&!busy)]},
+ {id:'automator-view',label:'View',items:[...['showLibrary','showVariables','showLog'].map((key,i)=>item('auto-view-'+key,(state.preferences[key]?'Hide ':'Show ')+['Library','Variables','Log'][i],'automator.preferences',{values:{...state.preferences,[key]:!state.preferences[key]}},!busy)),item('auto-clear','Clear Log','automator.clearLog',{},!busy)]},
+ {id:'automator-workflow',label:'Workflow',items:[item('auto-run','Run','automator.run',{},!!w?.actions.length&&!busy),item('auto-stop','Stop','automator.stop',{},busy)]}
+ ];}

@@ -3,7 +3,6 @@ import { isRecord } from './feature-commands.js';
 import { createMacApplicationFiles } from './mac-application-files.js';
 
 export const VIEWING_LIMIT = 1024;
-export const NOTE_ZOOM_STEPS = Object.freeze([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]);
 const forbidden = [...Object.getOwnPropertyNames(Object.prototype), 'prototype'];
 export const viewingIdentitySchema = { type: 'string', minLength: 1, maxLength: 128,
   pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$', not: { enum: forbidden } };
@@ -28,14 +27,7 @@ export const finderPresentationSchema = { ...object({ toolbarVisible: flag, side
   pathBarVisible: flag, statusBarVisible: flag, previewVisible: flag }),
   allOf: [{ if: { properties: { toolbarVisible: { const: false } }, required: ['toolbarVisible'] },
     then: { properties: { sidebarVisible: { const: false } } } }] };
-export const notesPresentationSchema = { ...object({ mode: choice('list', 'gallery'), documentVisible: flag }),
-  allOf: [{ if: { properties: { mode: { const: 'list' } }, required: ['mode'] },
-    then: { properties: { documentVisible: { const: true } } } }] };
-export const notesViewProperties = { mode: choice('list', 'gallery'), showNoteCount: flag,
-  sortBy: choice('default', 'date-edited', 'date-created', 'title'), sortDirection: choice('default', 'ascending', 'descending') };
 export const viewingSchema = object({
-  notes: object({ ...notesViewProperties, zooms: { type: 'object', maxProperties: VIEWING_LIMIT,
-    propertyNames: viewingIdentitySchema, additionalProperties: choice(...NOTE_ZOOM_STEPS) } }),
   finder: object({ folderViews: { type: 'object', maxProperties: VIEWING_LIMIT,
     propertyNames: viewingFolderIdentitySchema, additionalProperties: finderViewSchema } }),
 });
@@ -43,9 +35,7 @@ export const finderViewDefaults = () => ({ mode: 'icons', sortBy: 'name', descen
   groupBy: 'none', iconSize: 64, gridSpacing: 24, textSize: 12 });
 export const finderPresentationDefaults = () => ({ toolbarVisible: true, sidebarVisible: true,
   pathBarVisible: false, statusBarVisible: false, previewVisible: false });
-export const notesPresentationDefaults = (mode = 'list') => ({ mode, documentVisible: mode === 'list' });
-export const viewingDefaults = () => ({ notes: { mode: 'list', showNoteCount: true,
-  sortBy: 'default', sortDirection: 'default', zooms: {} }, finder: { folderViews: {} } });
+export const viewingDefaults = () => ({ finder: { folderViews: {} } });
 const bounded = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 export function validFinderView(value, partial = false) {
   return closedViewingFields(value, Object.keys(finderViewSchema.properties), partial ? [] : undefined)
@@ -59,31 +49,14 @@ export function validFinderPresentation(value, partial = false) {
     && (!partial || Object.keys(value).length > 0) && Object.values(value).every(entry => typeof entry === 'boolean')
     && !(value.toolbarVisible === false && value.sidebarVisible === true);
 }
-export function validNotesPresentation(value) {
-  return closedViewingFields(value, ['mode', 'documentVisible']) && ['list', 'gallery'].includes(value.mode)
-    && typeof value.documentVisible === 'boolean' && (value.mode !== 'list' || value.documentVisible);
-}
-export function validNotesViewPatch(value) {
-  return closedViewingFields(value, Object.keys(notesViewProperties), []) && Object.keys(value).length > 0
-    && Object.entries(value).every(([key, entry]) => key === 'showNoteCount' ? typeof entry === 'boolean'
-      : notesViewProperties[key].enum.includes(entry));
-}
-export function validateViewing(viewing, { notes, files } = {}, profile) {
+export function validateViewing(viewing, { files } = {}, profile) {
   const invalid = message => ({ ok: false, message });
-  if (!closedViewingFields(viewing, ['notes', 'finder'])
-    || !closedViewingFields(viewing.notes, [...Object.keys(notesViewProperties), 'zooms'])
-    || !validNotesViewPatch(Object.fromEntries(Object.keys(notesViewProperties).map(key => [key, viewing.notes[key]])))
+  if (!closedViewingFields(viewing, ['finder'])
     || !closedViewingFields(viewing.finder, ['folderViews'])) return invalid('Expected a closed complete viewing domain.');
-  const zooms = viewing.notes.zooms, folders = viewing.finder.folderViews;
-  for (const map of [zooms, folders]) if (!isRecord(map) || Reflect.ownKeys(map).length > VIEWING_LIMIT
-    || Reflect.ownKeys(map).some(key => typeof key !== 'string'
-      || !Object.hasOwn(Object.getOwnPropertyDescriptor(map, key), 'value'))) return invalid('Viewing dictionaries need bounded plain data properties.');
-  const noteRecords = notes?.notes ?? (Array.isArray(notes) ? notes : null);
-  const noteIds = noteRecords ? new Set(noteRecords.map(note => note.id)) : null;
-  for (const [noteId, zoom] of Object.entries(zooms)) {
-    if (!validViewingIdentity(noteId) || !NOTE_ZOOM_STEPS.includes(zoom)
-      || noteIds && !noteIds.has(noteId)) return invalid('Invalid note zoom identity, canonical note or finite zoom step.');
-  }
+  const folders = viewing.finder.folderViews;
+  if (!isRecord(folders) || Reflect.ownKeys(folders).length > VIEWING_LIMIT
+    || Reflect.ownKeys(folders).some(key => typeof key !== 'string'
+      || !Object.hasOwn(Object.getOwnPropertyDescriptor(folders, key), 'value'))) return invalid('Viewing dictionaries need bounded plain data properties.');
   // Safe unknown mutable IDs survive deletion/undo. Known records must actually
   // be folders; colon/slash installation IDs are accepted only from the profile.
   const records = files?.files ?? (Array.isArray(files) ? files : []);
@@ -96,12 +69,3 @@ export function validateViewing(viewing, { notes, files } = {}, profile) {
   return { ok: true };
 }
 
-/** Project sorting only; selection and document data remain canonical/shared. */
-export function notesViewProjection(notes, viewing) {
-  const override = notes.folder !== 'deleted';
-  const sortBy = override && viewing.notes.sortBy !== 'default'
-    ? viewing.notes.sortBy : notes.preferences?.sortBy ?? 'date-edited';
-  const sortDirection = override && viewing.notes.sortDirection !== 'default'
-    ? viewing.notes.sortDirection : sortBy === 'title' ? 'ascending' : 'descending';
-  return { ...notes, preferences: { ...notes.preferences, sortBy, sortDirection } };
-}

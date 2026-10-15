@@ -1,133 +1,154 @@
 import { expect, test } from 'bun:test';
 import { goldenGateProfile as profile } from '../frontend/src/golden-gate-profile.js';
-import { createDefaultSceneSeed, validateSceneSeed } from '../frontend/src/scene-seed.js';
-import { postNotification } from '../frontend/src/notification-model.js';
-import { communicationDefaults, draftPreview, createCommunicationDraft, submitCommunicationDraft,
-  replyToCommunication, selectCommunicationEntry } from '../frontend/src/communication-state.js';
-import { resolveNotificationDestination, retainNotificationDestination, notificationDestinationActions } from '../frontend/src/notification-destinations.js';
-import { setWidgetReminderCompleted } from '../frontend/src/notification-widget-model.js';
+import { createDefaultSceneSeed, validateSceneSeed, projectSceneSeed, rehydrateSceneSeed } from '../frontend/src/scene-seed.js';
+import { createDefaultApplicationFiles } from '../frontend/src/default-application-files.js';
+import { resolveNotificationDestination, retainNotificationDestination, notificationDestinationActions, validateNotificationDestinations } from '../frontend/src/notification-destinations.js';
+import { createContact } from '../frontend/src/contacts-state.js';
+import { listOSProfiles } from '../frontend/src/os-profiles.js';
+import { receiveLocalCall, callsCapabilities } from '../frontend/src/calls-state.js';
+import { createDomainNotificationBridges } from '../frontend/src/notification-commands.js';
 
-const sources = seed => ({ notes: seed.notes, files: seed.files, communications: seed.communications, widgets: seed.system.widgets });
-function sent(state, kind, fields, sceneTime = state.timeBase) {
-  const draft = draftPreview(state, kind, fields, [], sceneTime);
-  expect(createCommunicationDraft(state, draft, () => true, sceneTime).status).toBe('applied');
-  const result = submitCommunicationDraft(state, draft.id, () => true, sceneTime);
-  expect(result.status).toBe('applied');
-  return result.target.recordId;
-}
-function linked(seed, appId, kind, recordId) {
-  const result = postNotification(seed.system.notifications, profile, appId, {
-    title: 'Original source', body: 'An authored local arrival.', destination: { kind, recordId },
-  }, seed.files.sceneTime);
-  expect(result.status).toBe('applied');
-  return seed.system.notifications.entries.find(entry => entry.id === result.target.notificationId);
-}
+const sources = seed => ({ notes: seed.notes, files: seed.files, messages: seed.messages, mail: seed.mail, contacts: seed.contacts,
+  calendar: seed.calendar, reminders: seed.reminders, calls: seed.calls, stocks: seed.stocks, news: seed.news, clockApp: seed.clockApp });
+const entry = (appId, kind, recordId) => ({ id: 'notification-original', appId, destination: { kind, recordId }, title: 'Original', body: '', dismissed: false });
 
-test('complete seeds reject wrong-domain and invented source identities without consuming or changing the original seed', () => {
-  const seed = createDefaultSceneSeed(profile), messageId = sent(seed.communications, 'message', { to: 'Eli', body: 'First sent-local message' });
-  seed.files.sceneTime = seed.communications.timeBase;
-  linked(seed, 'messages', 'message', messageId);
-  linked(seed, 'calendar', 'event', 'event-2');
-  linked(seed, 'notes', 'note', 'note-2');
-  const mailId = sent(seed.communications, 'mail', { to: 'Mika', subject: 'Another domain', body: 'Actual local mail' });
-  const draft = draftPreview(seed.communications, 'message', { to: 'Eli', body: 'Not yet sent' });
-  expect(createCommunicationDraft(seed.communications, draft).status).toBe('applied');
-  seed.files.sceneTime = seed.communications.timeBase;
-  expect(validateSceneSeed(seed, profile).ok).toBe(true);
-  for (const destination of [{ kind: 'message', recordId: draft.id }, { kind: 'message', recordId: mailId }]) {
-    const candidate = structuredClone(seed); candidate.system.notifications.entries[0].destination = destination;
-    const before = structuredClone(candidate);
-    expect(validateSceneSeed(candidate, profile).ok).toBe(false);
-    expect(candidate).toEqual(before);
+test('destinations preserve exact canonical task, event, conversation, mail and card identities', () => {
+  const seed = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }), state = sources(seed);
+  if (!seed.contacts.contacts.length) expect(createContact(seed.contacts, { name: 'Canonical contact', email: 'local@example.test' }).status).toBe('applied');
+  for (const [appId, kind, rows] of [['reminders', 'reminder', seed.reminders.tasks], ['calendar', 'event', seed.calendar.events], ['messages', 'message', seed.messages.conversations], ['mail', 'mail', seed.mail.messages], ['contacts', 'contact', seed.contacts.contacts]]) {
+    const original = rows[0], link = entry(appId, kind, original.id);
+    expect(resolveNotificationDestination(link, state, profile)?.record).toBe(original);
+    expect(resolveNotificationDestination(entry(appId, kind, 'missing-source'), state, profile)).toBeNull();
+    expect(resolveNotificationDestination({ ...link, appId: 'notes' }, state, profile)).toBeNull();
   }
 });
 
-test('document links reject folders, foreign associations and documents behind a trashed ancestor', () => {
-  const seed = createDefaultSceneSeed(profile), file = seed.files.files.find(record => ['document', 'image'].includes(record.kind));
-  const entry = linked(seed, file.appId, 'file', file.id), state = sources(seed);
-  expect(resolveNotificationDestination(entry, state, profile)?.record).toBe(file);
-  const wrongApp = { ...entry, appId: file.appId === 'preview' ? 'notes' : 'preview' };
-  expect(resolveNotificationDestination(wrongApp, state, profile)).toBeNull();
-  expect(resolveNotificationDestination({ ...entry, appId: 'finder', destination: { kind: 'file', recordId: 'desktop' } }, state, profile)).toBeNull();
-  const parent = seed.files.files.find(record => record.id === file.parentId); parent.deleted = true;
-  expect(resolveNotificationDestination(entry, state, profile)).toBeNull();
+test('locked Notes expose only safe projections and trashed Notes retire destinations', () => {
+  const seed = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }), note = seed.notes.notes[0], state = sources(seed), link = entry('notes', 'note', note.id);
+  const unlocked = resolveNotificationDestination(link, state, profile);
+  expect(unlocked.record.text.length).toBeGreaterThan(0);
+  note.lock = { secret: 'fictional', hint: '', unlocked: false };
+  const locked = resolveNotificationDestination(link, state, profile);
+  expect(locked.record.text).toBe(''); expect(locked.record.preview).toBe(''); expect(locked.record.title).toBe('Locked Note');
+  expect(Object.hasOwn(locked.record, 'document')).toBe(false);
+  note.deletedAt = seed.files.sceneTime;
+  expect(resolveNotificationDestination(link, state, profile)).toBeNull();
 });
 
-test('retained links survive unrelated arrivals but reject same-ID replacements, metadata edits and retired original Roots', () => {
-  let seed = createDefaultSceneSeed(profile), alive = true;
-  const entry = linked(seed, 'notes', 'note', 'note-2'), lease = retainNotificationDestination(entry, () => sources(seed), profile, () => alive);
-  seed.notes.notes.push({ ...seed.notes.notes[0], id: 'note-99' });
+test('leases reject source revisions, same-ID record replacement, notification edits and original root retirement', () => {
+  let seed = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }), alive = true;
+  const task = seed.reminders.tasks[0], link = entry('reminders', 'reminder', task.id);
+  const lease = retainNotificationDestination(link, () => sources(seed), profile, () => alive);
   expect(lease.current()).toBe(true);
-  const original = seed.notes.notes.find(record => record.id === 'note-2');
-  const text = original.text;
-  original.text += ' changed'; expect(lease.current()).toBe(false); original.text = text;
+  link.dismissed = true; expect(lease.current()).toBe(false); link.dismissed = false;
+  task.revision++; expect(lease.current()).toBe(false); task.revision--;
   expect(lease.current()).toBe(true);
-  seed.notes.notes = seed.notes.notes.map(record => record.id === 'note-2' ? { ...record } : record);
+  seed.reminders.tasks = seed.reminders.tasks.map(row => row === task ? { ...row } : row);
   expect(lease.current()).toBe(false);
-  seed = createDefaultSceneSeed(profile); expect(lease.current()).toBe(false);
+  seed = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }); expect(lease.current()).toBe(false);
   alive = false; expect(lease.current()).toBe(false);
 });
 
-test('getter destinations never execute and completed shared reminders stop offering completion or snooze', () => {
-  const seed = createDefaultSceneSeed(profile), entry = linked(seed, 'reminders', 'reminder', 'reminder-1');
-  const source = resolveNotificationDestination(entry, sources(seed), profile);
-  expect(notificationDestinationActions(source)).toContain('complete');
-  expect(setWidgetReminderCompleted(seed.system.widgets, 'reminder-1', true).status).toBe('applied');
-  expect(notificationDestinationActions(resolveNotificationDestination(entry, sources(seed), profile))).toEqual(['open']);
-  let reads = 0;
-  const destination = { kind: 'reminder', get recordId() { reads++; return 'reminder-1'; } };
-  expect(resolveNotificationDestination({ ...entry, destination }, sources(seed), profile)).toBeNull();
-  expect(reads).toBe(0);
+test('canonical source retirement removes a destination without borrowing a widget copy', () => {
+  const seed = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }), state = sources(seed), task = seed.reminders.tasks[0];
+  const link = entry('reminders', 'reminder', task.id);
+  expect(notificationDestinationActions(resolveNotificationDestination(link, state, profile))).toContain('complete');
+  task.completed = true;
+  expect(notificationDestinationActions(resolveNotificationDestination(link, state, profile))).toEqual(['open']);
+  seed.reminders.tasks = seed.reminders.tasks.filter(row => row !== task);
+  expect(resolveNotificationDestination(link, state, profile)).toBeNull();
 });
 
-test('notification message replies commit one actual sent-local recipient/body and follow the shared clock without changing the original record', () => {
-  const state = communicationDefaults(1000), recordId = sent(state, 'message', { to: 'Eli Nash', body: 'Original message' });
-  const original = structuredClone(state.outbox[0]), nextId = state.nextId;
-  const result = replyToCommunication(state, recordId, ' \r\nLiteral 🎬 reply\ufeff ', () => true, 2000);
-  expect(result.status).toBe('applied');
-  expect(state.outbox.find(record => record.id === result.target.recordId)).toMatchObject({
-    kind: 'message', createdAt: 2001, updatedAt: 2001, fields: { to: 'Eli Nash', body: ' \r\nLiteral 🎬 reply\ufeff ' },
+test('getter destinations never execute and retired file ancestors reject', () => {
+  const seed = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }), state = sources(seed); let reads = 0;
+  const link = entry('reminders', 'reminder', seed.reminders.tasks[0].id);
+  link.destination = { kind: 'reminder', get recordId() { reads++; throw new Error('Getter'); } };
+  expect(resolveNotificationDestination(link, state, profile)).toBeNull(); expect(reads).toBe(0);
+  const file = seed.files.files.find(row => ['document', 'image'].includes(row.kind));
+  const fileLink = entry(file.appId, 'file', file.id);
+  expect(resolveNotificationDestination(fileLink, state, profile)?.record).toBe(file);
+  seed.files.files.find(row => row.id === file.parentId).deleted = true;
+  expect(resolveNotificationDestination(fileLink, state, profile)).toBeNull();
+});
+
+for (const installed of listOSProfiles()) {
+  test(`${installed.id}: delivered native sources survive seed validation and preserve original records and ledgers`, () => {
+    const seed = createDefaultSceneSeed(installed, { createFiles: createDefaultApplicationFiles });
+    const state = sources(seed), at = seed.files.sceneTime, notifications = seed.system.notifications;
+    expect(receiveLocalCall(seed.calls, { contactId: 'authored-person', name: 'Authored Person', address: 'person@example.test', kind: 'audio' }, at, () => true).status).toBe('applied');
+    const call = seed.calls.calls[0], quote = seed.stocks.quotes.find(row => seed.stocks.watchlist.includes(row.id));
+    const business = seed.stocks.stories[0], story = seed.news.articles.find(row => row.regions.includes(seed.news.preferences.region) && !row.explicit);
+    const alarm = seed.clockApp.alarms[0];
+    const alert = { id: 'clock-alert-consumer', sourceId: alarm.id, kind: 'alarm', label: alarm.name, dueAt: at,
+      cycles: 1, status: 'pending', notificationId: null, snoozeAt: null };
+    seed.clockApp.alerts.push(alert);
+    const bridges = createDomainNotificationBridges({ profile: installed, getState: () => notifications,
+      alive: () => true, getSceneTime: () => at, canCommit: () => true, reserve: (_, commit) => commit(),
+      retainDestination: value => retainNotificationDestination(value, () => state, installed, () => true) });
+    const originals = [
+      [callsCapabilities(installed).appId, 'call', call], ['stocks', 'stocks-price', quote],
+      ['stocks', 'stocks-story', business], ['news', 'news-story', story], ['clock', 'clock', alert],
+    ];
+    for (const [appId, kind, record] of originals) {
+      const result = bridges.notify({ id: `delivery-${kind}`, appId, title: 'Authored notification', body: '',
+        source: { kind, recordId: record.id, ...(kind === 'clock' ? {} : { windowId: null }) }, onCommit(actualId) {
+          if (kind === 'call') { call.notificationId = actualId; call.revision++; }
+          else if (kind.startsWith('stocks-')) seed.stocks.alerts.push({ id: `stocks-alert-${seed.stocks.nextId++}`, kind,
+            recordId: record.id, sourceRevision: record.revision, at: seed.stocks.runtime.refreshedAt, notificationId: actualId, active: true });
+          else if (kind === 'news-story') seed.news.notifications.push({ id: 'news-alert-consumer', storyId: record.id,
+            notificationId: actualId, deliveredAt: at, active: true });
+          else { alert.status = 'delivered'; alert.notificationId = actualId; }
+          return true;
+        } }, () => true);
+      expect(result.status).toBe('applied');
+      const actual = notifications.entries.find(row => row.id === result.notificationId);
+      const resolved = resolveNotificationDestination(actual, state, installed);
+      expect(resolved.record).toBe(record);
+      expect(resolved.recordId).toBe(record.id);
+      expect(resolveNotificationDestination({ ...actual, appId: 'notes' }, state, installed)).toBeNull();
+      expect(resolveNotificationDestination({ ...actual, id: 'notification-99' }, state, installed)).toBeNull();
+      if (kind === 'call') expect(notificationDestinationActions(resolved)).toEqual(['open', 'accept', 'decline']);
+      if (kind === 'clock') { expect(resolved.sourceRecord).toBe(alarm); expect(resolved.sourceId).toBe(alarm.id); }
+    }
+    expect(validateSceneSeed(seed, installed).ok).toBe(true);
+    expect(validateNotificationDestinations(structuredClone(seed), installed).ok).toBe(true);
+    const cold = rehydrateSceneSeed(projectSceneSeed(seed, installed), installed);
+    expect(validateSceneSeed(cold, installed).ok).toBe(true);
+    expect(cold.system.notifications).toEqual(notifications);
+    const coldSources = sources(cold);
+    for (const original of originals.map(([, , record]) => record)) {
+      const retained = notifications.entries.find(row => row.destination.recordId === original.id);
+      const restored = cold.system.notifications.entries.find(row => row.id === retained.id);
+      expect(resolveNotificationDestination(restored, coldSources, installed).record).toEqual(original);
+    }
+    expect(cold.calls.calls).toEqual(seed.calls.calls);
+    expect(cold.stocks.alerts).toEqual(seed.stocks.alerts);
+    expect(cold.news.notifications).toEqual(seed.news.notifications);
+    expect(cold.clockApp.alerts).toEqual(seed.clockApp.alerts);
+    const callEntry = notifications.entries[0], callLease = retainNotificationDestination(callEntry, () => state, installed, () => true);
+    seed.calls.calls[0] = { ...call };
+    expect(callLease.current()).toBe(false);
+    seed.calls.calls[0] = call;
+    call.direction = 'outgoing';
+    expect(resolveNotificationDestination(callEntry, state, installed)).toBeNull();
+    call.direction = 'incoming';
+    const priceEntry = notifications.entries.find(row => row.destination.kind === 'stocks-price');
+    const priceLease = retainNotificationDestination(priceEntry, () => state, installed, () => true);
+    seed.stocks.alerts[0] = { ...seed.stocks.alerts[0] };
+    expect(priceLease.current()).toBe(false);
+    seed.stocks.alerts[0].active = false;
+    expect(resolveNotificationDestination(priceEntry, state, installed)).toBeNull();
+    const newsEntry = notifications.entries.find(row => row.destination.kind === 'news-story');
+    seed.news.notifications[0].active = false;
+    expect(resolveNotificationDestination(newsEntry, state, installed)).toBeNull();
+    const clockEntry = notifications.entries.find(row => row.destination.kind === 'clock');
+    const clockLease = retainNotificationDestination(clockEntry, () => state, installed, () => true);
+    seed.clockApp.alarms[0] = { ...alarm };
+    expect(clockLease.current()).toBe(false);
+    seed.clockApp.alarms.splice(0, 1);
+    expect(resolveNotificationDestination(clockEntry, state, installed)).toBeNull();
+    call.status = 'ended';
+    expect(resolveNotificationDestination(notifications.entries[0], state, installed)).toBeNull();
+    expect(validateNotificationDestinations(seed, installed).ok).toBe(false);
   });
-  expect(state.outbox.find(record => record.id === recordId)).toEqual(original);
-  expect(state.selected.messages).toBe(result.target.recordId);
-  expect(state.timeBase).toBe(2001); expect(state.nextId).toBe(nextId + 1); expect(state.drafts).toEqual([]);
-});
-
-test('mail notification replies preserve recipient and single Re subject without forwarding original attachments', () => {
-  const state = communicationDefaults(1000), recordId = sent(state, 'mail', { to: 'mika@example.invalid', subject: 'Trail plan', body: 'Original mail' });
-  const original = state.outbox[0]; original.attachments.push({ fileId: 'itinerary', name: 'Plan.txt', revision: 1, content: 'Private original attachment' });
-  const first = replyToCommunication(state, recordId, 'Mail reply');
-  expect(first.status).toBe('applied');
-  const record = state.outbox.find(entry => entry.id === first.target.recordId);
-  expect(record.fields).toEqual({ to: 'mika@example.invalid', subject: 'Re: Trail plan', body: 'Mail reply' });
-  expect(record.attachments).toEqual([]);
-  const second = replyToCommunication(state, record.id, 'Second reply');
-  expect(second.status).toBe('applied');
-  expect(state.outbox.find(entry => entry.id === second.target.recordId).fields.subject).toBe('Re: Trail plan');
-  expect(state.outbox.find(entry => entry.id === recordId).attachments[0].content).toBe('Private original attachment');
-});
-
-test('reply budget denial and unrelated quota-callback reentry cannot consume an allocation or overwrite a newer selection', () => {
-  const state = communicationDefaults(1000), recordId = sent(state, 'message', { to: 'Eli', body: 'Original' });
-  const before = structuredClone(state);
-  expect(replyToCommunication(state, recordId, 'Rejected reply', () => false).status).toBe('rejected');
-  expect(state).toEqual(before);
-  const result = replyToCommunication(state, recordId, 'Stale reply', () => {
-    expect(selectCommunicationEntry(state, 'messages', null).status).toBe('applied');
-    return true;
-  });
-  expect(result.error.code).toBe('unavailable');
-  expect(state).toEqual({ ...before, selected: { ...before.selected, messages: null } });
-});
-
-test('full unrelated draft capacity does not turn notification reply into a draft shim', () => {
-  const state = communicationDefaults(1000), recordId = sent(state, 'message', { to: 'Eli', body: 'Original' });
-  for (let index = 0; index < 128; index++) {
-    const draft = draftPreview(state, 'message', { to: 'Someone else', body: `Unrelated draft ${index}` });
-    expect(createCommunicationDraft(state, draft).status).toBe('applied');
-  }
-  const drafts = structuredClone(state.drafts), nextId = state.nextId;
-  expect(replyToCommunication(state, recordId, 'A real local reply').status).toBe('applied');
-  expect(state.drafts).toEqual(drafts); expect(state.nextId).toBe(nextId + 1);
-  expect(state.outbox.at(-1).fields.body).toBe('A real local reply');
-});
+}

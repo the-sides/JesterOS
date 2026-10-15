@@ -12,6 +12,13 @@
   const menu = id => send('win11.apps.menu', { appId: 'explorer' }, { menu: state.ui.menu === id ? null : id });
   const navigate = folderId => send('win11.explorer.navigate', { folderId });
   const open = file => file.kind === 'folder' ? navigate(file.id) : send('win11.files.open', { fileId: file.id });
+  function dragFile(event, file) {
+    if (!event.dataTransfer || state.ui.dialog || file.kind === 'folder' || liveFile(apps, file.id) !== file || isTrashed(apps, file)) {
+      event.preventDefault(); return;
+    }
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('application/x-jesteros-file-id', file.id);
+  }
 </script>
 <div class="explorer">
   <div class="tab-strip"><span>▰ {state.folderId === 'trash' ? 'Recycle Bin' : liveFile(apps, state.folderId)?.name || 'File Explorer'}</span></div>
@@ -55,7 +62,7 @@
       {#if state.view === 'details'}<div class="details-header"><span>Name</span><span>Type</span><span>Size</span></div>{/if}
       <div class:icons={state.view === 'icons'}>
         {#each items as file (file.id)}
-          <button class="file w11-app-row" class:selected={state.selectedId === file.id} data-control={`explorer-file-${file.id}`} onclick={() => send('win11.explorer.select', { fileId: file.id })} ondblclick={() => state.folderId !== 'trash' && open(file)} onkeydown={event => { if (event.key === 'Enter' && state.folderId !== 'trash') { event.preventDefault(); open(file); } }}>
+          <button class="file w11-app-row" class:selected={state.selectedId === file.id} data-control={`explorer-file-${file.id}`} draggable={file.kind !== 'folder' && !isTrashed(apps, file)} ondragstart={event => dragFile(event, file)} onclick={() => send('win11.explorer.select', { fileId: file.id })} ondblclick={() => state.folderId !== 'trash' && open(file)} onkeydown={event => { if (event.key === 'Enter' && state.folderId !== 'trash') { event.preventDefault(); open(file); } }}>
             <span class="file-name"><span class="file-icon">{file.kind === 'folder' ? '📁' : file.kind === 'image' ? '▧' : '▤'}</span>{file.name}</span>
             {#if state.view === 'details'}<span>{file.kind === 'folder' ? 'File folder' : file.kind === 'text' ? 'Text document' : 'SVG image'}</span><span>{file.kind === 'folder' ? '' : `${String(file.content).length} chars`}</span>{/if}
           </button>

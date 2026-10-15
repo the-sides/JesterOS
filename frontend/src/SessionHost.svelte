@@ -8,6 +8,7 @@
   import { fictionalSessionDefaults, createFictionalSessionCommands, sessionTargets, sessionMenuItems, signOutFictionalSessions } from './fictional-session.js';
   import { fictionalPowerDefaults, createFictionalPowerCommands, powerTargets } from './fictional-power.js';
   import { createSceneSeedCommands } from './scene-seed.js';
+  import { createDefaultApplicationFiles } from './default-application-files.js';
   import { createSavedSessionCommands, clearSavedSession, savedSessionStorageKey } from './saved-session.js';
   import { menuBarDefaults, createMenuBarCommands, menuBarTargets, menuBarRequest } from './menu-bar.js';
   import { helpMenuProviders } from './help-menu-model.js';
@@ -170,6 +171,11 @@
     available: () => interactive() && scenes.get(session.activeUserId)?.menusAvailable() === true,
     settle, captureFocus: () => scenes.get(session.activeUserId)?.capture(),
     restoreFocus: token => scenes.get(session.activeUserId)?.restore(token),
+    captureAction: request => {
+      const userId = session.activeUserId, scene = scenes.get(userId);
+      const current = scene?.captureMenuAction(request);
+      return () => session.activeUserId === userId && scenes.get(userId) === scene && current?.() === true;
+    },
     preparePresentation: () => scenes.get(session.activeUserId)?.prepareMenus(),
     restorePresentation: token => scenes.get(session.activeUserId)?.restoreMenus(token),
     invoke: invokeMenuRequest, registerLifecycle: lifecycle => { menuLifecycle = lifecycle; },
@@ -217,10 +223,11 @@
     return { version: 1, profileId: profile.id, baseline: { source: seedSource, seed }, locals };
   }
   const savedOperations = createSavedSessionCommands({ profile, available: () => !disposed, storage: () => globalThis.localStorage,
-    beforeCapture: () => retainedIds.filter(id => id !== 'guest').every(id => scenes.get(id)?.canSave())
+    beforeCapture: () => retainedIds.filter(id => id !== 'guest').every(id => scenes.get(id)?.canSave() === true)
       ? { status: 'applied' } : rejected('unavailable', 'Finish retained local window pairing or application quit before saving.'),
     capture: captureSavedSession, replace: value => restoreScene(value) });
   const seedOperations = createSceneSeedCommands({ profile, available: () => !disposed,
+    defaultSeedOptions: { createFiles: createDefaultApplicationFiles },
     beforeReset: clearStoredSession, replaceScene: (value, source) => resetScene(value, source) });
   const catalog = Object.fromEntries(Object.entries(commandCatalog).filter(([, descriptor]) => descriptor.profiles.includes(profile.id)));
   const handlers = Object.fromEntries(Object.keys(catalog).map(name => [name, appleOperations[name] ?? menuOperations[name] ?? operations[name] ?? powerOperations[name] ?? seedOperations[name] ?? savedOperations[name] ?? ((target, payload) => {
@@ -257,7 +264,7 @@
     return result;
   }
   const publicCommands = Object.freeze({ execute, inspect: commands.inspect, describe: commands.describe,
-    ready: async () => (await Promise.all(retainedIds.map(userId => scenes.get(userId)?.ready() ?? false))).every(Boolean) });
+    ready: async () => (await Promise.all(retainedIds.map(userId => scenes.get(userId)?.ready() ?? false))).every(value => value === true) });
   $effect(() => {
     document.documentElement.dataset.sessionPhase = session.phase;
     return () => { delete document.documentElement.dataset.sessionPhase; };

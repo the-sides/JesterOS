@@ -165,14 +165,16 @@ export function createFinderFileCommands(ctx) {
 }
 
 const profiles = ['macos-golden-gate-27.0.1'];
+const selectionProfiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const windowTarget = object({ windowId: identity });
 const itemTarget = object({ windowId: identity, fileId: identity }, ['windowId']);
 const fileResult = object({ windowId: identity, fileId: identity });
 const define = (name, target, payload, effect, result = fileResult) => {
-  const entry = defineCommand(profiles, name, 'shell.file-workflows', target, payload,
+  const selection = name === 'finder.selection.set';
+  const entry = defineCommand(selection ? selectionProfiles : profiles, name, selection ? 'shell.desktop' : 'shell.file-workflows', target, payload,
     ['Exact active visible ordinary Finder window and live current folder; no lock/login/global modal or competing presentation.',
       'Implicit item targets require exactly one window-owned selected live child, never the desktop selection. Explicit fileId must be a current child.'],
-    [effect], ['windows.finderSelectedFileIds', 'files'], NONE, result);
+    [effect], selection ? ['windows.finderSelectedFileIds'] : ['windows.finderSelectedFileIds', 'files'], NONE, result);
   entry[1].resultSchema.additionalProperties = false;
   return entry;
 };

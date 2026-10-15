@@ -1,14 +1,16 @@
 import { expect, test } from 'bun:test';
-import { createFinderFileCommands } from '../frontend/src/finder-file-commands.js';
+import { createFinderFileCommands, finderFileCatalog } from '../frontend/src/finder-file-commands.js';
 import { createDefaultSceneSeed, validateSceneSeed } from '../frontend/src/scene-seed.js';
+import { createDefaultApplicationFiles } from '../frontend/src/default-application-files.js';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { createFile } from '../frontend/src/windows11-app-helpers.js';
 import { createMacApplicationFiles } from '../frontend/src/mac-application-files.js';
+import { createFeatureCommands } from '../frontend/src/feature-commands.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const clone = value => structuredClone(value);
 function scene() {
-  const seed = createDefaultSceneSeed(profile), files = seed.files;
+  const seed = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }), files = seed.files;
   const window = { id: 'finder-window-1', folderId: 'downloads', finderSelectedFileIds: [] };
   let desktop = null, capacity = true;
   const commands = createFinderFileCommands({ files, available: () => true,
@@ -102,4 +104,28 @@ test('windowless copy uses real foreground Desktop selection and protected volum
   expect(record).toMatchObject({ parentId: 'desktop', content: 'Desktop data', name: 'Desktop copy.md' });
   model.setDesktop(['disk']); const before = model.snapshot();
   expect(model.run('finder.file.duplicate', {}).error.code).toBe('disabled'); expect(model.snapshot()).toEqual(before);
+});
+
+test('historical Mac reveal selects its actual current child without enabling Golden Gate file mutations', async () => {
+  for (const profileId of ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0']) {
+    const installed = getOSProfile(profileId);
+    const seed = createDefaultSceneSeed(installed, { createFiles: createDefaultApplicationFiles });
+    const file = seed.files.files.find(row => row.id === 'preview-harbor-image');
+    const window = { id: 'finder-owned-reveal', folderId: file.parentId, finderSelectedFileIds: [] };
+    const handlers = createFinderFileCommands({ files: seed.files, available: () => true,
+      getWindow: id => id === window.id ? window : null });
+    const gateway = createFeatureCommands(handlers, () => seed, () => {}, finderFileCatalog,
+      () => ({}), () => installed, finderFileCatalog);
+    const originalFiles = clone(seed.files);
+    expect((await gateway.execute({ command: 'finder.selection.set', target: { windowId: window.id },
+      payload: { fileIds: [file.id] } })).status).toBe('applied');
+    expect(window.finderSelectedFileIds).toEqual([file.id]);
+    const before = clone({ files: seed.files, window });
+    expect((await gateway.execute({ command: 'finder.selection.set', target: { windowId: window.id },
+      payload: { fileIds: ['disk'] } })).error.code).toBe('stale_target');
+    expect((await gateway.execute({ command: 'finder.folder.create', target: { windowId: window.id },
+      payload: { name: 'Unsupported backport' } })).error.code).toBe('unsupported_profile');
+    expect({ files: seed.files, window }).toEqual(before);
+    expect(seed.files).toEqual(originalFiles);
+  }
 });

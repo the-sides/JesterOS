@@ -1,7 +1,8 @@
 import Desktop from './GoldenGateDesktop.svelte';
 import Window from './GoldenGateWindow.svelte';
 import MessagesWindow from './GoldenGateMessagesWindow.svelte';
-import NotesWindow from './GoldenGateNotesWindow.svelte';
+import NotesWindow from './NotesApp.svelte';
+import { createDefaultApplicationFiles } from './default-application-files.js';
 import { createDefaultSceneSeed } from './scene-seed.js';
 import { goldenGateProfile } from './golden-gate-profile.js';
 import { fitNormalBounds as fitBounds } from './window-state.js';
@@ -25,7 +26,7 @@ function prepareDocument() {
   document.documentElement.classList.toggle('native-apple-font', /Mac|iPhone|iPad|iPod/.test(navigator.platform));
 }
 function createSceneData(seed, profile = goldenGateProfile) {
-  return seed ? structuredClone(seed) : createDefaultSceneSeed(profile);
+  return seed ? structuredClone(seed) : createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles });
 }
 export const goldenGateAdapter = Object.freeze({
   Desktop, Window, MessagesWindow, NotesWindow, expandedProperty: 'zoomed', closeKeepsRunning: true,

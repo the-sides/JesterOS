@@ -2,18 +2,22 @@ import { test, expect } from 'bun:test';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { widgetsDefaults } from '../frontend/src/notification-widget-model.js';
 import { createNotificationWidgetCommands } from '../frontend/src/notification-widget-commands.js';
+import { createRemindersState, reminderWidgetProjection } from '../frontend/src/reminders-state.js';
+import { createCalendarState, calendarWidgetProjection } from '../frontend/src/calendar-state.js';
 
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 function fixture() {
   const profile = getOSProfile('macos-golden-gate-27.0.1');
   let state = widgetsDefaults(profile), pane = { centerId: 'original-center', focusedControl: null, scroll: { top: 0, left: 0 } };
   const ui = { editor: null, editingWidgetId: null, contextWidgetId: null };
+  const reminders = createRemindersState(profile), calendar = createCalendarState(profile);
+  let completion = null;
   let available = true, alive = true, prepareBarrier = null, prepareEntered = null, settleBarrier = null, settleEntered = null, focused = 'center';
   const window = { id: 'original-reminders-window', appId: 'reminders' };
   let dataWindow = window;
   const controlIds = () => ['center', 'edit-widgets', ...state.instances.flatMap(widget => [
     `widget:${widget.id}:card`, `widget:${widget.id}:open`, `widget:${widget.id}:done`, `widget:${widget.id}:menu-close`,
-    ...state.sources.reminders.filter(row => row.listId === widget.configuration.listId).map(row => `widget:${widget.id}:reminder:${row.id}`),
+    ...reminders.tasks.filter(row => row.listId === widget.configuration.listId).map(row => `widget:${widget.id}:reminder:${row.id}`),
   ])];
   const view = {
     available: () => available && alive,
@@ -26,7 +30,7 @@ function fixture() {
   };
   const dataView = {
     ...view,
-    describe: () => ({ controlIds: ['panel', ...state.sources.reminders.map(row => `reminder:${row.id}`)], focusedControl: 'panel', scroll: { top: 0, left: 0 } }),
+    describe: () => ({ controlIds: ['panel'], focusedControl: 'panel', scroll: { top: 0, left: 0 } }),
     async prepare(controlId, guard) { if (prepareBarrier) { const waiting = prepareBarrier; prepareBarrier = null; prepareEntered.resolve(); await waiting.promise; } return guard(); },
   };
   const controller = createNotificationWidgetCommands({
@@ -35,10 +39,18 @@ function fixture() {
     getCenterView: () => view, getEditorView: () => null,
     settle: async () => { if (settleBarrier) { const waiting = settleBarrier; settleBarrier = null; settleEntered.resolve(); await waiting.promise; } },
     canCommit: () => true,
+    getReminders: () => reminders, getReminderWidgetProjection: () => reminderWidgetProjection(reminders),
+    getCalendarWidgetProjection: () => calendarWidgetProjection(calendar),
+    setReminderCompleted: async (id, completed, ownership) => {
+      if (completion) return completion(id, completed, ownership);
+      if (!ownership.guard()) return { status: 'rejected', error: { code: 'stale_target', message: 'Retired' } };
+      const task = reminders.tasks.find(row => row.id === id); task.completed = completed; task.revision++;
+      return { status: 'applied', target: { windowId: window.id, taskId: id, completed } };
+    },
     getDataOwner: windowId => dataWindow?.id === windowId ? { window: dataWindow, windowId, appId: dataWindow.appId } : null,
     getDataView: () => dataView, getDataTargets: () => [], openData: async () => { throw new Error('Not exercised'); }, closeCenter: () => { pane = null; },
   });
-  return { profile, controller, get state() { return state; }, get pane() { return pane; }, window,
+  return { profile, controller, reminders, calendar, setCompletion(callback) { completion = callback; }, get state() { return state; }, get pane() { return pane; }, window,
     pause() { prepareBarrier = deferred(); prepareEntered = deferred(); return { entered: prepareEntered.promise, release: prepareBarrier.resolve }; },
     pauseSettlement() { settleBarrier = deferred(); settleEntered = deferred(); return { entered: settleEntered.promise, release: settleBarrier.resolve }; },
     setAvailable(value) { available = value; controller.reconcile(); },
@@ -52,7 +64,7 @@ const execute = (fixture, name, target, payload = {}) => fixture.controller.hand
 
 test('mutating a submitted target while native preparation waits cannot redirect removal to another widget', async () => {
   const f = fixture(), [original, other] = f.state.instances;
-  const sources = f.state.sources, sourceRows = [...sources.events, ...sources.reminders];
+  const sources = f.state.sources, sourceRows = [...f.reminders.tasks, ...f.calendar.events];
   const target = { centerId: f.pane.centerId, widgetId: original.id }, waiting = f.pause();
   const pending = execute(f, 'remove', target);
   await waiting.entered; target.widgetId = other.id; waiting.release();
@@ -60,12 +72,12 @@ test('mutating a submitted target while native preparation waits cannot redirect
   expect(f.state.instances.includes(original)).toBe(false);
   expect(f.state.instances.includes(other)).toBe(true);
   expect(f.state.sources).toBe(sources);
-  expect([...f.state.sources.events, ...f.state.sources.reminders]).toEqual(sourceRows);
+  expect([...f.reminders.tasks, ...f.calendar.events]).toEqual(sourceRows);
 });
 
 test('submitted configuration arrays retain their original literal intent across native awaits', async () => {
   const f = fixture(), widget = f.state.instances.find(row => row.kind === 'calendar');
-  const payload = { configuration: { calendarIds: [f.state.sources.calendars[0].id] } }, expected = [...payload.configuration.calendarIds];
+  const payload = { configuration: { calendarIds: [f.calendar.calendars[0].id] } }, expected = [...payload.configuration.calendarIds];
   const waiting = f.pause(), pending = execute(f, 'configure', { centerId: f.pane.centerId, widgetId: widget.id }, payload);
   await waiting.entered; payload.configuration.calendarIds.length = 0; waiting.release();
   expect((await pending).status).toBe('applied');
@@ -90,21 +102,31 @@ for (const interruption of ['foreground cycle', 'replacement center with reused 
 
 test('source changes during native preparation cannot complete an unrelated or edited reminder', async () => {
   const f = fixture(), widget = f.state.instances.find(row => row.kind === 'reminders');
-  const reminder = f.state.sources.reminders.find(row => row.listId === widget.configuration.listId && !row.completed);
+  const reminder = f.reminders.tasks.find(row => row.listId === widget.configuration.listId && !row.completed);
   const waiting = f.pause(), pending = execute(f, 'reminder.setCompleted', { centerId: f.pane.centerId, widgetId: widget.id, reminderId: reminder.id }, { completed: true });
-  await waiting.entered; reminder.title = 'User edited this reminder'; waiting.release();
+  await waiting.entered; reminder.title = 'User edited this reminder'; reminder.revision++; waiting.release();
   expect((await pending).status).toBe('rejected');
   expect(reminder.completed).toBe(false);
   expect(reminder.title).toBe('User edited this reminder');
 });
 
-test('a replaced ordinary Reminders window cannot inherit an in-flight checklist action', async () => {
-  const f = fixture(), listId = f.state.selected.reminderListId;
-  const reminder = f.state.sources.reminders.find(row => row.listId === listId && !row.completed), before = structuredClone(f.state);
-  const waiting = f.pause(), pending = execute(f, 'data.reminder.setCompleted', { windowId: f.window.id, reminderId: reminder.id }, { completed: true });
-  await waiting.entered; f.replaceDataWindow(); waiting.release();
-  expect((await pending).status).toBe('rejected');
-  expect(f.state).toEqual(before);
+test('canonical completion respects actual bridge rejection and never mutates a widget copy', async () => {
+  const f = fixture(), widget = f.state.instances.find(row => row.kind === 'reminders');
+  const reminder = f.reminders.tasks.find(row => row.listId === widget.configuration.listId && !row.completed);
+  const before = structuredClone(f.state), target = { centerId: f.pane.centerId, widgetId: widget.id, reminderId: reminder.id };
+  f.setCompletion(async (id, completed, ownership) => {
+    expect(id).toBe(reminder.id); expect(completed).toBe(true); expect(ownership.guard()).toBe(true);
+    return { status: 'rejected', error: { code: 'limit_exceeded', message: 'Actual controller quota' } };
+  });
+  expect((await execute(f, 'reminder.setCompleted', target, { completed: true })).error.code).toBe('limit_exceeded');
+  expect(reminder.completed).toBe(false); expect(f.state).toEqual(before);
+  f.setCompletion(async () => true);
+  expect((await execute(f, 'reminder.setCompleted', target, { completed: true })).status).toBe('rejected');
+  expect(reminder.completed).toBe(false);
+  f.setCompletion(null);
+  expect((await execute(f, 'reminder.setCompleted', target, { completed: true })).status).toBe('applied');
+  expect(reminder.completed).toBe(true); expect(f.state).toEqual(before);
+  expect(f.controller.handlers['widgets.data.reminder.setCompleted']).toBeUndefined();
 });
 
 test('actor getters and sparse configuration input reject without evaluation or canonical mutation', async () => {

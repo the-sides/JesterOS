@@ -1,0 +1,14 @@
+import {object,choice,flag,empty,defineCommand} from './command-schema.js';
+import {COLORSYNC_PROFILES,colorSyncIdSchema} from './colorsync-state.js';
+import {COLOR_SPACES,COLOR_FILTERS} from './colorsync-engine.js';
+const str=maxLength=>({type:'string',maxLength}),nullable=s=>({anyOf:[{type:'null'},s]});
+export const colorSyncTargetSchema=object({windowId:colorSyncIdSchema});
+export const colorSyncCommandSpecs={
+ 'window.new':[empty,'Create an independent actual utility window.'],'window.close':[empty,'Close original utility window.'],tab:[object({tab:choice('firstaid','profiles','devices','filters','calculator','image')}),'Show actual native tool.'],
+ 'profile.info':[object({profileId:colorSyncIdSchema},[]),'Read actual original ICC byte header/tag metadata and defined matrix gamut.'],
+ 'image.info':[empty,'Read a decoded original image snapshot with exact Files revision.'],
+ 'profile.select':[object({profileId:colorSyncIdSchema}),'Select actual ICC profile.'],'profile.import':[object({fileId:colorSyncIdSchema},[]),'Inspect and retain an original ICC Files reference.'],'profile.compare':[object({profileId:nullable(colorSyncIdSchema)},[]),'Hold actual matrix gamut for comparison or clear.'],'profile.verify':[object({all:flag},[]),'Verify actual ICC signature, tag ranges and supported required metadata.'],'profile.repair':[object({name:str(128)},[]),'Repair only real size/reserved-header faults and atomically save new ICC bytes.'],'profile.export':[object({name:str(128)},[]),'Export genuine selected ICC bytes.'],
+ device:[object({deviceId:colorSyncIdSchema,profileId:colorSyncIdSchema}),'Change the authored virtual-device profile, never host calibration.'],filter:[object({filter:choice(...Object.keys(COLOR_FILTERS))}),'Choose a defined actual RGB pixel filter.'],calculator:[object({from:choice(...COLOR_SPACES),to:choice(...COLOR_SPACES),components:{type:'array',items:{type:'number',minimum:-10000,maximum:10000},minItems:3,maxItems:3}},[]),'Compute defined normalized D65 color conversion; no arbitrary ICC CMM.'],
+ 'image.open':[object({fileId:colorSyncIdSchema},[]),'Open actual decoded PNG/JPEG/GIF/WebP image bytes.'],'image.process':[object({name:str(128)},[]),'Apply the defined RGB pixel filter and save genuine PNG bytes.'],menu:[object({menu:nullable(choice('file','view','tools','help'))}),'Present the native utility menu.'],focus:[object({controlId:str(128)}),'Focus an actual original mounted enabled control.']
+};
+export const colorSyncCatalog=Object.fromEntries(Object.entries(colorSyncCommandSpecs).map(([suffix,[payload,description]])=>defineCommand(COLORSYNC_PROFILES,`colorsync.${suffix}`,'colorsync.local',colorSyncTargetSchema,payload,['Actual original canonical utility window, scene-time lease and original shared Files bytes.','Virtual devices only; supported numeric/pixel transforms explicitly disclosed.'],[description],['colorsync'],[],colorSyncTargetSchema)));

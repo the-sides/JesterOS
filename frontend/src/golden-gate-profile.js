@@ -1,3 +1,5 @@
+import { composeNativeProfile } from './native-profile-composition.js';
+
 // Native inventory: Apple's pinned macOS27 Apps included guide and macOS27 overview.
 // Membership is separate from represented application-interior coverage.
 const multipleWindowApps = new Set(['finder', 'safari', 'preview', 'textedit', 'terminal', 'scripteditor', 'quicktime']);
@@ -5,7 +7,7 @@ const launchOnly = (id, name, dock) => ({ id, name, icon: id, width: 880, height
   minimumSize: { width: 880, height: 620 }, multipleWindows: multipleWindowApps.has(id),
   quitAllowed: id !== 'finder', ...(dock ? { dock } : {}), coverage: 'launch-only' });
 
-export const goldenGateProfile = {
+export const goldenGateProfile = composeNativeProfile({
   id: 'macos-golden-gate-27.0.1', name: 'macOS27 Golden Gate', family: 'macos',
   version: '27.0.1', releaseYear: 2026, renderer: 'golden-gate',
   capabilities: [
@@ -17,13 +19,15 @@ export const goldenGateProfile = {
     'shell.file-workflows', 'shell.edit-workflows', 'shell.view-workflows', 'shell.window-extensions',
     'shell.help-workflows', 'shell.services-workflows', 'shell.apple-menu', 'status.wifi', 'status.battery', 'status.clock', 'status.sound', 'status.bluetooth', 'status.input',
     'shell.spotlight', 'shell.notification-center', 'shell.notification-widgets', 'shell.notification-delivery',
-    'scene.profile-selection', 'scene.seed', 'scene.saved-session', 'session.fictional', 'session.power', 'notes.plain-text', 'notes.presentation', 'messages.sample',
+    'scene.profile-selection', 'scene.seed', 'scene.saved-session', 'session.fictional', 'session.power', 'notes.workspace', 'messages.sample', 'messages.conversations',
+    'browser.local', 'mail.local', 'contacts.cards', 'calendar.events',
+    'calls.local', 'apps.reminders',
   ],
   applications: {
     finder: { ...launchOnly('finder', 'Finder', 'main'), coverage: 'desktop-locations' },
     safari: launchOnly('safari', 'Safari', 'main'),
     messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 1060, height: 740,
-      minimumSize: { width: 800, height: 600 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'sample-and-local-services' },
+      minimumSize: { width: 800, height: 600 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'conversations-and-local-services' },
     mail: { ...launchOnly('mail', 'Mail', 'main'), coverage: 'local-services' },
     maps: launchOnly('maps', 'Maps', 'main'),
     photos: launchOnly('photos', 'Photos', 'main'),
@@ -32,7 +36,7 @@ export const goldenGateProfile = {
     contacts: { ...launchOnly('contacts', 'Contacts', 'main'), coverage: 'local-services' },
     reminders: { ...launchOnly('reminders', 'Reminders', 'main'), coverage: 'widget-scene-lists' },
     notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 720,
-      minimumSize: { width: 960, height: 420 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
+      minimumSize: { width: 960, height: 420 }, multipleWindows: true, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
     settings: { ...launchOnly('settings', 'System Settings', 'main'), coverage: 'about-display-storage-wifi-battery-menu-bar-date-time-sound-bluetooth-keyboard-dock-appearance-notifications' },
     music: { ...launchOnly('music', 'Music', 'recent'), width: 760, height: 540,
       minimumSize: { width: 440, height: 360 }, coverage: 'original-offline-audio-playback' },
@@ -42,7 +46,6 @@ export const goldenGateProfile = {
     appstore: launchOnly('appstore', 'App Store'),
     audiomidi: launchOnly('audiomidi', 'Audio MIDI Setup'),
     automator: launchOnly('automator', 'Automator'),
-    'bluetooth-exchange': launchOnly('bluetooth-exchange', 'Bluetooth File Exchange'),
     books: launchOnly('books', 'Books'),
     bootcamp: launchOnly('bootcamp', 'Boot Camp Assistant'),
     calculator: launchOnly('calculator', 'Calculator'),
@@ -51,10 +54,8 @@ export const goldenGateProfile = {
     colorsync: launchOnly('colorsync', 'ColorSync Utility'),
     console: launchOnly('console', 'Console'),
     dictionary: launchOnly('dictionary', 'Dictionary'),
-    digitalcolor: launchOnly('digitalcolor', 'Digital Color Meter'),
     directoryutility: launchOnly('directoryutility', 'Directory Utility'),
     diskutility: launchOnly('diskutility', 'Disk Utility'),
-    dvdplayer: launchOnly('dvdplayer', 'DVD Player'),
     findmy: launchOnly('findmy', 'Find My'),
     fontbook: launchOnly('fontbook', 'Font Book'),
     freeform: launchOnly('freeform', 'Freeform'),
@@ -69,7 +70,6 @@ export const goldenGateProfile = {
     news: launchOnly('news', 'News'),
     passwords: launchOnly('passwords', 'Passwords'),
     phone: launchOnly('phone', 'Phone'),
-    photobooth: launchOnly('photobooth', 'Photo Booth'),
     podcasts: launchOnly('podcasts', 'Podcasts'),
     preview: launchOnly('preview', 'Preview'),
     printcenter: { ...launchOnly('printcenter', 'Print Center'), coverage: 'print-queue' },
@@ -109,4 +109,4 @@ export const goldenGateProfile = {
       storage: { capacityBytes: 256_000_000_000, systemBytes: 18_000_000_000, applicationsBytes: 6_000_000_000 },
       coverage: { plan: 'AppleCare+', expiresOn: '2027-09-28', repairService: true, technicalSupport: true } },
   },
-};
+});

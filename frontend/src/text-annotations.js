@@ -1,35 +1,37 @@
-import { noteTextControlValue } from './text-editing-commands.js';
+import { noteWorkspaceLocked } from './notes-workspace-state.js';
+import { notesDocumentTextRanges } from './notes-workspace-projections.js';
+import { selectionRuns, runsText } from './notes-workspace-document.js';
 
-/** Decorative ranges never replace the actual native title/body controls. */
-export function noteControlAnnotations(note, control, find, spelling) {
-  const value = noteTextControlValue(note, control), newline = note.text.indexOf('\n');
-  const base = control === 'title' ? 0 : newline < 0 ? note.text.length : newline + 1;
-  const limit = control === 'title' ? newline < 0 ? note.text.length : newline : note.text.length;
-  const events = [];
-  function add(range, kind) {
-    const from = Math.max(base, range.start), to = Math.min(limit, range.end);
-    if (to <= from) return;
-    events.push({ at: from - base, kind, change: 1 }, { at: to - base, kind, change: -1 });
+/** Decorations are projections for one original paragraph/table cell. They do
+ * not replace or serialize the native rich contenteditable owner. */
+export function noteRichAnnotations(note, selection, find, spelling) {
+  if (!note || noteWorkspaceLocked(note)) return { value: '', segments: [] };
+  const range = notesDocumentTextRanges(note.document).find(range => range.blockId === selection?.blockId
+    && range.row === selection.row && range.column === selection.column);
+  const runs = selectionRuns(note.document, selection);
+  if (!range || !runs) return { value: '', segments: [] };
+  const value = runsText(runs), events = [];
+  function add(annotation, kind) {
+    const start = Math.max(range.start, annotation.start), end = Math.min(range.end, annotation.end);
+    if (end <= start) return;
+    events.push({ at: start - range.start, kind, change: 1 }, { at: end - range.start, kind, change: -1 });
   }
-  for (const range of find?.highlights ?? []) add(range, 'find');
+  for (const annotation of find?.highlights ?? []) add(annotation, 'find');
   if (find?.selected) add(find.selected, 'selected');
-  for (const range of spelling?.issues ?? []) add(range, 'spelling');
+  for (const annotation of spelling?.issues ?? []) add(annotation, 'spelling');
   if (!events.length) return { value, segments: [] };
   events.sort((a, b) => a.at - b.at);
   const active = { find: 0, selected: 0, spelling: 0 }, segments = [];
-  let at = 0, index = 0, rawOffset = 0, nativeOffset = 0;
-  while (index < events.length) {
-    const rawEnd = events[index].at;
-    while (rawOffset < rawEnd) {
-      const code = note.text.charCodeAt(base + rawOffset);
-      if (control === 'title' ? code !== 13 : code !== 10 || rawOffset === 0 || note.text.charCodeAt(base + rawOffset - 1) !== 13) nativeOffset++;
-      rawOffset++;
-    }
-    const end = nativeOffset;
-    if (end > at) segments.push({ text: value.slice(at, end), find: active.find > 0, selected: active.selected > 0, spelling: active.spelling > 0 });
-    while (index < events.length && events[index].at === rawEnd) { const event = events[index++]; active[event.kind] += event.change; }
+  let at = 0, index = 0;
+  const append = end => {
+    if (end > at) segments.push({ text: value.slice(at, end), find: active.find > 0,
+      selected: active.selected > 0, spelling: active.spelling > 0 });
     at = end;
+  };
+  while (index < events.length) {
+    const end = events[index].at; append(end);
+    while (index < events.length && events[index].at === end) { const event = events[index++]; active[event.kind] += event.change; }
   }
-  if (at < value.length) segments.push({ text: value.slice(at), find: false, selected: false, spelling: false });
+  append(value.length);
   return { value, segments };
 }

@@ -1,7 +1,8 @@
 <script>
   import { onMount, onDestroy, tick, untrack } from 'svelte';
   import { widgetCatalog, widgetCategories, widgetPresentation } from './notification-widget-model.js';
-  let { editor, state: widgetState, clock, foreground = true, execute, registerView } = $props();
+  let { editor, state: widgetState, reminderWidgetProjection, calendarWidgetProjection, clock, foreground = true, execute, registerView } = $props();
+  const projections = $derived({ ...calendarWidgetProjection, ...reminderWidgetProjection });
   let panel = $state(null), scroller = $state(null), error = $state(null), dragging = $state(false);
   let disposed = false, drag = null;
   let filterKey = null;
@@ -28,7 +29,7 @@
   $effect(() => { const owner = lease(), top = editor.scroll.top, left = editor.scroll.left; untrack(() => { if (valid(owner) && scroller) { scroller.scrollTop = top; scroller.scrollLeft = left; } }); });
   $effect(() => { if (!foreground) { drag = null; dragging = false; } });
   async function request(command, payload = {}, node = panel) { const owner = lease(); if (!valid(owner) || !mounted(node)) return; try { const result = await execute(`widgets.${command}`, { centerId: owner.editor.centerId, editorId: owner.editor.editorId }, payload); if (current(owner) && mounted(node)) error = result.status === 'rejected' ? result.error.message : null; } catch (cause) { if (current(owner)) error = cause?.message ?? 'Widget request failed.'; } }
-  function configuration(kind) { const sources = widgetState.sources; switch (kind) { case 'calendar': return { calendarIds: sources.calendars.map(row => row.id) }; case 'weather': return { locationId: sources.weather[0]?.id ?? null, unit: 'celsius' }; case 'reminders': return { listId: sources.reminderLists[0]?.id ?? null }; case 'stock-symbol': return { symbolId: sources.stocks[0]?.id ?? null }; case 'stock-watchlist': return { symbolIds: sources.stocks.map(row => row.id) }; case 'clock-city': return { cityId: sources.clockCities[0]?.id ?? null }; case 'clock-world': return { cityIds: sources.clockCities.slice(0,4).map(row => row.id) }; default: return {}; } }
+  function configuration(kind) { const sources = widgetState.sources; switch (kind) { case 'calendar': return { calendarIds: calendarWidgetProjection.calendars.map(row => row.id) }; case 'weather': return { locationId: sources.weather[0]?.id ?? null, unit: 'celsius' }; case 'reminders': return { listId: reminderWidgetProjection.reminderLists[0]?.id ?? null }; case 'stock-symbol': return { symbolId: sources.stocks[0]?.id ?? null }; case 'stock-watchlist': return { symbolIds: sources.stocks.map(row => row.id) }; case 'clock-city': return { cityId: sources.clockCities[0]?.id ?? null }; default: return { cityIds: sources.clockCities.slice(0,4).map(row => row.id) }; } }
   const filtered = $derived(widgetCatalog.filter(item => (editor.category === 'all' || item.category === editor.category) && `${item.label} ${item.category} ${item.description}`.toLowerCase().includes(editor.query.toLowerCase())));
   function startDrag(event, kind, size) { if (event.button !== 0 || !available()) return; const center = panel.ownerDocument.querySelector(`[data-notification-center-id="${editor.centerId}"]`); if (!center?.isConnected) return; drag = { owner: lease(), node: event.currentTarget, kind, size, center, pointerId: event.pointerId, x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); }
   function moveDrag(event) { if (drag?.pointerId === event.pointerId && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 8) dragging = true; }
@@ -48,7 +49,7 @@
   </aside><main bind:this={scroller} onscroll={scrollChanged}>
     <p class="intro">Choose a size, then add to Notification Center. You can also drag a preview there.</p>
     {#if error}<p role="alert" class="error">{error}</p>{/if}
-    {#each filtered as item (item.kind)}<section><h3>{item.label}</h3><p class="description">{item.description}</p><div class="previews">{#each item.sizes as size}{@const view = widgetPresentation(widgetState, { id: 'preview', kind: item.kind, size, configuration: configuration(item.kind) }, clock)}
+    {#each filtered as item (item.kind)}<section><h3>{item.label}</h3><p class="description">{item.description}</p><div class="previews">{#each item.sizes as size}{@const view = widgetPresentation(widgetState, { id: 'preview', kind: item.kind, size, configuration: configuration(item.kind) }, clock, projections)}
       <div class="choice"><div class="preview {size} {item.kind}" role="img" aria-label={`${item.label} ${size} preview; drag to Notification Center`} onpointerdown={event => startDrag(event, item.kind, size)} onpointermove={moveDrag} onpointerup={endDrag}><strong>{view.title}</strong>
         {#if view.date}<div class="preview-date">{view.date.weekday}<b>{view.date.day}</b><small>{view.date.monthLabel}</small></div>{/if}
         {#if view.events}<div class="rows">{#each view.events.slice(0,size === 'large' ? 4 : 2) as event}<span><small>{event.time}</small> {event.title}</span>{:else}<span>No upcoming events</span>{/each}</div>{/if}

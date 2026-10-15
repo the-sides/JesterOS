@@ -6,6 +6,8 @@ import { searchHelpArticles } from './help-content.js';
 const MENU_IDS = ['apple', 'application', 'window', 'users', 'wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input', ...APP_COMMAND_MENU_IDS];
 const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Space', 'Escape', 'Tab'];
 const MAX_LEVELS = 8;
+const LEGACY_MENU_PROFILES = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0'];
+const SHARED_WINDOW_COMMANDS = ['menu.open', 'menu.close', 'menu.select', 'menu.execute', 'desktop.scroll', 'menu.navigate', 'menu.submenu.open', 'menu.submenu.close', 'menu.scroll'];
 const identity = value => typeof value === 'string' && value.length > 0;
 const fields = (value, allowed, required = allowed) => isRecord(value)
   && Object.keys(value).every(key => allowed.includes(key)) && required.every(key => Object.hasOwn(value, key));
@@ -94,12 +96,14 @@ const scrollPayload = (payload, withLevel) => fields(payload, withLevel ? ['top'
  * ctx.state is the menuBar object itself. getMenus supplies live provider trees;
  * getView(menuId) supplies the shared native facade. invoke takes ONE canonical
  * request, not Host.execute, so action dispatch cannot recursively queue itself.
+ * Optional captureAction(request) returns an anti-stale callback that observes
+ * the real original window/state/view owners captured at action acceptance.
  * Optional registerLifecycle receives internal clear/getReturnFocus hooks; these
  * are never part of public command/discovery state.
  */
 export function createMenuBarCommands(ctx) {
   const { state, profile } = ctx;
-  let returnFocus, hasReturnFocus = false, lifecycleVersion = 0;
+  let returnFocus, hasReturnFocus = false, lifecycleVersion = 0, pendingNative = null, acceptedAction = null;
   const menus = () => checkedMenus(ctx.getMenus());
   const view = menuId => ctx.getView(menuId);
   const writeState = value => {
@@ -115,6 +119,31 @@ export function createMenuBarCommands(ctx) {
     },
     getReturnFocus: () => hasReturnFocus ? returnFocus : undefined,
   });
+  function captureAction(name, target, payload) {
+    let menuId, itemId;
+    if (name === 'app.menu.execute') { menuId = 'application'; itemId = target?.itemId; }
+    else if (name === 'session.menu.select' || name.endsWith('.execute')) { menuId = target?.menuId; itemId = target?.itemId; }
+    else if (name === 'menu.navigate' && ['Enter', 'Space'].includes(payload?.key)) {
+      menuId = target?.menuId; itemId = state.levels.at(-1)?.itemId;
+    } else return null;
+    if (!MENU_IDS.includes(menuId) || !identity(itemId)) return null;
+    const menu = menus().find(menu => menu.menuId === menuId), item = menu && findItem(menu.items, itemId);
+    if (!item?.request || item.children || !enabled(item)) return null;
+    const request = item.request;
+    if (typeof ctx.captureAction !== 'function') return null;
+    const current = ctx.captureAction(request);
+    // Original-owner capture is root-provided: it must observe real
+    // window/state/view objects, not canonical string IDs alone.
+    if (typeof current !== 'function') return { menuId, itemId, appId: menu.appId, request, signature: JSON.stringify(request), current: null };
+    return { menuId, itemId, appId: menu.appId, request, signature: JSON.stringify(request), current };
+  }
+  // Optional root-provided owner lease: the callback observes real original
+  // window/state/view objects; absence keeps prior canonical behavior.
+  const owned = activation => {
+    if (!activation) return true;
+    const current = activation.current;
+    return !current || typeof current !== 'function' || current() === true;
+  };
   const sameState = (next, levels) => state.menuId === next.menuId && state.appId === next.appId && state.levels === levels;
   const navigationTarget = () => ({ menuId: state.menuId, itemId: state.levels.at(-1)?.itemId ?? null,
     level: state.menuId === null ? null : state.levels.length - 1 });
@@ -244,13 +273,17 @@ export function createMenuBarCommands(ctx) {
     return applied({ menuId });
   }
 
-  async function close(menuId, restoreFocus = true) {
+  async function close(menuId, restoreFocus = true, returnOriginal = false) {
     if (!ctx.available()) return unavailable();
     if (state.menuId !== null && state.menuId !== menuId) return unavailable();
     if (state.menuId === null) return applied();
     if (restoreFocus && !view(menuId)?.available(menuId)) return unavailable();
-    const result = await transition(menuBarDefaults(), async () => !restoreFocus || await view(menuId).focusInvoker(menuId)
-      ? applied() : unavailable());
+    const token = returnFocus, captured = hasReturnFocus, version = lifecycleVersion;
+    const result = await transition(menuBarDefaults(), async () => {
+      if (!restoreFocus) return applied();
+      const focused = returnOriginal ? captured && await ctx.restoreFocus(token) : await view(menuId).focusInvoker(menuId);
+      return focused && version === lifecycleVersion ? applied() : unavailable();
+    });
     if (result.status === 'applied') { returnFocus = undefined; hasReturnFocus = false; }
     return result;
   }
@@ -318,6 +351,10 @@ export function createMenuBarCommands(ctx) {
     if (result.error) return result.error;
     const { item } = result;
     if (!item || item.children || !item.request) return disabled();
+    const activation = acceptedAction ?? { menuId, itemId, appId: result.menu.appId, request: item.request,
+      signature: JSON.stringify(item.request), current: null };
+    if (activation.menuId !== menuId || activation.itemId !== itemId || activation.appId !== result.menu.appId
+      || !owned(activation) || JSON.stringify(item.request) !== activation.signature) return missing();
     if (['wifi', 'battery', 'sound', 'bluetooth'].includes(menuId) && item.keepOpen === true) {
       const next = snapshot(state);
       next.levels = [{ parentId: null, itemId, scrollTop: state.levels[0].scrollTop }];
@@ -326,7 +363,8 @@ export function createMenuBarCommands(ctx) {
         if (focused.status !== 'applied') return focused;
         const live = row(menuId, itemId);
         if (live.error) return live.error;
-        const downstream = await ctx.invoke(live.item.request);
+        if (!owned(activation) || JSON.stringify(live.item.request) !== activation.signature) return missing();
+        const downstream = await ctx.invoke(activation.request);
         if (downstream.status !== 'applied') return downstream;
         await ctx.settle();
         // A committed status change must never be reported rejected
@@ -347,14 +385,15 @@ export function createMenuBarCommands(ctx) {
     const helpResult = item.helpResult;
     // Closing clears the search UI, not the query that produced this leased action.
     const helpProjection = menuId === 'help' && state.helpSearch ? snapshot(state) : null;
-    const originalRequest = helpResult || helpProjection ? JSON.stringify(item.request) : null;
+    const originalRequest = activation.signature;
     // Apple actions lease the modifier variant chosen at activation. Releasing
     // Option during native return-focus must not replace that accepted intent.
     // Live ownership, existence and enablement are still checked below.
-    const activationRequest = menuId === 'apple' && profile.capabilities.includes('shell.apple-menu') ? item.request : null;
-    const invoke = async () => {
+    const activationRequest = activation.request;
+    const prepareInvocation = async () => {
       if (wasOpen && (!hasReturnFocus || !await ctx.restoreFocus(returnFocus))) return unavailable();
       if (version !== lifecycleVersion) return unavailable();
+      if (!owned(activation)) return missing();
       // Revalidate ownership and enablement after physical return focus settles.
       const live = provider(helpResult?.menuId ?? menuId, helpProjection);
       if (live.error) return live.error;
@@ -362,22 +401,24 @@ export function createMenuBarCommands(ctx) {
       if (!currentItem) return missing();
       if (!enabled(currentItem) || currentItem.children || !currentItem.request) return disabled();
       if (live.menu.appId !== appId) return missing();
-      if (originalRequest !== null && JSON.stringify(currentItem.request) !== originalRequest) return missing();
+      if (!(menuId === 'apple' && profile.capabilities.includes('shell.apple-menu'))
+        && JSON.stringify(currentItem.request) !== originalRequest) return missing();
       if (helpResult && !helpMenuResults(menus(), appId, helpResult.label).some(entry =>
         entry.resultId === helpResult.resultId && entry.enabled)) return missing();
-      const downstream = await ctx.invoke(activationRequest ?? currentItem.request);
-      if (downstream.status !== 'applied') return downstream;
-      return applied(menuId === 'window' ? { menuId, itemId, windowId: currentItem.request.target?.windowId ?? downstream.target?.windowId }
-        : menuId === 'application' ? {} : { menuId, itemId });
+      return applied();
     };
-    let completed;
-    if (wasOpen) completed = await transition(menuBarDefaults(), invoke);
-    else {
-      completed = await invoke();
-      if (completed.status === 'applied') await view(menuId)?.focusInvoker(menuId);
-    }
-    if (completed.status === 'applied') { returnFocus = undefined; hasReturnFocus = false; }
-    return completed;
+    const prepared = wasOpen ? await transition(menuBarDefaults(), prepareInvocation) : await prepareInvocation();
+    if (prepared.status !== 'applied') return prepared;
+    if (version !== lifecycleVersion) return unavailable();
+    returnFocus = undefined; hasReturnFocus = false;
+    if (!ctx.available()) return unavailable();
+    if (!owned(activation)) return missing();
+    // Dismissal is committed before the application takes over. Its truthful
+    // cancellation/error must not resurrect a menu or steal its returned focus.
+    const downstream = await ctx.invoke(activationRequest);
+    if (downstream.status !== 'applied') return downstream;
+    return applied(menuId === 'window' ? { menuId, itemId, windowId: activationRequest.target?.windowId ?? downstream.target?.windowId }
+      : menuId === 'application' ? {} : { menuId, itemId });
   }
 
   async function scroll(menuId, payload) {
@@ -423,7 +464,7 @@ export function createMenuBarCommands(ctx) {
       moved = await ctx.invoke({ command: 'sound.volume.set', target: {}, payload: { volume } });
       if (moved.status === 'applied') await ctx.settle();
     } else if (item?.type === 'sound-volume' && (key === 'Enter' || key === 'Space')) moved = applied();
-    else if (key === 'Escape') moved = level > 0 ? await pop(menuId) : await close(menuId);
+    else if (key === 'Escape') moved = level > 0 ? await pop(menuId) : await close(menuId, true, menuId === 'help');
     else if (key === 'Tab') moved = await close(menuId);
     else if (key === 'ArrowLeft' && level > 0) moved = await pop(menuId);
     else if ((key === 'ArrowRight' || key === 'Enter' || key === 'Space') && item?.children) moved = await submenu(menuId, itemId);
@@ -467,7 +508,7 @@ export function createMenuBarCommands(ctx) {
 
   function helpOwner(target) {
     if (!fields(target, ['appId']) || !identity(target.appId)) return { error: invalid() };
-    if (!profile.capabilities.includes('shell.help-workflows')) return { error: rejected('unsupported_profile', 'Help search is available only in Golden Gate.') };
+    if (!profile.capabilities.includes('shell.help-workflows')) return { error: rejected('unsupported_profile', 'Help search requires the installed native Help workflow capability.') };
     const owned = current('help');
     if (owned.error) return owned;
     if (state.appId !== target.appId) return { error: missing() };
@@ -483,7 +524,8 @@ export function createMenuBarCommands(ctx) {
       if (owned.error) return owned.error;
       const next = snapshot(state);
       next.helpSearch.query = payload.query; next.helpSearch.locationId = null;
-      next.levels = [{ parentId: null, itemId: 'app-help', scrollTop: 0 }];
+      const applicationHelp = owned.menu.items.find(item => enabled(item) && !item.helpResult && !item.id.startsWith('help-topic:'));
+      next.levels = [{ parentId: null, itemId: applicationHelp?.id ?? null, scrollTop: 0 }];
       return await transition(next, () => {
         const live = helpOwner(target);
         if (live.error) return live.error;
@@ -597,11 +639,31 @@ export function createMenuBarCommands(ctx) {
     },
     'menu.scroll': (target, payload) => menuTarget(target) && scrollPayload(payload, true) ? scroll(target.menuId, payload) : invalid(),
   };
-  return Object.fromEntries(Object.entries(handlers).map(([name, handler]) => [name, async (target, payload) => {
-    const capability = name.startsWith('app.commandMenu.') ? 'shell.menu-bar' : name.startsWith('app.') ? 'app.visibility' : name.startsWith('session.') ? 'session.fictional'
-      : ['menu.open', 'menu.close', 'menu.select', 'menu.execute', 'desktop.scroll'].includes(name) ? 'shell.window-menu' : 'shell.menu-bar';
-    return profile.id !== 'macos-golden-gate-27.0.1' || !profile.capabilities.includes(capability)
-      ? rejected('unsupported_profile', 'The shared menu controller is available only in Golden Gate.') : await handler(target, payload);
+  return Object.fromEntries(Object.entries(handlers).map(([name, handler]) => [name, (target, payload) => {
+    const golden = profile.id === 'macos-golden-gate-27.0.1';
+    const legacyOwner = LEGACY_MENU_PROFILES.includes(profile.id) && ctx.getMenus().some(menu => ['messages', 'safari', 'mail', 'contacts', 'calendar'].includes(menu.appId));
+    const represented = name.startsWith('app.commandMenu.') || SHARED_WINDOW_COMMANDS.includes(name);
+    const capability = name.startsWith('menu.help.') ? 'shell.help-workflows'
+      : name.startsWith('app.') && !name.startsWith('app.commandMenu.') ? 'app.visibility'
+        : name.startsWith('session.') ? 'session.fictional' : golden ? 'shell.menu-bar'
+          : represented ? 'shell.window-menu' : 'shell.menu-bar';
+    if (!(golden || legacyOwner) || !profile.capabilities.includes(capability)) {
+      return Promise.resolve(rejected('unsupported_profile', 'The shared menu controller requires an installed represented Mac menu owner and capability.'));
+    }
+    const activation = captureAction(name, target, payload), version = lifecycleVersion;
+    const run = async () => {
+      if (version !== lifecycleVersion) return unavailable();
+      acceptedAction = activation;
+      try { return await handler(target, payload); }
+      finally { acceptedAction = null; }
+    };
+    // Hover/focus writes complete before the following pointer or keyboard
+    // action closes their popup. Enabled rows stay actionable while settling.
+    const result = pendingNative ? pendingNative.then(run, run) : run();
+    pendingNative = result;
+    const release = () => { if (pendingNative === result) pendingNative = null; };
+    result.then(release, release);
+    return result;
   }]));
 }
 

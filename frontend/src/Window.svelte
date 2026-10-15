@@ -4,7 +4,7 @@
   import WindowResizeHandles from './WindowResizeHandles.svelte';
   import './windows.css';
 
-  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu, fullScreen = false, revealedTop = true, modernGreenMenu = false, onmove, resizable = false, onresize, presentationBounds, interactive = true, visible = true, children } = $props();
+  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu, fullScreen = false, revealedTop = true, modernGreenMenu = false, onmove, resizable = false, onresize, presentationBounds, interactive = true, visible = true, nativeChrome = 'standard', children } = $props();
   const bounds = $derived(presentationBounds ?? window.bounds);
   $effect(() => { if (!interactive || !visible || fullScreen) endDrag(); });
   let element;
@@ -75,7 +75,7 @@
     style:height="{bounds.height / bounds.scale}px"
     style:transform="scale({bounds.scale})"
   >
-    {#if window.appId === 'messages' || window.appId === 'notes'}
+    {#if nativeChrome === 'application' || !window.utilityKind && ['messages', 'notes'].includes(window.appId)}
       {@render children()}
     {:else}
       <div class="application-window">

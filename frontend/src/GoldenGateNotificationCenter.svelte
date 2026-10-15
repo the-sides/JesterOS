@@ -3,8 +3,41 @@
   import GoldenGateIcon from './GoldenGateIcon.svelte';
   import GoldenGateWidgets from './GoldenGateWidgets.svelte';
   import GoldenGateNotificationCard from './GoldenGateNotificationCard.svelte';
+  import HighSierraAppIcon from './HighSierraAppIcon.svelte';
+  import AppIcon from './AppIcon.svelte';
+  import SonomaIcon from './SonomaIcon.svelte';
+  import Windows11Icon from './Windows11Icon.svelte';
 
-  let { pane, groups, clock, widgetState, widgetUi, foreground = true, actionsFor, previewFor, itemUiFor, timestampFor, execute, registerView, onerror } = $props();
+  let { profile, preferences = null, pane, groups, clock, widgetState, widgetUi, reminderWidgetProjection, calendarWidgetProjection, foreground = true, actionsFor, snoozeChoicesFor, previewFor, itemUiFor, timestampFor, execute, registerView, onerror } = $props();
+  const renderer = $derived(profile.renderer);
+  const windows = $derived(renderer === 'windows11');
+  const classic = $derived(renderer === 'high-sierra' || renderer === 'mojave');
+  const golden = $derived(renderer === 'golden-gate');
+  const Icon = $derived(windows ? Windows11Icon : renderer === 'high-sierra' ? HighSierraAppIcon : classic ? AppIcon : golden ? GoldenGateIcon : SonomaIcon);
+  const tab = $derived(pane.tab ?? 'notifications');
+  const showNotifications = $derived(!classic || tab === 'notifications');
+  const showWidgets = $derived(!windows && (!classic || tab === 'today'));
+  const dayFormat = $derived(new Intl.DateTimeFormat('en-US', { timeZone: clock.timeZone, weekday: 'long', month: 'long', day: 'numeric' }));
+  function setTab(value) {
+    cancelHold(); suppressClick = null;
+    return request('tab.select', {}, { tab: value });
+  }
+  async function toggleDnd() {
+    const owner = lease();
+    if (!available() || !preferences) return;
+    try {
+      const result = await execute('notifications.dnd.set', {}, { enabled: !preferences.doNotDisturb });
+      if (current(owner)) nativeError = result.status === 'rejected' ? result.error.message : null;
+    } catch (cause) { if (current(owner)) nativeError = cause?.message ?? 'Do Not Disturb could not change.'; }
+  }
+  async function openSettings() {
+    const owner = lease();
+    if (!available()) return;
+    try {
+      const result = await execute('notifications.settings.open', {}, {});
+      if (current(owner)) nativeError = result.status === 'rejected' ? result.error.message : null;
+    } catch (cause) { if (current(owner)) nativeError = cause?.message ?? 'Notification settings could not open.'; }
+  }
   let panel = $state(null), scroller = $state(null), nativeError = $state(null);
   let disposed = false, requestSequence = 0, held = null, suppressClick = null;
   const dateFormat = $derived(new Intl.DateTimeFormat('en-US', { timeZone: clock.timeZone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: !clock.use24Hour }));
@@ -24,7 +57,7 @@
   }
   function actions(entry) {
     const supplied = typeof actionsFor === 'function' ? actionsFor(entry) : [];
-    return Array.isArray(supplied) ? supplied.filter(action => ['open', 'reply', 'snooze', 'complete'].includes(action)) : [];
+    return Array.isArray(supplied) ? supplied.filter(action => ['open', 'reply', 'snooze', 'complete', 'accept', 'decline'].includes(action)) : [];
   }
   function tsText(entry) {
     return typeof timestampFor === 'function' ? String(timestampFor(entry)) : timestamp(entry.createdAt);
@@ -155,6 +188,11 @@
   function keydown(event) {
     if (!available() || event.isComposing || event.defaultPrevented) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); void request('close'); }
+    else if (classic && event.target?.dataset.notificationControl?.startsWith('tab:')
+      && !event.metaKey && !event.ctrlKey && !event.altKey && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault(); event.stopPropagation();
+      void setTab(event.key === 'Home' ? 'today' : event.key === 'End' ? 'notifications' : tab === 'today' ? 'notifications' : 'today');
+    }
     else if (event.target === panel && !event.metaKey && !event.ctrlKey && !event.altKey
       && ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'].includes(event.key)) {
       event.preventDefault(); event.stopPropagation();
@@ -166,29 +204,40 @@
   }
 </script>
 
-<div class="notification-center" id={`notification-center-${pane.centerId}`} role="dialog" aria-modal="false" aria-label="Notification Center" tabindex="-1"
+<div class="notification-center" class:classic class:windows class:golden data-notification-profile={renderer} id={`notification-center-${pane.centerId}`} role="dialog" aria-modal="false" aria-label="Notification Center" tabindex="-1"
   data-notification-center-id={pane.centerId} data-notification-control="center" bind:this={panel}
   onkeydown={keydown} onfocusin={focusChanged}>
   <header class="center-actions">
-    <h2>Notification Center</h2>
-    {#if groups.length}<button data-notification-control="clear-all" onclick={() => request('clear')}>Clear All</button>{/if}
+    {#if classic}
+      <div class="center-tabs" role="tablist" aria-label="Notification Center views">
+        <button role="tab" tabindex={tab === 'today' ? 0 : -1} id={`notification-tab-today-${pane.centerId}`} aria-selected={tab === 'today'} aria-controls={`notification-today-${pane.centerId}`} data-notification-control="tab:today" onclick={() => setTab('today')}>Today</button>
+        <button role="tab" tabindex={tab === 'notifications' ? 0 : -1} id={`notification-tab-notifications-${pane.centerId}`} aria-selected={tab === 'notifications'} aria-controls={`notification-list-${pane.centerId}`} data-notification-control="tab:notifications" onclick={() => setTab('notifications')}>Notifications</button>
+      </div>
+    {:else}<h2>{windows ? 'Notifications' : 'Notification Center'}</h2>{/if}
+    {#if preferences && !classic}<button class="dnd" data-notification-control="dnd" aria-label="Do Not Disturb" aria-pressed={preferences.doNotDisturb} onclick={toggleDnd}>{preferences.doNotDisturb ? '◐ On' : '◐'}</button>{/if}
+    {#if groups.length && showNotifications}<button data-notification-control="clear-all" onclick={() => request('clear')}>{windows ? 'Clear all' : 'Clear All'}</button>{/if}
+    <button data-notification-control="settings" aria-label="Notification settings" onclick={openSettings}>⚙</button>
     <button class="close" data-notification-control="close" aria-label="Close Notification Center" onclick={() => request('close')}>×</button>
   </header>
   {#if nativeError}<p class="error" role="alert">{nativeError}</p>{/if}
   <div class="notification-scroll" bind:this={scroller} onscroll={scrollChanged}>
+    {#if classic && preferences}<label class="classic-dnd">Do Not Disturb<input type="checkbox" role="switch" checked={preferences.doNotDisturb} data-notification-control="dnd" onchange={toggleDnd} /></label>{/if}
+    <div id={`notification-list-${pane.centerId}`} hidden={!showNotifications} role={classic ? 'tabpanel' : undefined} aria-labelledby={classic ? `notification-tab-notifications-${pane.centerId}` : undefined}>
     {#if groups.length === 0}<div class="empty"><span aria-hidden="true">◷</span><p>No notifications</p></div>{/if}
     {#each groups as group (group.groupId)}
-      {@const expanded = pane.expandedGroupIds.includes(group.groupId)}
-      <article class="notification-group" class:stacked={!expanded && group.entries.length > 1} data-notification-group={group.groupId} aria-label={`${group.name} notifications`}>
+      {@const expanded = classic || pane.expandedGroupIds.includes(group.groupId)}
+      <article class="notification-group" class:stacked={!windows && !expanded && group.entries.length > 1} data-notification-group={group.groupId} aria-label={`${group.name} notifications`}>
         {#if expanded}
+          {#if !classic}
           <div class="group-heading"><strong>{group.name}</strong>
-            <button data-notification-control={`collapse:${group.groupId}`} onclick={() => request('group.setExpanded', { groupId: group.groupId }, { expanded: false })}>Show Less</button>
+            <button data-notification-control={`collapse:${group.groupId}`} aria-label={windows ? `Collapse ${group.name} notifications` : undefined} onclick={() => request('group.setExpanded', { groupId: group.groupId }, { expanded: false })}>{windows ? '⌃' : 'Show Less'}</button>
             <button class="remove" data-notification-control={`clear:${group.groupId}`} aria-label={`Clear all notifications from ${group.name}`} onclick={() => request('clear', { groupId: group.groupId })}>×</button>
           </div>
+          {/if}
           {#each group.entries as entry (entry.id)}
             <div class="expandable-card">
-              <GoldenGateNotificationCard {entry} app={{ name: group.name, icon: group.icon }}
-                ownerTarget={{ centerId: pane.centerId }} actions={actions(entry)} showPreview={preview(entry)}
+              <GoldenGateNotificationCard {profile} {entry} app={{ name: group.name, icon: group.icon }}
+                ownerTarget={{ centerId: pane.centerId }} actions={actions(entry)} snoozeChoices={snoozeChoicesFor?.(entry) ?? []} showPreview={preview(entry)}
                 itemUi={plainItemUi(entry)} timestamp={tsText(entry)} {foreground} {execute}
                 onerror={message => { if (message) nativeError = message; else nativeError = null; }} />
               <button class="remove item-remove" data-notification-control={`dismiss:${entry.id}`} aria-label={preview(entry) ? `Dismiss ${entry.title}` : `Dismiss ${group.name} notification`}
@@ -199,8 +248,8 @@
         {:else if group.entries.length === 1}
           {@const entry = group.entries[0]}
           <div class="expandable-card">
-            <GoldenGateNotificationCard {entry} app={{ name: group.name, icon: group.icon }}
-              ownerTarget={{ centerId: pane.centerId }} actions={actions(entry)} showPreview={preview(entry)}
+            <GoldenGateNotificationCard {profile} {entry} app={{ name: group.name, icon: group.icon }}
+              ownerTarget={{ centerId: pane.centerId }} actions={actions(entry)} snoozeChoices={snoozeChoicesFor?.(entry) ?? []} showPreview={preview(entry)}
               itemUi={plainItemUi(entry)} timestamp={tsText(entry)} {foreground} {execute}
               onerror={message => { nativeError = message; }} />
             <button class="remove item-remove" data-notification-control={`dismiss:${entry.id}`}
@@ -214,9 +263,9 @@
           <div class="notification-card collapsed" data-notification-id={entry.id}>
             <button class="stack-content" data-notification-control={`group:${group.groupId}`} aria-label={`Expand ${group.name} notifications (${group.entries.length})`} aria-expanded="false"
               onclick={() => request('group.setExpanded', { groupId: group.groupId }, { expanded: true })}>
-              <span class="notification-meta"><span class="app-icon"><GoldenGateIcon name={group.icon} /></span><strong>{group.name}</strong><time datetime={new Date(entry.createdAt).toISOString()}>{timestamp(entry.createdAt)}</time></span>
+              <span class="notification-meta"><span class="app-icon"><Icon name={group.icon} assets={profile.assets} /></span><strong>{group.name}</strong><time datetime={new Date(entry.createdAt).toISOString()}>{tsText(entry)}</time></span>
               <strong class="title">{preview(entry) ? entry.title : 'Notification'}</strong><span class="body preview">{preview(entry) ? entry.body : 'Preview hidden'}</span>
-              {#if group.entries.length > 1}<span class="count">{group.entries.length} notifications</span>{/if}
+              {#if group.entries.length > 1}<span class="count">{windows ? `+${group.entries.length - 1} notifications` : `${group.entries.length} notifications`}{#if windows}<span class="group-chevron" aria-hidden="true">⌄</span>{/if}</span>{/if}
             </button>
             <button class="remove item-remove" data-notification-control={`dismiss:${entry.id}`} aria-label={preview(entry) ? `Dismiss ${entry.title}` : `Dismiss ${group.name} notification`}
               onpointerdown={event => holdRemove(event, group.groupId, entry.id)} onpointerup={cancelHold} onpointercancel={cancelHold} onpointerleave={cancelHold}
@@ -226,10 +275,15 @@
         {/if}
       </article>
     {/each}
+    </div>
+    <div id={`notification-today-${pane.centerId}`} hidden={!showWidgets} role={classic ? 'tabpanel' : undefined} aria-labelledby={classic ? `notification-tab-today-${pane.centerId}` : undefined}>
+    {#if classic}<h3 class="today-date">{dayFormat.format(new Date(clock.sceneTime))}</h3>{/if}
     {#if widgetState && widgetUi}
-      <GoldenGateWidgets state={widgetState} {clock} centerId={pane.centerId} ui={widgetUi} {foreground} {execute} onerror={message => nativeError = message} />
+      <GoldenGateWidgets state={widgetState} {clock} {reminderWidgetProjection} {calendarWidgetProjection} centerId={pane.centerId} ui={widgetUi} {foreground} {execute} onerror={message => nativeError = message} />
       <div class="widget-actions"><button data-notification-control="edit-widgets" onclick={editWidgets}>Edit Widgets</button></div>
     {/if}
+    </div>
+    {#if windows}<footer class="windows-date"><span>{dayFormat.format(new Date(clock.sceneTime))}</span></footer>{/if}
   </div>
 </div>
 
@@ -272,5 +326,41 @@
   .error { flex-shrink:0; margin:0 5px 9px; padding:8px; border-radius:12px; color:#b3261e; background:#fff5f1; }
   .widget-actions { display:flex; justify-content:center; margin:18px 0 0; }
   .widget-actions button { padding:7px 16px; border-radius:14px; background:var(--notification-material); border:1px solid var(--appearance-light-edge,#fff8); backdrop-filter:blur(25px); font-size:12px; box-shadow:0 2px 8px #0002; }
+  [hidden] { display:none !important; }
+  .app-icon :global(img),.app-icon :global(.app-icon) { display:block; width:100%; height:100%; object-fit:contain; }
+  .notification-center:not(.golden):not(.classic):not(.windows) { border-radius:16px; }
+  .notification-center:not(.golden):not(.classic):not(.windows) .center-actions { border-radius:14px; }
+  .classic { border-radius:0; padding:0; background:color-mix(in srgb,var(--appearance-panel,#e7e7e7) 88%,transparent); backdrop-filter:blur(25px); box-shadow:-3px 0 20px #0003; }
+  .classic .center-actions { margin:0; padding:13px 12px; border:0; border-bottom:1px solid #8883; border-radius:0; box-shadow:none; background:transparent; gap:5px; }
+  .center-tabs { flex:1; display:flex; justify-content:center; }
+  .center-tabs button { flex:1; max-width:145px; margin:0; padding:5px 10px; border:1px solid #8885; border-radius:0; background:var(--appearance-surface,#eee); font-size:12px; }
+  .center-tabs button:first-child { border-radius:4px 0 0 4px; }.center-tabs button:last-child { border-radius:0 4px 4px 0; border-left:0; }
+  .center-tabs button[aria-selected='true'] { background:var(--appearance-accent,#666); color:var(--appearance-accent-ink,#fff); }
+  .classic .notification-scroll { padding:0 12px 20px; }
+  .classic .notification-group { margin-bottom:0; }
+  .classic .expandable-card { margin:0 0 1px; }
+  .classic .item-remove { left:auto; right:4px; top:4px; width:18px; height:18px; border-radius:3px; box-shadow:none; font-size:15px; }
+  .classic :global(.notification-card .meta) { padding-right:20px; }
+  .classic .empty { background:transparent; border-radius:0; margin-top:70px; font-size:14px; opacity:.65; }
+  .classic .empty span { display:none; }
+  .classic-dnd { display:flex; align-items:center; justify-content:space-between; margin:0 -12px 12px; padding:12px 20px; border-bottom:1px solid #8883; font-size:12px; }
+  .classic-dnd input { accent-color:var(--appearance-accent,#0878ef); }
+  .today-date { margin:16px 5px 22px; font-size:23px; line-height:1.25; font-weight:300; }
+  .classic .widget-actions button { border-radius:4px; padding:4px 13px; background:var(--appearance-surface,#eee); border-color:#8885; }
+  .windows { box-sizing:border-box; border:1px solid var(--appearance-soft-border,#bbb); border-radius:8px; background:color-mix(in srgb,var(--appearance-panel,#f3f3f3) 96%,transparent); backdrop-filter:blur(30px); box-shadow:0 8px 30px #0003; font-family:'Segoe UI',sans-serif; }
+  .windows .center-actions { margin:0; padding:17px 16px; border:0; border-radius:0; background:transparent; box-shadow:none; }
+  .windows h2 { font-size:16px; font-weight:600; }
+  .windows .center-actions button { border-radius:4px; font-size:12px; }
+  .windows .notification-scroll { padding:0 12px 12px; }
+  .windows .group-heading { background:transparent; margin:0; padding:8px 4px; font-size:12px; border-radius:0; }
+  .windows .item-remove { left:auto; right:9px; top:9px; border-radius:4px; background:transparent; box-shadow:none; }
+  .windows .empty { background:transparent; border-radius:0; padding:55px 10px; }
+  .windows-date { padding:18px 4px 8px; border-top:1px solid var(--appearance-soft-border,#ccc); font-size:18px; font-weight:600; }
+  .dnd[aria-pressed='true'] { color:var(--appearance-accent,#0878ef); }
+  .windows .collapsed { border:1px solid var(--appearance-soft-border,#d5d5d5); border-radius:8px; background:var(--appearance-surface,#fff); }
+  .windows .stack-content { border-radius:8px; padding:14px 16px; }
+  .windows .notification-meta { font-size:12px; padding-right:23px; }
+  .windows .count { display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--appearance-soft-border,#ddd); margin:14px -16px -14px; padding:10px 16px; font-size:12px; opacity:1; }
+  .group-chevron { font-size:17px; }
   @media (prefers-reduced-motion:reduce) { .notification-center { scroll-behavior:auto; } }
 </style>

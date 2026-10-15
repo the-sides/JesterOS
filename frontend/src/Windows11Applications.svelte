@@ -26,12 +26,16 @@
     const ownApp = request.command.startsWith(`win11.${appId}.`) ||
       (request.command.startsWith('win11.apps.') && target.appId === appId);
     if (ownApp) return execute({ ...request, target: { ...target, windowId } });
-    // Native "Open" actors explicitly activate the destination application first,
-    // then populate the actual ID it returned. Direct unscoped app reducers do not.
-    if (!target.windowId && ['win11.files.open', 'win11.photos.open', 'win11.notepad.open'].includes(request.command)) {
+    // File Open owns the source window. The MIME-aware reducer activates the
+    // genuine destination; pre-opening by legacy kind creates an empty editor.
+    if (request.command === 'win11.files.open')
+      return execute({ ...request, target: { ...target, windowId: target.windowId ?? windowId } });
+    if (!target.windowId && request.command === 'win11.photos.open')
+      return execute({ command: 'win11.files.open', target: { fileId: target.fileId, windowId }, payload: {} });
+    if (!target.windowId && request.command === 'win11.notepad.open') {
       const file = liveFile(native.apps, target.fileId);
       const destination = file && ({ folder: 'explorer', text: 'notepad', image: 'photos' })[file.kind];
-      const requested = request.command === 'win11.files.open' ? destination : request.command.split('.')[1];
+      const requested = request.command.split('.')[1];
       if (destination && destination === requested) {
         const opened = await execute({ command: 'app.open', target: { appId: destination }, payload: {} });
         if (opened.status !== 'applied') return opened;

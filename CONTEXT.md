@@ -2,7 +2,15 @@
 
 JesterOS simulates operating-system desktops and applications for actors to use as film and television screen props.
 
-**Active implementation target:** latest stable macOS, currently **27 Golden Gate27.0.1**, independently verified against Apple's release table/current guide. It is the default profile. Completed High Sierra/Mojave/Sonoma/Windows profiles remain selectable but are not extended by new slices; conditional Linux research is historical, not active implementation scope.
+**Active implementation target:** finish every remaining backlog item from **Messages onward across all five installed profiles**: High Sierra10.13, Mojave10.14, Sonoma14.0, Golden Gate27.0.1, and Windows11 Pro23H2 build22631.2428. Golden Gate remains the default, not the exclusive extension target. Research each release's native application/counterpart, menus, settings, and geometry; distinguish measured primary-source pixels from authored approximations and missing fonts. Conditional Ubuntu research is not an installed runtime or an additional claimed implementation.
+
+## Current accepted checkpoint — October15, 2026
+
+Messages `MSG-01`–`MSG-10` complete; `MSG-02`–`MSG-10` accepted on all five installed profiles.69/286 backlog items are checked,217 unchecked. Next sequential item is `SAF-01`. Earlier stop instructions/counts below are historical and superseded by the active scope above; deferred section3 dialogs and STATUS-07/08 remain outside it.
+
+The completed slice adds typed preference/Details navigation, complete attachment-target preview/menu/PDF/audio presentation and original message actions. Real Files chooser/drag/drop, bytes/associated opens, emoji/caret, reactions/copy/delete, account/group confirmations and local incoming/source-linked notifications pass native browser checks. All share the original Messages/Contacts/Files/clipboard/notification owners. Send availability shares actual Contacts and duplicate-thread resolution; repeated attachment IDs cannot route to another message. Windows initial banner bounds are measured after the original scene root binds. Location, audio recording substitutes, server membership and personal Teams release geometry remain disclosed simulation boundaries.
+
+Focused Messages:183 tests/1,626 assertions pass. Broader regression split across tools and frontend:3,055 pass,59 fail and1 error, matching the preexisting failure/error count; those unrelated failures remain open. Production frontend build passes with existing Svelte and bundle warnings. Live catalogs include broader unaccepted application work (Golden2172/HS1974/Mojave1980/Sonoma1967/Windows1995); they are not an acceptance checklist. See docs/messages-native-research.md and the dependency-injected native browser runners in tools/messages-{menus,details,workflows}.browser.mjs.
 
 ## Language
 
@@ -167,7 +175,9 @@ An accepted restart/shutdown signs out every fictional user and retains local mo
 An opaque scene-owned original desktop or credential-surface focus/selection/scroll capture. Cancel restores the connected original, including private credential drafts kept mounted inert behind confirmation. No credentials are published in inspection or serialized state.
 
 **Scene seed baseline**:
-A complete, validated version-1 Notes/files/printing/editing/viewing/communications/system/Messages/appearance/persistent-Dock fixture owned by the Golden Gate host. Each fictional user clones it independently. Required closed data has explicit defaults; older incomplete V1 fixtures reject before disposal, never silently merge. Detached inspection/discovery exposes this initial baseline, not current edits or a saved session; generated read-only app bundles and immutable profile identity remain separate.
+A complete, validated version-1 scene fixture across all five installed profiles, including original application/native-domain graphs, Notes/files/printing/editing/viewing/communications/system/Messages/appearance and the closed persistent-Dock record. Each fictional user clones it independently. Required closed data has explicit defaults; older incomplete V1 fixtures reject before disposal, never silently merge. Genuine Files keep their native kind and application/icon associations; Windows volume-root drive names retain their actual drive-letter ownership and its empty Mac-Dock pins are not a copied taskbar authority. Detached inspection/discovery exposes this initial baseline, not current edits or a saved session; generated read-only app bundles and immutable profile identity remain separate.
+
+Incoming notifications and original call/stock/news/clock/message delivery ledgers travel together through full scene projection and rehydration. Embedded Notifications Settings selects the original Preferences session through its controller, not a copied window field; the retained window/session/view/scene clock must authorize the real commit. Acknowledged source changes remain applied after presentation retirement, while uncommitted or same-ID replacement sources cannot authorize shared notification-policy writes.
 
 **Complete scene replacement**:
 Browser-local setup through `scene.reset` or `scene.replaceSeed`, without actor controls. Validate before disposal; replace all local/Guest roots, queues, menus, drafts and timers, then acknowledge only after a fresh awake desktop and Messages registration/DOM are ready. Outgoing queued work rejects unavailable. Reset clears only the Golden Gate saved-session slot before restoring the default fixture; a storage failure preserves the live scene. Replacement does not merge, save, clear the existing slot or invoke host services.
@@ -458,7 +468,7 @@ Evidence:662 tests/11627 assertions/55 files;681 modules/no Svelte warnings;453 
 
 Final Rust-served index-D3r9Xzk9.js applies real linked post/private reply/managed Settings navigation, retains the original event and focuses its native checkbox. Zero browser errors, console entries, broken images or external resources. Proof: local://notif03-shipped-proof.json. Owned saved slot cleared and all proof tabs released.
 
-## User-requested settled checkpoint
+## Earlier user-requested settled checkpoint (superseded)
 
 Completed Spotlight/notification features remain at NOTIF-03 commit e8a91ca. DIALOG-01–DIALOG-13 are deferred unchecked, not claimed complete or shipped WIP. Both dialog workers stopped; only their nine uncommitted component edits were restored to e8a91ca and the new unintegrated modal-view.js was removed. The user's unrelated docs/windows11-profile.md edit was not touched. Remaining backlog stays recorded; automatic sequential implementation is stopped.
 

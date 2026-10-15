@@ -4,7 +4,7 @@
   import WindowResizeHandles from './WindowResizeHandles.svelte';
   import './sonoma.css';
 
-  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu, fullScreen = false, revealedTop = true, modernGreenMenu = true, onmove, resizable = false, onresize, presentationBounds, interactive = true, visible = true, children } = $props();
+  let { window, active, zIndex, onfocus, onclose, onminimize, onzoom, onfullscreen, onsplitbegin, onsplitside, ongreenmenu, fullScreen = false, revealedTop = true, modernGreenMenu = true, onmove, resizable = false, onresize, presentationBounds, interactive = true, visible = true, nativeChrome = 'standard', children } = $props();
   const bounds = $derived(presentationBounds ?? window.bounds);
   $effect(() => { if (!interactive || !visible || fullScreen) endDrag(); });
   let element;
@@ -47,7 +47,7 @@
 
 <div bind:this={element} class="sonoma-window-position managed-window" class:inactive={!active} class:zoomed={window.zoomed} class:full-screen={fullScreen} data-window-id={window.id} role="dialog" aria-label={window.title} tabindex="-1" inert={!interactive} style:visibility={visible ? undefined : 'hidden'} style:left="{bounds.x}px" style:top="{bounds.y}px" style:width="{bounds.width}px" style:height="{bounds.height}px" style:z-index={zIndex} onpointerdown={startDrag} onpointermove={moveDrag} onpointerup={endDrag} onpointercancel={endDrag} onlostpointercapture={endDrag} onfocusin={onfocus}>
   <div class="sonoma-window-surface" style:width="{bounds.width / bounds.scale}px" style:height="{bounds.height / bounds.scale}px" style:transform="scale({bounds.scale})">
-    {#if window.appId === 'messages' || window.appId === 'notes'}{@render children()}
+    {#if nativeChrome === 'application' || !window.utilityKind && ['messages', 'notes'].includes(window.appId)}{@render children()}
     {:else}<div class="sonoma-launch-window"><header class="sonoma-launch-toolbar" data-window-drag><WindowControls {active} zoomed={window.zoomed} {onclose} {onminimize} {onzoom} {onfullscreen} {onsplitbegin} {onsplitside} {ongreenmenu} {fullScreen} {revealedTop} {modernGreenMenu}/><span>{window.title}</span></header><div class="sonoma-launch-content" aria-label={window.appId === 'finder' ? 'Finder location contents' : 'Launch-only application window'}>{@render children()}</div></div>{/if}
   </div>
   <WindowResizeHandles windowId={window.id} bounds={window.bounds} resizable={resizable && interactive && visible && !fullScreen} {onfocus} {onresize} />

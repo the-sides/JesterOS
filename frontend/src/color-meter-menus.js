@@ -1,0 +1,10 @@
+import {colorMeterWindow,colorMeterCapabilities} from './color-meter-state.js';
+export function colorMeterMenus({state,profile,windowId}){
+ const w=colorMeterWindow(state,windowId),cap=colorMeterCapabilities(profile),request=(suffix,payload={})=>({command:`colormeter.${suffix}`,target:{windowId},payload});
+ const item=(id,label,suffix,payload={},extra={})=>({id,label,enabled:!!w,request:request(suffix,payload),...extra});
+ return [{id:'meter',label:cap.label,enabled:!!w,children:[item('about','About '+cap.label,'sheet',{sheet:'help'}),item('preferences','Preferences…','sheet',{sheet:'preferences'},{shortcut:'⌘,'}),item('quit','Close '+cap.label,'window.close',{}, {shortcut:'⌘W'})]},
+ {id:'view',label:'View',enabled:!!w,children:[{id:'values',label:'Display Values',enabled:!!w,children:[['decimal','as Decimal'],['hexadecimal','as Hexadecimal'],['percentage','as Percentage']].map(([format,label])=>item('format:'+format,label,'settings',{format},{checked:w?.format===format}))},{id:'magnify',label:'Magnification',enabled:!!w,children:[1,2,4,8,16].map(magnification=>item('zoom:'+magnification,`${magnification}×`,'settings',{magnification},{checked:w?.magnification===magnification}))},item('lockX','Lock X','lock',{axis:'x'},{checked:w?.lockX,shortcut:'⌘X'}),item('lockY','Lock Y','lock',{axis:'y'},{checked:w?.lockY,shortcut:'⌘Y'}),item('lockBoth','Lock Position','lock',{axis:'both'},{checked:w?.lockX&&w?.lockY,shortcut:'⌘L'}),item('freeze','Freeze Color','freeze',{}, {checked:w?.frozen,enabled:!!w?.sample})]},
+ {id:'color',label:'Color',enabled:!!w,children:[item('copyText','Copy Color as Text','copy',{kind:'text'},{enabled:!!w?.sample,shortcut:'⇧⌘C'}),item('copyImage','Copy Color as Image','copy',{kind:'image'},{enabled:!!w?.sample,shortcut:'⌥⌘C'})]},
+ {id:'window',label:'Window',enabled:!!w,children:[item('close','Close','window.close',{}, {shortcut:'⌘W'})]},
+ {id:'help',label:'Help',enabled:!!w,children:[item('help','Digital Color Meter Help','sheet',{sheet:'help'})]}];
+}

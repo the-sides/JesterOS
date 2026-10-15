@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/apple-oss-distributions/Chess",
+  "license": "apple-sample-code-license.txt",
+  "qualification": "Apple-owned graphical frontend textures; exact installed High Sierra, Mojave, Sonoma and Golden Gate versions are not certified.",
+  "assets": [
+    {"file":"wood-BlackBoard.png","source":"Styles/Wood/BlackBoard.png","gitBlob":"c17fb92aa6fe53833ec3673d38bd364dfc3ba81e"},
+    {"file":"wood-Border.png","source":"Styles/Wood/Border.png","gitBlob":"fe8ecec547eb73b784ef10acfa32026fcd70b03f"},
+    {"file":"wood-WhiteBoard.png","source":"Styles/Wood/WhiteBoard.png","gitBlob":"5b8a320553128fac1b05b69a0c39027105b80478"},
+    {"file":"marble-BlackBoard.png","source":"Styles/Marble/BlackBoard.png","gitBlob":"bd291a1adadd70b6bf6520d238ecc806d68737d9"},
+    {"file":"marble-Border.png","source":"Styles/Marble/Border.png","gitBlob":"ebb8f519e54a276cb9072546537d5c3f9c57a954"},
+    {"file":"marble-WhiteBoard.png","source":"Styles/Marble/WhiteBoard.png","gitBlob":"fad61abecfbdf5ab49d3bd8c56c3bf43960b7155"},
+    {"file":"metal-BlackBoard.png","source":"Styles/Metal/BlackBoard.png","gitBlob":"0f592635a1abe09130b134bbd479ff9f8538942e"},
+    {"file":"metal-Border.png","source":"Styles/Metal/Border.png","gitBlob":"59f0f25fc84b322727e16dba7224c53931bf38c4"},
+    {"file":"metal-WhiteBoard.png","source":"Styles/Metal/WhiteBoard.png","gitBlob":"29c66678ece71f7c4f846e8bc801138c028eadbc"}
+  ]
+}

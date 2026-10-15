@@ -22,7 +22,12 @@ const serverSchema = object({ id: identity, name: computerNameSchema, folderId: 
 export const systemStateSchema = object({ computerName: computerNameSchema, reopenWindows: flag,
   recentItems: object({ applications: recentList, documents: recentList, servers: recentList }),
   servers: { type: 'array', maxItems: 128, items: serverSchema }, storage: storagePreferencesSchema, wifi: wifiSchema, battery: batterySchema, clock: clockSchema, sound: soundSchema, bluetooth: bluetoothSchema, input: inputSchema, spotlight: spotlightPreferencesSchema, notifications: notificationsSchema, widgets: widgetsSchema });
-export const systemDefaults = profile => ({ computerName: profile.defaults.machine.computerName, reopenWindows: true,
+const authoredComputerNames = Object.freeze({
+  'macos-high-sierra-10.13': 'Studio MacBook Air', 'macos-mojave-10.14': 'Studio MacBook Air',
+  'macos-sonoma-14.0': 'Studio MacBook Air', 'macos-golden-gate-27.0.1': 'Studio MacBook Air',
+  'windows11-23h2-22631.2428': 'STUDIO-PC',
+});
+export const systemDefaults = profile => ({ computerName: authoredComputerNames[profile.id], reopenWindows: true,
   recentItems: { applications: [], documents: [], servers: [] }, servers: [], storage: storagePreferencesDefaults(), wifi: wifiDefaults(), battery: batteryDefaults(profile), clock: clockDefaults(), sound: soundDefaults(profile), bluetooth: bluetoothDefaults(), input: inputDefaults(), spotlight: spotlightPreferencesDefaults(), notifications: notificationsDefaults(), widgets: widgetsDefaults(profile) });
 
 // Apple-menu history is independent of Dock usage and filesystem metadata.

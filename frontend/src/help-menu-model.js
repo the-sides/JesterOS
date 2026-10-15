@@ -1,4 +1,4 @@
-import { searchHelpArticles } from './help-content.js';
+import { helpArticles, searchHelpArticles } from './help-content.js';
 
 const termsFor = query => query.trim().toLocaleLowerCase('en-US').split(/\s+/).filter(Boolean);
 
@@ -46,10 +46,12 @@ export function helpMenuProviders(menus, state, profile) {
       for (const result of commands) items.push({ id: result.resultId, label: result.label,
         enabled: true, shortcut: result.shortcut, helpResult: result,
         ...(result.enabled && result.request ? { request: result.request } : {}) });
-      items.push({ id: 'help-topic-heading', label: 'Help Topics', enabled: false, heading: true });
-      if (!articles.length) items.push({ id: 'help-topic-empty', label: 'No matching offline articles', enabled: false, heading: true });
-      for (const article of articles) items.push({ id: `help-topic:${article.articleId}`, label: article.title, enabled: true,
-        request: { command: 'help.viewer.open', target: { appId: menu.appId }, payload: { articleId: article.articleId } } });
+      if (helpArticles(profile, menu.appId).length) {
+        items.push({ id: 'help-topic-heading', label: 'Help Topics', enabled: false, heading: true });
+        if (!articles.length) items.push({ id: 'help-topic-empty', label: 'No matching offline articles', enabled: false, heading: true });
+        for (const article of articles) items.push({ id: `help-topic:${article.articleId}`, label: article.title, enabled: true,
+          request: { command: 'help.viewer.open', target: { appId: menu.appId }, payload: { articleId: article.articleId } } });
+      }
       items.push({ id: 'help-results-separator', label: '', enabled: false, separator: true });
     }
     return { ...menu, search: { query }, items: [...items, ...menu.items] };

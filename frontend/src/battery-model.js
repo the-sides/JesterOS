@@ -18,7 +18,8 @@ export function batteryDefaults(profile) {
   return { percent: profile.defaults.batteryPercent ?? 87, powerSource: 'battery', charging: false,
     minutesToFull: null, chargeLimit: 100, chargeToFull: false, showInMenuBar: true,
     showPercentage: false, showEnergyMode: 'always', lowPowerMode: 'never',
-    energyApps: [{ appId: 'notes', impact: 32 }, { appId: 'safari', impact: 48 }, { appId: 'messages', impact: 8 }] };
+    energyApps: [{ appId: 'notes', impact: 32 }, { appId: profile.family === 'windows' ? 'edge' : 'safari', impact: 48 },
+      { appId: profile.family === 'windows' ? 'teams' : 'messages', impact: 8 }] };
 }
 
 const stateKeys = Object.keys(batterySchema.properties);

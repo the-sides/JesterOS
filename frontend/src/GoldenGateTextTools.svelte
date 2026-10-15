@@ -1,12 +1,14 @@
 <script>
   import { validLearnedWord } from './editing-state.js';
+  import { noteWorkspaceText, noteWorkspaceLocked } from './notes-workspace-state.js';
   let { mode, windowId, note, tools, preferences, execute, onbeforeinput } = $props();
   let error = $state('');
   const owner = $derived({ windowId, noteId: note.id });
-  const versioned = $derived({ ...owner, revision: note.updatedAt });
+  const versioned = $derived({ ...owner, revision: note.revision });
+  const readOnly = $derived(note.deletedAt !== null || note.collaboration.enabled && note.collaboration.permission === 'view');
   const find = $derived(tools.find?.windowId === windowId && tools.find.noteId === note.id ? tools.find : null);
   const checked = $derived(tools.spelling?.windowId === windowId && tools.spelling.noteId === note.id ? tools.spelling : null);
-  const issue = $derived(checked?.revision === note.updatedAt ? checked.issues[0] : null);
+  const issue = $derived(checked?.revision === note.revision ? checked.issues[0] : null);
   const range = $derived(issue ? { ...versioned, start: issue.start, end: issue.end } : null);
   async function run(command, target = owner, payload = {}) {
     const result = await execute({ command, target, payload });
@@ -20,7 +22,7 @@
     if (result.status === 'rejected' && node.isConnected) node.checked = preferences[key];
   }
   async function checkNext(from = issue?.end ?? 0) {
-    return run('text.spelling.check', versioned, { from: Math.min(from, note.text.length), maxIssues: 1, suggestions: true });
+    return run('text.spelling.check', versioned, { from: Math.min(from, noteWorkspaceText(note).length), maxIssues: 1, suggestions: true });
   }
   async function changeWord() {
     if (!range) return;
@@ -35,13 +37,14 @@
   }
   function selection() {
     const selected = tools.panel?.selection;
-    return selected?.revision === note.updatedAt && selected.start < selected.end ? { start: selected.start, end: selected.end } : null;
+    return selected?.revision === note.revision && selected.start < selected.end ? { start: selected.start, end: selected.end } : null;
   }
   function panelKey(event) {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); run('text.tools.close', { windowId }); }
   }
 </script>
 
+{#if !noteWorkspaceLocked(note)}
 {#if mode === 'find' && find?.open}
   <section class="text-find-bar" data-text-tool-window={windowId} data-text-panel-kind="find" aria-label="Find in note">
     <div class="find-line">
@@ -62,8 +65,8 @@
     {#if find.replace}
       <div class="find-line">
         <input aria-label="Replace with" data-text-tool-control="replacement" maxlength="4096" value={find.replacement} onbeforeinput={onbeforeinput} oninput={event => configure({ replacement: event.currentTarget.value })} />
-        <button type="button" disabled={note.deleted || !find.count} onclick={() => run('text.find.replace', versioned)}>Replace</button>
-        <button type="button" disabled={note.deleted || !find.count} onclick={() => run('text.find.replace', versioned, { all: true })}>All</button>
+        <button type="button" disabled={readOnly || !find.count} onclick={() => run('text.find.replace', versioned)}>Replace</button>
+        <button type="button" disabled={readOnly || !find.count} onclick={() => run('text.find.replace', versioned, { all: true })}>All</button>
       </div>
     {/if}
     {#if error}<p class="tool-error" role="status">{error}</p>{/if}
@@ -78,14 +81,14 @@
           <p class="misspelled-word" title={issue.word}>{issue.word}</p>
           {#if issue.reason === 'word_too_long'}<p class="language-caption">This word exceeds the dictionary’s 128 UTF-16 unit limit. You can replace it manually.</p>{/if}
           <input aria-label="Spelling replacement" data-text-tool-control="word" value={checked.replacement} onbeforeinput={onbeforeinput}
-            oninput={event => run('text.spelling.configure', range, { replacement: event.currentTarget.value })} disabled={note.deleted} maxlength="128" />
+            oninput={event => run('text.spelling.configure', range, { replacement: event.currentTarget.value })} disabled={readOnly} maxlength="128" />
           <ul class="spelling-guesses" aria-label="Spelling suggestions">
             {#each issue.suggestions as suggestion}<li><button type="button" aria-pressed={checked.replacement === suggestion} onclick={() => run('text.spelling.configure', range, { replacement: suggestion })}>{suggestion}</button></li>{/each}
           </ul>
           {#if !issue.suggestions.length}<p class="language-caption">No suggestions.</p>{/if}
-        {:else}<p role="status">{checked?.revision === note.updatedAt ? checked.checkedFrom ? 'No further spelling errors.' : 'No spelling errors found.' : 'The note changed. Check it again.'}</p>{/if}
+        {:else}<p role="status">{checked?.revision === note.revision ? checked.checkedFrom ? 'No further spelling errors.' : 'No spelling errors found.' : 'The note changed. Check it again.'}</p>{/if}
         <div class="language-actions">
-          <button type="button" disabled={!issue || note.deleted || !checked?.replacement} onclick={changeWord}>Change</button>
+          <button type="button" disabled={!issue || readOnly || !checked?.replacement} onclick={changeWord}>Change</button>
           <button type="button" disabled={!issue || !validLearnedWord(issue.word)} onclick={() => acceptWord('text.spelling.ignore')}>Ignore</button>
           <button type="button" disabled={!issue || !validLearnedWord(issue.word)} onclick={() => acceptWord('text.spelling.learn')}>Learn</button>
           <button type="button" onclick={() => checkNext(issue ? issue.end : 0)}>Find Next</button>
@@ -97,20 +100,22 @@
         <label class="language-option"><input type="checkbox" checked={preferences.smartQuotes} onchange={event => preference('smartQuotes', event.currentTarget)} />Smart Quotes</label>
         <label class="language-option"><input type="checkbox" checked={preferences.smartDashes} onchange={event => preference('smartDashes', event.currentTarget)} />Smart Dashes</label>
         <label class="language-option"><input type="checkbox" checked={preferences.textReplacement} onchange={event => preference('textReplacement', event.currentTarget)} />Text Replacement</label>
-        <label class="language-option"><input type="checkbox" disabled />Smart Links <span>Plain-text notes</span></label>
+        <label class="language-option"><input type="checkbox" disabled />Smart Links <span>Unavailable locally</span></label>
+        <p class="language-caption">Substitutions preserve rich formatting. Selections and individual replacements stay within an original paragraph or table cell.</p>
         <div class="replacement-list" aria-label="Configured text replacements">
           {#each preferences.replacements as replacement}<div><code>{replacement.from}</code><span>→</span><span>{replacement.to || '(empty)'}</span></div>{/each}
           {#if !preferences.replacements.length}<p>No configured replacements.</p>{/if}
         </div>
         <button type="button" disabled title="Keyboard text settings are not implemented">Text Settings…</button>
         <div class="language-actions">
-          <button type="button" disabled={note.deleted || !selection()} onclick={() => run('text.substitutions.apply', versioned, selection())}>Replace Selection</button>
-          <button type="button" disabled={note.deleted} onclick={() => run('text.substitutions.apply', versioned)}>Replace All</button>
+          <button type="button" disabled={readOnly || !selection()} onclick={() => run('text.substitutions.apply', versioned, selection())}>Replace Selection</button>
+          <button type="button" disabled={readOnly} onclick={() => run('text.substitutions.apply', versioned)}>Replace All</button>
         </div>
       {/if}
       {#if error}<p class="tool-error" role="status">{error}</p>{/if}
     </div>
   </div>
+{/if}
 {/if}
 
 <style>

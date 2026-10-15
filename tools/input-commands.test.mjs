@@ -2,29 +2,40 @@ import { test, expect } from 'bun:test';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { inputDefaults, keyboardRows, characterResults } from '../frontend/src/input-model.js';
 import { createInputCommands } from '../frontend/src/input-commands.js';
-import { createNotesState } from '../frontend/src/notes-state.js';
-import { createTextEditingCommands, noteTextControlValue } from '../frontend/src/text-editing-commands.js';
+import { createNotesWorkspace, createNotesWorkspaceWindow, noteWorkspaceText } from '../frontend/src/notes-workspace-state.js';
+import { createNotesWorkspaceCommands } from '../frontend/src/notes-workspace-commands.js';
+import { documentFromText } from '../frontend/src/notes-workspace-document.js';
+import { notesNativePlaintextSelection } from '../frontend/src/notes-workspace-projections.js';
+import { createTextEditingCommands } from '../frontend/src/text-editing-commands.js';
 
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function root(options = {}) {
   let state = inputDefaults(), alive = true, interactive = true, owner = true;
   const presentation = { keyboard: null, characters: null, activeKind: null };
   const profile = getOSProfile('macos-golden-gate-27.0.1');
-  const notes = createNotesState(), note = notes.notes.find(record => record.id === notes.selectedId);
-  note.text = 'Title\nabc';
-  let selection = { start: 0, end: 0, direction: 'none' };
+  const notes = createNotesWorkspace(profile), note = notes.notes[0];
+  note.document = documentFromText('Title\nabc');
+  const window = { id: 'notes-main', appId: 'notes' };
+  const session = createNotesWorkspaceWindow(notes, window.id, { noteId: note.id, standalone: false }); notes.windows.push(session);
+  let selection = { blockId: note.document.blocks[1].id, row: -1, column: -1, start: 0, end: 0, direction: 'none' };
   const clipboard = { kind: 'empty', text: '', fileIds: [] };
+  const notesView = { available: () => alive && interactive && owner, ownsNote: candidate => candidate === note,
+    captureSelection: () => ({ ...selection }), restoreSelection: range => { selection = { ...range }; return true; } };
+  const native = createNotesWorkspaceCommands({ profile, getState: () => notes, getWindow: () => window, getView: () => notesView,
+    available: () => alive && interactive && owner, alive: () => alive, canCommit: () => true,
+    tick: async () => {}, getSceneTime: () => 1800000000000 });
   const writer = createTextEditingCommands(notes, clipboard, {
     available: () => alive && interactive && owner, dataAvailable: () => alive,
-    getSource: target => target.windowId === 'notes-main' && target.noteId === note.id
-      ? { note, value: noteTextControlValue(note, 'body'), readOnly: note.deleted, selection: { ...selection } } : null,
-    prepare: async () => alive && interactive && owner,
-    finishSelection: async (_target, range) => { selection = { ...range }; },
-    canCommitNote: () => true, onChanged() {},
+    getView: () => notesView, prepare: async () => alive && interactive && owner,
+    invoke: (name, target, payload) => native.handlers[name](target, payload),
   });
-  const editor = () => ({ note, value: noteTextControlValue(note, 'body'), revision: note.updatedAt, selection: { ...selection }, secret: 'private-editor' });
-  const sameEditor = token => token !== null && token.note === note && token.value === noteTextControlValue(note, 'body')
-    && token.revision === note.updatedAt && token.selection.start === selection.start && token.selection.end === selection.end;
+  const editor = () => ({ note, value: noteWorkspaceText(note), revision: note.revision,
+    selection: notesNativePlaintextSelection(note.document, selection), secret: 'private-editor' });
+  const sameEditor = token => {
+    const current = editor();
+    return token !== null && token.note === note && token.value === current.value && token.revision === note.revision
+      && token.selection.start === current.selection.start && token.selection.end === current.selection.end;
+  };
   const views = {};
   for (const kind of ['keyboard', 'characters']) {
     let focused = null, top = 0, query = '';
@@ -56,7 +67,7 @@ function root(options = {}) {
     restore: async () => {}, retireMenu: async () => {},
     insert: async (token, action) => {
       if (!sameEditor(token)) return { result: { status: 'rejected', error: { code: 'stale_target' } } };
-      const result = await writer.handlers['text.replace']({ windowId: 'notes-main', noteId: note.id, control: 'body',
+      const result = await writer.handlers['text.replace']({ windowId: 'notes-main', noteId: note.id, control: 'editor',
         revision: token.revision, start: token.selection.start, end: token.selection.end },
       { text: action.action === 'newline' ? '\n' : action.text, label: 'typing' });
       return { result, editor: result.status === 'applied' ? editor() : token, original };
@@ -65,7 +76,7 @@ function root(options = {}) {
   const controller = createInputCommands(context);
   return { controller, context, views, presentation, notes, note, writer, clipboard,
     state: () => state, replace: next => { state = next; }, lock: () => { interactive = false; }, unlock: () => { interactive = true; },
-    loseOwner: () => { owner = false; }, selection: () => ({ ...selection }), moveCaret: next => { selection = { ...next }; },
+    loseOwner: () => { owner = false; }, selection: () => ({ ...selection }), moveCaret: next => { selection = { ...selection, ...next }; },
     run: (name, target = {}, payload = {}) => controller.handlers[name](target, payload) };
 }
 
@@ -136,7 +147,7 @@ test('desktop browsing cannot insert and clear/disposal makes every original vie
   const opened = await scene.run('input.viewer.open', {}, { kind: 'characters' });
   expect(scene.controller.targets().viewers[0].canInsert).toBe(false);
   expect((await scene.run('input.characters.insert', { viewerId: opened.target.viewerId, characterId: 'grinning-face' })).status).toBe('rejected');
-  expect(scene.note.text).toBe('Title\nabc');
+  expect(noteWorkspaceText(scene.note)).toBe('Title\nabc');
   scene.controller.clear();
   expect((await scene.run('input.viewer.close', { viewerId: opened.target.viewerId })).error.code).toBe('stale_target');
   const later = await scene.run('input.viewer.open', {}, { kind: 'keyboard' });
@@ -150,18 +161,18 @@ test('filtered characters and authored keyboard glyphs use the real canonical wr
   const keyboard = await scene.run('input.viewer.open', {}, { kind: 'keyboard' });
   scene.run('input.source.select', { sourceId: 'fr' });
   expect((await scene.run('input.keyboard.press', { viewerId: keyboard.target.viewerId, keyId: 'KeyQ' })).status).toBe('applied');
-  expect(scene.note.text).toBe('Title\naabc');
+  expect(noteWorkspaceText(scene.note)).toBe('Title\naabc');
   expect(scene.selection().start).toBe(1);
   const characters = await scene.run('input.viewer.open', {}, { kind: 'characters' });
   await scene.run('input.characters.search', { viewerId: characters.target.viewerId }, { query: 'family' });
   expect((await scene.run('input.characters.insert', { viewerId: characters.target.viewerId, characterId: 'grinning-face' })).error.code).toBe('stale_target');
   expect((await scene.run('input.characters.insert', { viewerId: characters.target.viewerId, characterId: 'family' })).status).toBe('applied');
-  expect(scene.note.text).toBe('Title\na👨‍👩‍👧abc');
+  expect(noteWorkspaceText(scene.note)).toBe('Title\na👨‍👩‍👧abc');
   expect(scene.selection().start).toBe(9);
   expect(scene.clipboard).toEqual({ kind: 'empty', text: '', fileIds: [] });
   expect(scene.writer.targets().history.notes[0].undoCount).toBe(2);
-  await scene.writer.handlers['text.undo']({ windowId: 'notes-main', noteId: scene.note.id, control: 'body', revision: scene.note.updatedAt }, {});
-  expect(scene.note.text).toBe('Title\naabc');
+  await scene.writer.handlers['text.undo']({ windowId: 'notes-main', noteId: scene.note.id, control: 'editor', revision: scene.note.revision }, {});
+  expect(noteWorkspaceText(scene.note)).toBe('Title\naabc');
   expect(scene.presentation.characters).not.toBeNull();
 });
 
@@ -181,14 +192,14 @@ test('after-await owner loss rejects search and failed opening removes only its 
   const pending = other.run('input.characters.search', { viewerId: opened.target.viewerId }, { query: 'euro' });
   await enteredSearch.promise; other.loseOwner(); releaseSearch.resolve();
   expect((await pending).error.code).toBe('stale_target');
-  expect(other.note.text).toBe('Title\nabc');
+  expect(noteWorkspaceText(other.note)).toBe('Title\nabc');
 });
 
 test('original editor selection changes reject rather than silently binding a new caret', async () => {
   const scene = root(); const opened = await scene.run('input.viewer.open', {}, { kind: 'keyboard' });
   scene.moveCaret({ start: 2, end: 2, direction: 'none' });
   expect((await scene.run('input.keyboard.press', { viewerId: opened.target.viewerId, keyId: 'KeyA' })).error.code).toBe('stale_target');
-  expect(scene.note.text).toBe('Title\nabc');
+  expect(noteWorkspaceText(scene.note)).toBe('Title\nabc');
 });
 
 test('literal argument accessors and extra properties reject before invoking a unavailable native surface', async () => {
@@ -214,7 +225,7 @@ test('changing query/category clears only a selected character that is filtered 
   await scene.run('input.characters.category', target, { category: 'latin' });
   expect(scene.presentation.characters.selectedCharacterId).toBeNull();
   expect((await scene.run('input.characters.select', { ...target, characterId: 'euro' })).error.code).toBe('stale_target');
-  expect(scene.note.text).toBe('Title\nabc');
+  expect(noteWorkspaceText(scene.note)).toBe('Title\nabc');
 });
 
 test('source change during awaited modifier settlement rejects stale and restores only its own private toggle', async () => {
@@ -228,7 +239,7 @@ test('source change during awaited modifier settlement rejects stale and restore
   expect((await pending).error.code).toBe('stale_target');
   expect(scene.state().activeSourceId).toBe('de');
   expect(scene.presentation.keyboard.shift).toBe(false);
-  expect(scene.note.text).toBe('Title\nabc');
+  expect(noteWorkspaceText(scene.note)).toBe('Title\nabc');
 });
 
 
@@ -255,12 +266,12 @@ test('both viewers on the same exact editor advance only through successful cano
   expect(scene.controller.targets().viewers.every(viewer => viewer.canInsert)).toBe(true);
   expect((await scene.run('input.characters.insert', { viewerId: characters.target.viewerId, characterId: 'grinning-face' })).status).toBe('applied');
   expect((await scene.run('input.keyboard.press', { viewerId: keyboard.target.viewerId, keyId: 'KeyM' })).status).toBe('applied');
-  expect(scene.note.text).toBe('Title\na😀,abc');
+  expect(noteWorkspaceText(scene.note)).toBe('Title\na😀,abc');
   expect(scene.selection().start).toBe(4);
   expect(scene.writer.targets().history.notes[0].undoCount).toBe(3);
   scene.moveCaret({ start: 0, end: 0, direction: 'none' });
   expect((await scene.run('input.characters.insert', { viewerId: characters.target.viewerId, characterId: 'euro' })).error.code).toBe('stale_target');
-  expect(scene.note.text).toBe('Title\na😀,abc');
+  expect(noteWorkspaceText(scene.note)).toBe('Title\na😀,abc');
 });
 
 test('a superseded opening cannot replace or retire a later successfully mounted same-kind viewer', async () => {

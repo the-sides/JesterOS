@@ -1,0 +1,6 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {highlightXcodeSource} from './xcode-editor.js';
+test('editor coloring preserves every actual source byte including Unicode and line endings',()=>{for(const language of ['swift','objc']){const text='// comment\r\nlet café = "漢字 \\\" <tag>"\n/* multi\nline */\nNSLog(@"value=%d", 42);\n';assert.equal(highlightXcodeSource(text,language).map(row=>row.text).join(''),text);}});
+test('native keyword/string/comment/type/number colors are genuinely source-aware',()=>{const rows=highlightXcodeSource('let value: Int = 42\nprint("actual") // comment\n');assert.equal(rows.find(row=>row.text==='let').kind,'keyword');assert.equal(rows.find(row=>row.text==='Int').kind,'type');assert.equal(rows.find(row=>row.text==='42').kind,'number');assert.equal(rows.find(row=>row.text==='"actual"').kind,'string');assert.equal(rows.find(row=>row.text==='// comment').kind,'comment');assert.equal(highlightXcodeSource('NSString *name = @"value";','objc').find(row=>row.text==='@"value"').kind,'string');});
+test('coloring never creates compiler success and rejects unbounded editor text',()=>{const text='arbitrary unsupported syntax ! < >';assert.equal(highlightXcodeSource(text).map(row=>row.text).join(''),text);assert.throws(()=>highlightXcodeSource('x'.repeat(65537)),/bounded/u);});

@@ -1,0 +1,70 @@
+import { defineCommand, object, empty, choice, flag, NONE } from './command-schema.js';
+import { CALENDAR_PROFILES, calendarDateSchema, calendarEventFields, calendarPreferencesFields } from './calendar-state.js';
+const string = (maxLength = 4096, minLength = 0) => ({ type: 'string', maxLength, minLength });
+const identity = string(512, 1);
+const integer = (minimum, maximum) => ({ type: 'integer', minimum, maximum });
+const timestamp = integer(0, 4102444800000), scope = choice('occurrence', 'future', 'series'), color = { ...string(7, 7), pattern: '^#[0-9a-fA-F]{6}$' };
+const eventTarget = { eventId: identity, scope, occurrenceStart: timestamp };
+export const calendarCommandPayloads = {
+  'calendar.view.set': object({ date: calendarDateSchema, view: choice('day', 'week', 'month', 'year'), sidebarVisible: flag, query: string(4096) }, []),
+  'calendar.today': empty, 'calendar.navigate': object({ direction: choice(-1, 1) }), 'calendar.sceneDate': object({ date: calendarDateSchema }),
+  'calendar.event.select': object({ eventId: identity, occurrenceStart: timestamp }, ['eventId']),
+  'calendar.editor.open': object({ eventId: identity, occurrenceStart: timestamp }, []), 'calendar.editor.close': empty,
+  'calendar.event.save': object({ event: object(calendarEventFields, ['title', 'calendarId', 'start', 'end']), attachmentIds: { type: 'array', items: identity, maxItems: 32 }, ...eventTarget }, ['event']),
+  'calendar.event.delete': object(eventTarget, ['eventId']), 'calendar.quickEntry': object({ text: string(4096, 1) }),
+  'calendar.event.move': object({ ...eventTarget, start: timestamp, end: timestamp }, ['eventId', 'start', 'end']),
+  'calendar.attachment.add': object({ eventId: identity, fileId: identity }), 'calendar.attachment.remove': object({ eventId: identity, fileId: identity }), 'calendar.attachment.open': object({ eventId: identity, fileId: identity }),
+  'calendar.attachment.resolve': object({ fileId: identity }),
+  'calendar.calendar.save': object({ id: identity, name: string(256, 1), color, accountId: identity, visible: flag, sharedWith: { type: 'array', items: string(320, 1), maxItems: 128 } }, ['name', 'color']),
+  'calendar.calendar.delete': object({ calendarId: identity }), 'calendar.calendar.visibility': object({ calendarId: identity, visible: flag }), 'calendar.calendar.color': object({ calendarId: identity, color }),
+  'calendar.subscription.add': object({ name: string(256, 1), url: string(2048, 1), color, ics: string(2 * 1024 * 1024, 1) }),
+  'calendar.subscription.refresh': object({ calendarId: identity, ics: string(2 * 1024 * 1024, 1) }),
+  'calendar.import': object({ ics: string(2 * 1024 * 1024, 1), calendarId: identity }), 'calendar.export': object({ calendarId: identity }, []), 'calendar.calendar.share': object({ calendarId: identity }),
+  'calendar.import.file': object({ fileId: identity, calendarId: identity }),
+  'calendar.account.save': object({ id: identity, name: string(256, 1), type: choice('local', 'icloud', 'exchange', 'google'), email: string(320), enabled: flag }, ['name', 'type', 'email', 'enabled']), 'calendar.account.delete': object({ accountId: identity }),
+  'calendar.invitation.respond': object({ invitationId: identity, response: choice('accepted', 'declined', 'tentative') }), 'calendar.event.invite': object({ eventId: identity }),
+  'calendar.preferences.set': object({ values: object(calendarPreferencesFields, []) }), 'calendar.sheet.open': object({ sheet: choice('event', 'calendar', 'subscription', 'import', 'accounts', 'preferences', 'invitations', 'help'), pane: choice('General', 'Accounts', 'Alerts', 'Advanced') }, ['sheet']),
+  'calendar.native.focus': object({ controlId: identity }), 'calendar.native.scroll': object({ areaId: choice('calendar', 'sidebar', 'sheet'), top: integer(0, Number.MAX_SAFE_INTEGER), left: integer(0, Number.MAX_SAFE_INTEGER) }),
+  'calendar.native.edit': object({ operation: choice('copy', 'cut', 'paste', 'selectAll', 'undo', 'redo') }),
+  'calendar.window.close': empty, 'calendar.print': empty, 'calendar.alert.action': object({ deliveryId: identity, action: choice('dismiss', 'snooze', 'show'), minutes: integer(1, 1440) }, ['deliveryId', 'action']),
+};
+const descriptions = {
+  'calendar.view.set': 'Change the original window day/week/month/year, date, sidebar, or literal search.',
+  'calendar.today': 'Navigate to the shared scene clock date in the chosen display timezone, not the host clock.',
+  'calendar.navigate': 'Navigate one view period with clamped month/year boundaries.',
+  'calendar.sceneDate': 'Commit an authored scene date through the parent shared clock bridge.',
+  'calendar.event.select': 'Show the actual existing event occurrence inspector.',
+  'calendar.editor.open': 'Open an original event/occurrence or new-event editor.',
+  'calendar.editor.close': 'Dismiss the original local editor without modifying event data.',
+  'calendar.event.save': 'Validate and save event details; recurring edits require occurrence, future, or series scope.',
+  'calendar.event.delete': 'Delete the original event or bounded recurrence scope.',
+  'calendar.quickEntry': 'Parse title on YYYY-MM-DD at HH:mm[-HH:mm], optionally all day, in display timezone; ambiguous or nonexistent dates reject.',
+  'calendar.attachment.resolve': 'Resolve an actual parent-owned canonical file name for an unsaved event attachment draft.',
+  'calendar.event.move': 'Move/resize the existing occurrence from native drag controls with explicit recurrence scope.',
+  'calendar.attachment.add': 'Attach a real existing parent-owned canonical file; never create a shadow file.',
+  'calendar.attachment.remove': 'Remove an existing file reference without deleting its canonical file.',
+  'calendar.attachment.open': 'Open the original event attachment through the parent file bridge.',
+  'calendar.calendar.save': 'Create or edit a local calendar name, visibility, color, account and local sharing list.',
+  'calendar.calendar.delete': 'Delete a calendar and its events/invitations/alerts; retain a valid default calendar.',
+  'calendar.calendar.visibility': 'Change existing calendar visibility.', 'calendar.calendar.color': 'Change existing calendar color.',
+  'calendar.subscription.add': 'Record a subscription URL and import supplied bounded ICS locally; no network request.',
+  'calendar.subscription.refresh': 'Refresh local subscription from explicitly supplied ICS; never report external synchronization.',
+  'calendar.import': 'Transactionally import bounded iCalendar events/recurrence/exceptions/attendees/display alerts.',
+  'calendar.import.file': 'Read an existing canonical Files iCalendar document through the guarded parent file bridge and transactionally import its original text.',
+  'calendar.export': 'Create a real parent-owned virtual .ics file with selected calendar or all events.',
+  'calendar.calendar.share': 'Share a real calendar ICS document through the parent local sharing bridge.',
+  'calendar.account.save': 'Create/edit fictional local account presentation; no credentials, network, or host accounts.',
+  'calendar.account.delete': 'Delete only an unused account; referenced calendars must be reassigned first.',
+  'calendar.invitation.respond': 'Apply an original organizer update response and produce a real local Mail response.',
+  'calendar.event.invite': 'Create a real Mail invitation/update draft for existing event invitees.',
+  'calendar.preferences.set': 'Persist validated local General, Accounts, Alerts and Advanced preferences.',
+  'calendar.sheet.open': 'Open the rendered native settings or management sheet.',
+  'calendar.native.focus': 'Observe and focus an actual visible enabled native control with original async ownership.',
+  'calendar.native.scroll': 'Scroll the actual native area and return observed clamped offsets.',
+  'calendar.native.edit': 'Edit actual native selected text with the single fictional scene clipboard; never host clipboard access or metadata-only selection.',
+  'calendar.window.close': 'Close the original parent window and retire its presentation state.',
+  'calendar.print': 'Create a real parent local print document for the visible calendar range.',
+  'calendar.alert.action': 'Dismiss, snooze, or reveal the original occurrence for a real delivered local notification.',
+};
+const windowTarget = object({ windowId: string(128, 1) });
+export const calendarCatalog = Object.fromEntries(Object.entries(calendarCommandPayloads).map(([name, payload]) => defineCommand(CALENDAR_PROFILES, name, 'calendar.events', windowTarget, payload, ['Original nonhidden, nonminimized mounted Calendar window and canonical state; no host/network access.', 'Original state/window/view/event survive every awaited bridge or native preparation.'], [descriptions[name]], name.startsWith('calendar.native') ? NONE : ['calendar'], NONE, windowTarget)));

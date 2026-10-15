@@ -70,8 +70,21 @@
     return execute({ command: 'finder.view.options.close', target: { windowId: pane.windowId, optionsId: pane.id }, payload: {} });
   }
   let dockDragStart = null;
-  function canDrag(file) { return !!dockState && folderId !== 'trash' && file.id !== 'disk' && (file.kind === 'folder' || file.kind === 'application'); }
+  function canDrag(file) { return folderId !== 'trash' && file.id !== 'disk' && !file.deleted && model.byId.get(file.id) === file
+    && model.liveIds.has(file.id) && ((file.kind === 'folder' || file.kind === 'application') ? !!dockState : typeof file.content === 'string'); }
   function dragShortcut(event, file) {
+    if (!canDrag(file)) { event.preventDefault(); return; }
+    if (file.kind !== 'folder' && file.kind !== 'application') {
+      const ids = selectedFileIds.includes(file.id) ? selectedFileIds.filter(id => {
+        const source = model.byId.get(id);
+        return source && canDrag(source) && source.kind !== 'folder' && source.kind !== 'application';
+      }) : [file.id];
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData('application/x-jesteros-file-id', file.id);
+      event.dataTransfer.setData('application/x-jesteros-file-ids', JSON.stringify(ids));
+      dockDragStart = null;
+      return;
+    }
     const application = file.kind === 'application', source = application ? 'bundle' : 'folder';
     const itemId = application ? `app:${file.bundleAppId}` : dockFolderItemId(file.id);
     event.dataTransfer.effectAllowed = 'copy';
@@ -79,6 +92,7 @@
     dockDragStart = execute({ command: 'dock.drag.begin', target: { itemId }, payload: { x: event.clientX, y: event.clientY, source } });
   }
   async function endShortcutDrag(event, file) {
+    if (file.kind !== 'folder' && file.kind !== 'application') return;
     if (event.dataTransfer.dropEffect !== 'none') return;
     await dockDragStart;
     const application = file.kind === 'application', source = application ? 'bundle' : 'folder';

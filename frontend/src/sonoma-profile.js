@@ -1,3 +1,5 @@
+import { composeNativeProfile } from './native-profile-composition.js';
+
 // Sonoma 14.0 inventory and implementation boundaries: docs/sonoma-profile.md.
 // Stock membership does not imply a functional application interior.
 // Launch-only shells keep their represented size; these are simulation layout
@@ -5,7 +7,7 @@
 const multipleWindowApps = new Set(['finder', 'safari', 'preview', 'textedit', 'terminal', 'scripteditor', 'quicktime']);
 const launchOnly = (id, name, dock) => ({ id, name, icon: id, width: 880, height: 620, minimumSize: { width: 880, height: 620 }, multipleWindows: multipleWindowApps.has(id), quitAllowed: id !== 'finder', ...(dock ? { dock } : {}), coverage: 'launch-only' });
 
-export const sonomaProfile = {
+export const sonomaProfile = composeNativeProfile({
   id: 'macos-sonoma-14.0',
   name: 'macOS Sonoma',
   family: 'macos',
@@ -17,7 +19,10 @@ export const sonomaProfile = {
     'shell.window-create', 'app.lifecycle', 'shell.switcher', 'app.visibility',
     'shell.full-screen', 'shell.split-view', 'shell.window-green-menu', 'shell.mission-control', 'shell.launchpad',
     'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management', 'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu', 'shell.appearance', 'scene.profile-selection',
-    'notes.plain-text', 'notes.presentation', 'messages.sample',
+    'shell.help-workflows',
+    'notes.workspace', 'messages.sample', 'messages.conversations',
+    'browser.local', 'mail.local', 'contacts.cards', 'calendar.events',
+    'calls.local', 'apps.reminders',
   ],
   launchpad: { otherAppIds: [
     'activitymonitor', 'diskutility', 'systeminformation', 'terminal',
@@ -26,7 +31,7 @@ export const sonomaProfile = {
     finder: { ...launchOnly('finder', 'Finder', 'main'), coverage: 'desktop-locations' },
     launchpad: { id: 'launchpad', name: 'Launchpad', icon: 'launchpad', presentation: 'launchpad', multipleWindows: false, quitAllowed: false, dock: 'main', coverage: 'shell-launcher' },
     safari: launchOnly('safari', 'Safari', 'main'),
-    messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 1024, height: 740, minimumSize: { width: 800, height: 600 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'sample' },
+    messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 1024, height: 740, minimumSize: { width: 800, height: 600 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'conversations' },
     mail: launchOnly('mail', 'Mail', 'main'),
     maps: launchOnly('maps', 'Maps', 'main'),
     photos: launchOnly('photos', 'Photos', 'main'),
@@ -34,7 +39,7 @@ export const sonomaProfile = {
     calendar: launchOnly('calendar', 'Calendar', 'main'),
     contacts: launchOnly('contacts', 'Contacts', 'main'),
     reminders: launchOnly('reminders', 'Reminders', 'main'),
-    notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 720, minimumSize: { width: 960, height: 420 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
+    notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 720, minimumSize: { width: 960, height: 420 }, multipleWindows: true, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
     settings: { ...launchOnly('settings', 'System Settings', 'main'), coverage: 'dock-preferences' },
     music: launchOnly('music', 'Music', 'recent'),
     appstore: launchOnly('appstore', 'App Store'),
@@ -49,7 +54,6 @@ export const sonomaProfile = {
     freeform: launchOnly('freeform', 'Freeform'),
     home: launchOnly('home', 'Home'),
     news: launchOnly('news', 'News'),
-    photobooth: launchOnly('photobooth', 'Photo Booth'),
     podcasts: launchOnly('podcasts', 'Podcasts'),
     preview: launchOnly('preview', 'Preview'),
     screenshot: launchOnly('screenshot', 'Screenshot'),
@@ -63,13 +67,10 @@ export const sonomaProfile = {
     activitymonitor: launchOnly('activitymonitor', 'Activity Monitor'),
     airport: launchOnly('airport', 'AirPort Utility'),
     audiomidi: launchOnly('audiomidi', 'Audio MIDI Setup'),
-    'bluetooth-exchange': launchOnly('bluetooth-exchange', 'Bluetooth File Exchange'),
     bootcamp: launchOnly('bootcamp', 'Boot Camp Assistant'),
     colorsync: launchOnly('colorsync', 'ColorSync Utility'),
     console: launchOnly('console', 'Console'),
-    digitalcolor: launchOnly('digitalcolor', 'Digital Color Meter'),
     diskutility: launchOnly('diskutility', 'Disk Utility'),
-    dvdplayer: launchOnly('dvdplayer', 'DVD Player'),
     grapher: launchOnly('grapher', 'Grapher'),
     imagecapture: launchOnly('imagecapture', 'Image Capture'),
     keychain: launchOnly('keychain', 'Keychain Access'),
@@ -94,5 +95,5 @@ export const sonomaProfile = {
     messages: '/messages',
     fonts: ['/fonts/InterVariable.woff2'],
   },
-  defaults: { startupAppId: 'messages', desktopAppId: 'finder', clockLabel: 'Tue Sep 26 5:42 PM', batteryPercent: 87 },
-};
+  defaults: { startupAppId: 'messages', desktopAppId: 'finder', sceneTime: '2023-09-26T17:42:00Z', clockLabel: 'Tue Sep 26 5:42 PM', batteryPercent: 87 },
+});

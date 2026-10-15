@@ -118,9 +118,9 @@ export function clockSummary(state, sceneTime) {
     hourAngle: hour * 30, minuteAngle: minute * 6, secondAngle: second * 6,
     timeZone: state.timeZone, use24Hour: state.use24Hour };
 }
-export function clockRecordLabel(timestamp, sceneTime, timeZone, use24Hour, withTime = false) {
+export function clockRecordLabel(timestamp, sceneTime, timeZone, use24Hour, withTime = false, withSeconds = false) {
   const record = clockParts(timestamp, timeZone), today = clockParts(sceneTime, timeZone);
-  const age = today.dayNumber - record.dayNumber, time = timeText(record, use24Hour);
+  const age = today.dayNumber - record.dayNumber, time = timeText(record, use24Hour, withSeconds);
   if (age === 0) return withTime ? `Today ${time}` : time;
   if (age === 1) return withTime ? `Yesterday ${time}` : 'Yesterday';
   const formats = zoneFormatters(timeZone);

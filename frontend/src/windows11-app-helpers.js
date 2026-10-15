@@ -1,5 +1,5 @@
 import { rejected } from './feature-commands.js';
-export const appIds = ['explorer','notepad','calculator','settings','edge','paint','photos','clock','snipping','terminal'];
+export const appIds = ['explorer','notepad','calculator','settings','edge','paint','photos','clock','snipping','terminal','teams'];
 export const applied = (target = {}, extra = {}) => ({ status: 'applied', target, ...extra });
 export const invalid = (message = 'Invalid application arguments.') => rejected('invalid_arguments', message);
 export const stale = (message = 'This target is no longer available.') => rejected('stale_target', message);
@@ -10,8 +10,17 @@ export function isTrashed(apps, file) { if (file.deleted) return true; const see
 export const children = (apps, folderId) => folderId === 'trash' ? apps.files.filter(file => file.deleted) : apps.files.filter(file => file.parentId === folderId && !isTrashed(apps, file));
 export const validName = name => typeof name === 'string' && name.trim() === name && name.length > 0 && name.length <= 100 && !/[\\/:*?"<>|\u0000-\u001f]/.test(name) && !name.endsWith('.') && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(name);
 export function uniqueName(apps, parentId, name, exceptId) { return !apps.files.some(file => file.parentId === parentId && file.id !== exceptId && !isTrashed(apps,file) && file.name.toLowerCase() === name.toLowerCase()); }
-export function createFile(apps, parentId, name, kind = 'text', content = '') { const file = { id: `file-${apps.nextFileId++}`, parentId, name, kind, content, deleted: false, revision: 1 }; apps.files.push(file); return file; }
-export function writeFile(apps, file, content) { file.content = content; file.revision++; }
+// Producers owning a concrete document contract (Paint/Snipping SVG) pass their
+// canonical Files association metadata explicitly; the generic helper itself
+// never infers MIME, appId or icon from a file name.
+export function createFile(apps, parentId, name, kind = 'text', content = '', metadata = null) {
+  const file = { id: `file-${apps.nextFileId++}`, parentId, name, kind, content, deleted: false, revision: 1, ...(metadata ?? {}) };
+  apps.files.push(file); return file;
+}
+export function writeFile(apps, file, content, metadata = null) {
+  file.content = content; file.revision++;
+  if (metadata) Object.assign(file, metadata);
+}
 export function pathOf(apps, id) { const names = []; let file = apps.files.find(item => item.id === id); const seen = new Set(); while(file && !seen.has(file.id)) { seen.add(file.id); names.unshift(file.name); file = apps.files.find(item => item.id === file.parentId); } return names.join('\\'); }
 export function resolvePath(apps, path, cwd = 'root') { const parts = path.replace(/\\/g,'/').split('/').filter(Boolean); let id = /^(C:|\/)/i.test(path) ? 'root' : cwd; if (parts[0]?.toLowerCase() === 'c:') parts.shift(); for (const part of parts) { if (part === '.') continue; if(part === '..') { id = liveFile(apps,id)?.parentId || 'root'; continue; } const next = children(apps,id).find(file => file.name.toLowerCase() === part.toLowerCase()); if (!next) return null; id = next.id; } return liveFile(apps,id); }
 export const svgData = svg => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;

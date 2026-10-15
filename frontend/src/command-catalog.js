@@ -19,8 +19,6 @@ import { sceneSeedCatalog } from './scene-seed-catalog.js';
 import { savedSessionCatalog } from './saved-session-catalog.js';
 import { menuBarCatalog } from './menu-bar-catalog.js';
 import { applicationMenuCatalog } from './application-menu-catalog.js';
-import { fileWorkflowCatalog } from './file-workflow-catalog.js';
-import { fileDialogCatalog } from './file-dialog-catalog.js';
 import { finderFileCatalog } from './finder-file-commands.js';
 import { textEditingCatalog } from './text-editing-commands.js';
 import { windowExtensionCatalog } from './window-extension-commands.js';
@@ -36,12 +34,21 @@ import { wifiCatalog } from './wifi-catalog.js';
 import { batteryCatalog } from './battery-catalog.js';
 import { clockCatalog } from './clock-catalog.js';
 import { soundCatalog } from './sound-catalog.js';
-import { soundMediaCatalog } from './sound-media-catalog.js';
 import { bluetoothCatalog } from './bluetooth-catalog.js';
 import { inputCatalog } from './input-catalog.js';
 import { spotlightCatalog } from './spotlight-commands.js';
 import { notificationCatalog } from './notification-commands.js';
 import { notificationWidgetCatalog } from './notification-widget-commands.js';
+import { messagesCatalog } from './messages-commands.js';
+import { browserCatalog } from './browser-commands.js';
+import { mailCatalog } from './mail-catalog.js';
+import { contactsCatalog } from './contacts-commands.js';
+import { calendarCatalog } from './calendar-catalog.js';
+import { callsCatalog } from './calls-catalog.js';
+import { remindersCatalog } from './reminders-catalog.js';
+import { notesWorkspaceCatalog } from './notes-workspace-commands.js';
+import { nativeDomainCatalog } from './native-domain-registry.js';
+import { documentDestinationCatalog } from './document-destination-commands.js';
 
 const MAC_PROFILES = [MOJAVE_PROFILE_ID, 'macos-high-sierra-10.13', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const WINDOWS_PROFILES = ['windows11-23h2-22631.2428'];
@@ -69,6 +76,10 @@ Object.assign(quitContract[1].resultSchema.properties, { quit: flag, confirmatio
 quitContract[1].resultSchema.required.push('quit', 'confirmationRequired');
 
 export const commandCatalog = {
+  ...nativeDomainCatalog,
+  ...documentDestinationCatalog,
+  ...callsCatalog,
+  ...remindersCatalog,
   ...applicationSwitchingCatalog,
   ...fullScreenCatalog,
   ...spacesCatalog,
@@ -79,8 +90,6 @@ export const commandCatalog = {
   ...savedSessionCatalog,
   ...menuBarCatalog,
   ...applicationMenuCatalog,
-  ...fileWorkflowCatalog(getOSProfile('macos-golden-gate-27.0.1')),
-  ...fileDialogCatalog,
   ...finderFileCatalog,
   ...textEditingCatalog,
   ...finderEditingCatalog,
@@ -95,16 +104,13 @@ export const commandCatalog = {
   ...batteryCatalog,
   ...clockCatalog,
   ...soundCatalog,
-  ...soundMediaCatalog,
   ...bluetoothCatalog,
   ...inputCatalog,
   ...spotlightCatalog,
   ...notificationCatalog,
   ...notificationWidgetCatalog,
-  ...Object.fromEntries([defineCommand(['macos-golden-gate-27.0.1'], 'notes.document.create', 'shell.file-workflows', empty, empty,
-    ['Interactive local Golden scene and available workspace; no blocking File sheet.', 'Complete record, clock, identity and whole-seed content capacity before opening.'],
-    ['Create exactly one new local plain-text note and activate its ordinary Notes document window, reopening remembered geometry only when required. Utilities are not document substitutes. Focus the actual new title field.'],
-    ['notes', 'windows', 'activeAppId', 'activeWindowId', 'closedWindows'], NONE, object({ noteId: identity, windowId: identity }))]),
+  ...messagesCatalog,
+  ...browserCatalog, ...mailCatalog, ...contactsCatalog, ...calendarCatalog,
   ...Object.fromEntries([
   defineShared('scene.selectProfile', 'scene.profile-selection', object({ profileId: identity }), empty,
     ['profileId is installed (targets.profiles). Selecting the current profile is idempotent.'],
@@ -189,65 +195,6 @@ export const commandCatalog = {
   define('menu.execute', 'shell.window-menu', menuItemTarget, empty,
     ['Visible native menu bar and currently enabled item; menu need not be open; shared window-operation requirements apply.'],
     ['Run shared close/minimize/zoom/focus or supported child operation and dismiss popup. Golden Gate restores original focus before open-menu dispatch and keeps canonical action focus; historical and closed-popup Window execution focus the Window button.']),
-  define('notes.create', 'notes.plain-text', empty, optionalFocus, [requestedFocus],
-    ['Switch to Notes folder, clear search, select new record; optional title focus.'],
-    ['Create session-local active plain-text record.'], NONE, object({ noteId: identity })),
-  define('notes.edit', 'notes.plain-text', noteTarget, object({ text }),
-    [currentNote, 'Target must be selected and non-deleted; no window required.'],
-    ['Clear search before text mutation to retain the editor.'], ['Replace text; update simulated modification time and derived title/preview.']),
-  define('notes.setPinned', 'notes.plain-text', noteTarget, object({ pinned: flag, focus: flag }, ['pinned']),
-    [currentNote, 'Record is non-deleted.', requestedFocus],
-    ['Reorder pinned collection, dismiss context, reconcile selection/focus; optional row focus.'],
-    ['Set explicit pin value, without changing timestamps.']),
-  define('notes.trash', 'notes.plain-text', noteTarget, optionalFocus,
-    [currentNote, 'Record is non-deleted.', requestedFocus],
-    ['Reconcile selection/focus, dismiss context; optional remaining-row/New note focus.'], ['Move record to Recently Deleted.']),
-  define('notes.restore', 'notes.plain-text', noteTarget, optionalFocus,
-    [currentNote, 'Record is deleted.', requestedFocus],
-    ['Remain in Recently Deleted, reconcile selection/focus, dismiss context; optional remaining-row/New note focus.'],
-    ['Restore record to active Notes.']),
-  define('notes.select', 'notes.presentation', noteTarget, optionalFocus, [currentNote, requestedFocus],
-    ['Select record, dismiss context; optional row focus; no implicit window open.']),
-  define('notes.selectFolder', 'notes.presentation', object({ folder }), empty, NONE,
-    ['Set collection, preserve search, reconcile selection/focus, dismiss context.']),
-  define('notes.search', 'notes.presentation', empty, object({ query: text }), NONE,
-    ['Set normalized case-insensitive title/body search; reconcile selection/focus and dismiss context.']),
-  define('notes.setSidebarVisible', 'notes.presentation', empty, object({ visible: flag }), NONE,
-    ['Set folder-sidebar visibility, dismiss context, clear hidden-folder focus; preserve other native toolbar focus.']),
-  define('notes.context.open', 'notes.presentation', noteTarget, {
-    ...object({ x: number, y: number, focus: flag }, NONE), dependentRequired: { x: ['y'], y: ['x'] },
-  }, [currentNote, visibleView, 'Explicit paired x/y are finite logical-window pixels.'],
-    ['Select target and open clamped context menu; default row anchoring reveals offscreen row; optional first-item focus.']),
-  define('notes.context.close', 'notes.presentation', empty, optionalFocus,
-    [visibleView, 'A live context menu exists.'], ['Dismiss context; optional row/New note focus return.']),
-  define('notes.context.select', 'notes.presentation', object({ item: contextItem }), optionalFocus,
-    [visibleView, 'Live context record belongs to current collection; item is offered for its deleted state.'],
-    ['Set context item and optionally focus/highlight it.']),
-  define('notes.context.execute', 'notes.plain-text', object({ noteId: identity, item: contextItem }), object({ focus: flag, pinned: flag }, NONE),
-    [visibleView, currentNote, 'Live context targets this noteId and offers this item.'],
-    ['Dismiss context and reconcile selection/focus through the same data handlers.'],
-    ['Set explicit pin value, trash, or restore the record.'], [{
-      if: match({ target: match({ item: { const: 'pin' } }) }),
-      then: match({ payload: match({ pinned: flag }) }),
-      else: match({ payload: { type: 'object', not: match({ pinned: true }) } }, NONE),
-    }]),
-  define('notes.focus', 'notes.presentation', { oneOf: [
-    object({ control: choice('title', 'body', 'search', 'new-note', 'sidebar', 'delete', 'restore', 'none') }),
-    object({ control: { const: 'row' }, noteId: identity }),
-    object({ control: { const: 'folder' }, folder }),
-    object({ control: { const: 'context' }, item: contextItem }),
-  ] }, {
-    ...object({ observe: flag, select: flag }, NONE),
-    not: match({ observe: { const: true }, select: { const: true } }),
-  }, [visibleView, 'Control must exist for current selection/folder/sidebar/context; row belongs to current collection.'],
-    ['Focus semantic control and activate Notes; select:true selects text when supported. Observe:true records native focus without activation/caret changes; none clears it.'], NONE, [{
-      if: match({ target: match({ control: { const: 'none' } }) }),
-      then: match({ payload: match({ observe: { const: true } }) }),
-    }]),
-  define('notes.scroll', 'notes.presentation', object({ area: choice('list', 'editor') }), {
-    ...object({ top: offset, left: offset, observe: flag }, NONE), anyOf: [match({ top: true }), match({ left: true })],
-  }, [visibleView, 'Editor additionally requires a selected current record; coordinates are finite nonnegative pixels.'],
-    ['Apply offsets, or observe native scrolling without moving it; retain actual clamped offsets; editor means body textarea.']),
   ]),
   ...desktopStacksCatalog,
   ...macDockCatalog,
@@ -257,4 +204,5 @@ export const commandCatalog = {
   ...fictionalSessionCatalog,
   ...fictionalPowerCatalog,
   ...wifiCatalog,
+  ...notesWorkspaceCatalog,
 };

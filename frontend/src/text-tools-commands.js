@@ -1,8 +1,12 @@
 import { isRecord, rejected } from './feature-commands.js';
 import { defineCommand, identity, object, empty, choice, flag } from './command-schema.js';
 import { EDITING_OPTION_KEYS, validLearnedWord, validateEditingPreferences } from './editing-state.js';
-import { findTextMatches, replaceAllNoteMatches } from './text-find.js';
-import { applyTextSubstitutions } from './text-assistance.js';
+import { findTextMatches, noteFindExpression } from './text-find.js';
+import { textSubstitutionPlan } from './text-assistance.js';
+import { noteWorkspaceText, noteWorkspaceLocked } from './notes-workspace-state.js';
+import { notesDocumentTextRanges, notesPlaintextNativeSelection } from './notes-workspace-projections.js';
+import { replaceSelection, firstDocumentSelection } from './notes-workspace-document.js';
+import { copyCanonicalData } from './canonical-data.js';
 
 const MAX = Number.MAX_SAFE_INTEGER - 1;
 const fields = (value, allowed, required = allowed) => isRecord(value)
@@ -28,19 +32,45 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
   let matchCache;
   let toolSequence = 0;
   let ignoredCount = 0, preferencesRevision = 0;
-  const noteOwner = target => ctx.available() ? ctx.getDocument(target) : null;
-  const sameDocument = (target, text, revision) => {
-    const source = noteOwner(target);
-    return source && source.note.text === text && source.note.updatedAt === revision ? source : null;
+  const noteOwner = target => {
+    if (!ctx.available()) return null;
+    const source = ctx.getDocument(target);
+    if (!source?.note || source.note.id !== target.noteId || noteWorkspaceLocked(source.note)
+      || source.revision !== source.note.revision || source.value !== noteWorkspaceText(source.note)
+      || source.session?.windowId !== target.windowId || source.session.selectedId !== target.noteId
+      || source.view?.available() !== true || source.view.ownsNote(source.note) !== true
+      || typeof source.readOnly !== 'boolean') return null;
+    return { ...source, document: source.note.document, query: source.session.query, folderId: source.session.folderId };
   };
+  const sameDocument = (target, text, revision, original) => {
+    const source = noteOwner(target);
+    return source && source.note === original.note && source.view === original.view
+      && source.session === original.session && source.note.document === original.document
+      && source.query === original.query && source.folderId === original.folderId
+      && source.value === text && source.note.revision === revision && source.readOnly === original.readOnly ? source : null;
+  };
+  function richReplacement(source, replacements) {
+    const document = copyCanonicalData(source.note.document);
+    let selection;
+    for (const range of [...replacements].sort((a, b) => b.start - a.start)) {
+      const native = notesPlaintextNativeSelection(document, range.start, range.end);
+      if (!native) return null;
+      selection = replaceSelection(document, native, range.text);
+      if (!selection) return null;
+    }
+    return selection ? { document, selection } : null;
+  }
+  const commitRich = (target, change) => typeof ctx.invoke === 'function'
+    ? ctx.invoke('notes.document.set', { windowId: target.windowId }, { noteId: target.noteId,
+      revision: target.revision, document: change.document, selection: change.selection }) : unavailable();
   const findOwner = target => documentTarget(target) && state.find?.windowId === target.windowId && state.find.noteId === target.noteId && noteOwner(target);
   function matches(source, index = state.find?.matchIndex ?? 0) {
     const find = state.find;
     if (!find || !source) return { count: 0, selected: null, highlights: [], truncated: false };
-    if (!matchCache || matchCache.text !== source.note.text || matchCache.query !== find.query
+    if (!matchCache || matchCache.text !== noteWorkspaceText(source.note) || matchCache.query !== find.query
       || matchCache.caseSensitive !== find.caseSensitive || matchCache.wholeWord !== find.wholeWord || matchCache.index !== index) {
-      matchCache = { text: source.note.text, query: find.query, caseSensitive: find.caseSensitive, wholeWord: find.wholeWord, index,
-        value: findTextMatches(source.note.text, find.query, find, index) };
+      matchCache = { text: noteWorkspaceText(source.note), query: find.query, caseSensitive: find.caseSensitive, wholeWord: find.wholeWord, index,
+        value: findTextMatches(noteWorkspaceText(source.note), find.query, find, index) };
     }
     return matchCache.value;
   }
@@ -62,7 +92,7 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     const token = ctx.captureReturn(), existing = returns.get(kind);
     if (existing && token?.toolPanel === (kind === 'find' ? 'find' : state.panel?.kind)
       && existing.target.windowId === target.windowId && existing.target.noteId === target.noteId) return existing.token;
-    returns.set(kind, { target: { ...target }, revision: noteOwner(target)?.note.updatedAt, token });
+    returns.set(kind, { target: { ...target }, revision: noteOwner(target)?.note.revision, token });
     return token;
   }
   async function returnFocus(kind, guard) {
@@ -71,9 +101,9 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
   }
   async function showMatch(target, source, match) {
     if (!match) return true;
-    const text = source.note.text, revision = source.note.updatedAt;
+    const text = noteWorkspaceText(source.note), revision = source.note.revision;
     const revealed = await ctx.revealMatch(target, match);
-    return Boolean(revealed && sameDocument(target, text, revision));
+    return Boolean(revealed && sameDocument(target, text, revision, source));
   }
   const optionsOwner = target => fields(target, ['windowId']) && id(target.windowId) && ctx.available() && ctx.getNotesWindow(target.windowId);
   function commitPreferences(next) {
@@ -92,7 +122,7 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     if (find && ['query', 'replacement'].includes(target.control)) return { kind: 'find', key: target.control, value: state.find[target.control], max: 4096, toolId: state.find.toolId };
     const panel = state.panel?.windowId === target.windowId && ctx.getNotesWindow(target.windowId) ? state.panel : null;
     if (panel && panel.kind === 'spelling' && target.control === 'word' && state.spelling
-      && state.spelling.noteId === state.panel.noteId && noteOwner(state.spelling)?.note.updatedAt === state.spelling.revision)
+      && state.spelling.noteId === state.panel.noteId && noteOwner(state.spelling)?.note.revision === state.spelling.revision)
       return { kind: 'spelling', key: 'replacement', value: state.spelling.replacement, max: 128, toolId: state.spelling.toolId };
     return null;
   }
@@ -115,7 +145,7 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
       || (payload.suggestions !== undefined && typeof payload.suggestions !== 'boolean')) return invalid();
     const source = noteOwner(target);
     if (!source) return unavailable();
-    const text = source.note.text, revision = source.note.updatedAt;
+    const text = noteWorkspaceText(source.note), revision = source.note.revision;
     if (target.revision !== revision || (payload.from ?? 0) > text.length) return stale();
     const ignoredWords = [...(ignored.get(target.noteId) ?? [])];
     const learnedWords = [...preferences.learnedWords];
@@ -125,7 +155,7 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     try { result = await assistance.check(text, { learnedWords, ignoredWords, from: payload.from ?? 0,
       maxIssues: payload.maxIssues ?? (panel ? 1 : 500), suggestions: payload.suggestions ?? panel }); }
     catch { return rejected('unavailable', 'The bundled English spelling dictionary could not be loaded.'); }
-    if (!sameDocument(target, text, revision)
+    if (!sameDocument(target, text, revision, source)
       || learnedWords.join('\u0000') !== preferences.learnedWords.join('\u0000')
       || ignoredWords.join('\u0000') !== [...(ignored.get(target.noteId) ?? [])].join('\u0000')
       || panel && (state.panel !== previousPanel || state.spelling !== previousSpelling || ctx.isReturnCurrent && !ctx.isReturnCurrent(focusToken))) return stale();
@@ -140,7 +170,7 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
       state.panel = { kind: 'spelling', windowId: target.windowId, noteId: target.noteId };
       const current = state.panel;
       const focused = await ctx.focusTool('spelling', result.issues.length ? 'word' : 'panel', focusToken);
-      if (!focused || !sameDocument(target, text, revision)) {
+      if (!focused || !sameDocument(target, text, revision, source)) {
         if (state.panel === current) state.panel = previous;
         if (state.spelling?.revision === revision && state.spelling.noteId === target.noteId) state.spelling = null;
         return stale();
@@ -153,13 +183,13 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     'text.find.open': async (target, payload) => {
       if (!documentTarget(target) || !fields(payload, ['replace'], []) || (payload.replace !== undefined && typeof payload.replace !== 'boolean')) return invalid();
       const source = noteOwner(target); if (!source) return unavailable();
-      const text = source.note.text, revision = source.note.updatedAt;
+      const text = noteWorkspaceText(source.note), revision = source.note.revision;
       const previous = state.find ? { ...state.find } : null, previousReturn = returns.get('find');
       const previousDrafts = ['find:query', 'find:replacement'].map(key => [key, draftHistory.get(key)]);
       const focusToken = remember('find', target); setFind(target); state.find.replace = payload.replace ?? false;
       const current = state.find, lease = { ...current };
       const focused = await ctx.focusTool('find', 'query', focusToken);
-      if (!focused || !sameDocument(target, text, revision)) {
+      if (!focused || !sameDocument(target, text, revision, source)) {
         if (state.find === current && Object.keys(lease).every(key => current[key] === lease[key])) {
           state.find = previous;
           for (const [key, history] of previousDrafts) history ? draftHistory.set(key, history) : draftHistory.delete(key);
@@ -202,8 +232,9 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     'text.find.useSelection': (target, payload) => {
       if (!rangeTarget(target) || !fields(payload, [])) return invalid();
       const source = noteOwner(target);
-      if (!source || source.note.updatedAt !== target.revision || target.end > source.note.text.length) return stale();
-      const query = source.note.text.slice(target.start, target.end);
+      if (!source || source.note.revision !== target.revision || target.end > noteWorkspaceText(source.note).length) return stale();
+      if (!notesPlaintextNativeSelection(source.note.document, target.start, target.end)) return rejected('invalid_arguments', 'The selected Find query must stay within one paragraph or table cell.');
+      const query = noteWorkspaceText(source.note).slice(target.start, target.end);
       if (query.length > 4096) return limited();
       setFind({ windowId: target.windowId, noteId: target.noteId }, Boolean(state.find?.open));
       state.find.query = query; state.find.matchIndex = 0; matchCache = undefined;
@@ -213,21 +244,27 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     'text.find.replace': async (target, payload) => {
       if (!versionedTarget(target) || !fields(payload, ['all'], []) || (payload.all !== undefined && typeof payload.all !== 'boolean')) return invalid();
       const source = findOwner({ windowId: target.windowId, noteId: target.noteId });
-      if (!source || source.note.updatedAt !== target.revision) return stale();
-      if (source.note.deleted) return rejected('read_only', 'Deleted notes cannot be replaced.');
+      if (!source || source.note.revision !== target.revision) return stale();
+      if (source.readOnly) return rejected('read_only', 'Deleted notes cannot be replaced.');
       const found = matches(source); if (!found.count) return rejected('not_found', 'No literal matches in this note.');
-      const text = source.note.text, revision = source.note.updatedAt, replacement = state.find.replacement;
+      const text = noteWorkspaceText(source.note), revision = source.note.revision, replacement = state.find.replacement;
       const findLease = { ...state.find };
-      const changed = payload.all ? replaceAllNoteMatches(text, state.find.query, replacement, state.find)
-        : { text: text.slice(0, found.selected.start) + replacement + text.slice(found.selected.end), count: 1 };
-      if (!await ctx.prepareDocument(target) || !sameDocument(target, text, revision)
+      const ranges = [];
+      if (payload.all) {
+        for (const match of text.matchAll(noteFindExpression(state.find.query, state.find))) {
+          ranges.push({ start: match.index, end: match.index + match[0].length, text: replacement });
+        }
+      } else ranges.push({ start: found.selected.start, end: found.selected.end, text: replacement });
+      const changed = richReplacement(source, ranges);
+      if (!changed) return rejected('invalid_arguments', 'A match crosses paragraph or table-cell boundaries.');
+      if (!await ctx.prepareDocument(target) || !sameDocument(target, text, revision, source)
         || !state.find || Object.keys(findLease).some(key => state.find[key] !== findLease[key])) return stale();
-      const committed = await ctx.invoke('notes.edit', { noteId: target.noteId }, { text: changed.text }, 'replace');
+      const committed = await commitRich(target, changed);
       if (committed.status !== 'applied') return committed;
       state.find.matchIndex = 0; matchCache = undefined;
       const after = noteOwner(target);
       if (after) { try { await showMatch(target, after, matches(after).selected); } catch { /* The edit is already committed. */ } }
-      return applied({ windowId: target.windowId, noteId: target.noteId, count: changed.count });
+      return applied({ windowId: target.windowId, noteId: target.noteId, count: ranges.length });
     },
     'text.preferences.set': async (target, payload) => {
       if (!fields(target, ['windowId']) || !id(target.windowId) || !fields(payload, EDITING_OPTION_KEYS, []) || !Object.keys(payload).length
@@ -259,7 +296,7 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
       if (!rangeTarget(target) || !fields(payload, ['replacement']) || typeof payload.replacement !== 'string' || payload.replacement.length > 128 || /[\r\n]/u.test(payload.replacement)) return invalid();
       const source = noteOwner(target), issue = state.spelling?.issues[0];
       if (state.panel?.kind !== 'spelling' || state.panel.windowId !== target.windowId || state.panel.noteId !== target.noteId
-        || !source || source.note.updatedAt !== target.revision || state.spelling?.revision !== target.revision
+        || !source || source.note.revision !== target.revision || state.spelling?.revision !== target.revision
         || issue?.start !== target.start || issue.end !== target.end) return stale();
       const native = ctx.getToolInput({ windowId: target.windowId, control: 'word' });
       const before = native?.value === payload.replacement && native.before?.value === state.spelling.replacement ? native.before.selection : { start: 0, end: 0, direction: 'none' };
@@ -270,8 +307,8 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     'text.spelling.learn': (target, payload) => {
       if (!rangeTarget(target) || !fields(payload, [])) return invalid();
       const source = noteOwner(target);
-      if (!source || source.note.updatedAt !== target.revision || target.end > source.note.text.length) return stale();
-      const word = source.note.text.slice(target.start, target.end);
+      if (!source || source.note.revision !== target.revision || target.end > noteWorkspaceText(source.note).length) return stale();
+      const word = noteWorkspaceText(source.note).slice(target.start, target.end);
       if (!validLearnedWord(word)) return invalid();
       if (preferences.learnedWords.some(value => folded(value) === folded(word))) return applied({ windowId: target.windowId, noteId: target.noteId });
       const error = commitPreferences({ ...preferences, learnedWords: [...preferences.learnedWords, word] });
@@ -288,8 +325,8 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     'text.spelling.ignore': (target, payload) => {
       if (!rangeTarget(target) || !fields(payload, [])) return invalid();
       const source = noteOwner(target);
-      if (!source || source.note.updatedAt !== target.revision || target.end > source.note.text.length) return stale();
-      const word = source.note.text.slice(target.start, target.end); if (!validLearnedWord(word)) return invalid();
+      if (!source || source.note.revision !== target.revision || target.end > noteWorkspaceText(source.note).length) return stale();
+      const word = noteWorkspaceText(source.note).slice(target.start, target.end); if (!validLearnedWord(word)) return invalid();
       const words = ignored.get(target.noteId) ?? new Set(), key = folded(word);
       if (!words.has(key)) { if (ignoredCount >= 1024) return limited(); words.add(key); ignoredCount++; }
       ignored.set(target.noteId, words); state.spelling = null;
@@ -299,11 +336,13 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     'text.spelling.replace': async (target, payload) => {
       if (!rangeTarget(target) || !fields(payload, ['replacement']) || typeof payload.replacement !== 'string' || payload.replacement.length > 128 || /[\r\n]/u.test(payload.replacement)) return invalid();
       const source = noteOwner(target);
-      if (!source || source.note.updatedAt !== target.revision || target.end > source.note.text.length) return stale();
-      if (source.note.deleted) return rejected('read_only', 'Deleted notes cannot be corrected.');
-      const text = source.note.text, revision = source.note.updatedAt;
-      if (!await ctx.prepareDocument(target) || !sameDocument(target, text, revision)) return stale();
-      const committed = await ctx.invoke('notes.edit', { noteId: target.noteId }, { text: text.slice(0, target.start) + payload.replacement + text.slice(target.end) }, 'spelling');
+      if (!source || source.note.revision !== target.revision || target.end > noteWorkspaceText(source.note).length) return stale();
+      if (source.readOnly) return rejected('read_only', 'Deleted notes cannot be corrected.');
+      const text = noteWorkspaceText(source.note), revision = source.note.revision;
+      const changed = richReplacement(source, [{ start: target.start, end: target.end, text: payload.replacement }]);
+      if (!changed) return rejected('invalid_arguments', 'The spelling range crosses paragraph or table-cell boundaries.');
+      if (!await ctx.prepareDocument(target) || !sameDocument(target, text, revision, source)) return stale();
+      const committed = await commitRich(target, changed);
       if (committed.status !== 'applied') return committed;
       state.spelling = null;
       try { await ctx.revealMatch({ windowId: target.windowId, noteId: target.noteId }, { start: target.start, end: target.start + payload.replacement.length }); } catch { /* The correction is already committed. */ }
@@ -312,11 +351,11 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
     'text.substitutions.open': async (target, payload) => {
       if (!documentTarget(target) || !fields(payload, [])) return invalid();
       const source = noteOwner(target); if (!source) return unavailable();
-      const text = source.note.text, revision = source.note.updatedAt;
+      const text = noteWorkspaceText(source.note), revision = source.note.revision;
       const previous = state.panel;
       const focusToken = remember('panel', target); state.panel = { kind: 'substitutions', ...target, selection: ctx.getDocumentSelection?.(target) ?? null };
       const current = state.panel;
-      if (!await ctx.focusTool('substitutions', 'panel', focusToken) || !sameDocument(target, text, revision)) {
+      if (!await ctx.focusTool('substitutions', 'panel', focusToken) || !sameDocument(target, text, revision, source)) {
         if (state.panel === current) state.panel = previous;
         return stale();
       }
@@ -326,17 +365,31 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
       if (!versionedTarget(target) || !fields(payload, ['start', 'end'], []) || (Object.hasOwn(payload, 'start') !== Object.hasOwn(payload, 'end'))
         || (payload.start !== undefined && (!integer(payload.start) || !integer(payload.end) || payload.start > payload.end))) return invalid();
       const source = noteOwner(target);
-      if (!source || source.note.updatedAt !== target.revision) return stale();
-      if (source.note.deleted) return rejected('read_only', 'Deleted notes cannot receive substitutions.');
-      const text = source.note.text, revision = source.note.updatedAt;
+      if (!source || source.note.revision !== target.revision) return stale();
+      if (source.readOnly) return rejected('read_only', 'Deleted notes cannot receive substitutions.');
+      const text = noteWorkspaceText(source.note), revision = source.note.revision;
       const start = payload.start ?? 0, end = payload.end ?? text.length; if (end > text.length) return stale();
-      const selected = text.slice(start, end);
-      const preferenceLease = preferencesRevision;
-      const replaced = applyTextSubstitutions(selected, preferences, preferences.replacements, { before: text.slice(0, start), after: text.slice(end) });
-      if (!await ctx.prepareDocument(target) || !sameDocument(target, text, revision) || preferencesRevision !== preferenceLease) return stale();
-      const committed = await ctx.invoke('notes.edit', { noteId: target.noteId }, { text: text.slice(0, start) + replaced + text.slice(end) }, 'substitution');
+      if (payload.start !== undefined && !notesPlaintextNativeSelection(source.note.document, start, end)) return rejected('invalid_arguments', 'A selected substitution range must stay within one paragraph or table cell.');
+      const preferenceLease = preferencesRevision, document = copyCanonicalData(source.note.document);
+      let changed = false, selection = firstDocumentSelection(document);
+      for (const range of notesDocumentTextRanges(source.note.document).reverse()) {
+        const from = Math.max(start, range.start), to = Math.min(end, range.end);
+        if (to <= from) continue;
+        const plan = textSubstitutionPlan(text.slice(from, to), preferences, preferences.replacements,
+          { before: text.slice(range.start, from), after: text.slice(to, range.end) });
+        for (const stage of plan.stages) for (const edit of [...stage].reverse()) {
+          const native = notesPlaintextNativeSelection(document, from + edit.start, from + edit.end);
+          if (!native) return rejected('invalid_arguments', 'A substitution crosses paragraph or table-cell boundaries.');
+          selection = replaceSelection(document, native, edit.text);
+          if (!selection) return invalid();
+          changed = true;
+        }
+      }
+      if (!changed) return applied({ windowId: target.windowId, noteId: target.noteId });
+      if (!await ctx.prepareDocument(target) || !sameDocument(target, text, revision, source) || preferencesRevision !== preferenceLease) return stale();
+      const committed = await commitRich(target, { document, selection });
       if (committed.status !== 'applied') return committed;
-      try { await ctx.revealMatch({ windowId: target.windowId, noteId: target.noteId }, { start, end: start + replaced.length }); } catch { /* The substitution is already committed. */ }
+      try { await ctx.revealMatch({ windowId: target.windowId, noteId: target.noteId }, { start, end: start }); } catch { /* The substitution is already committed. */ }
       return applied({ windowId: target.windowId, noteId: target.noteId });
     },
     'text.tools.close': async (target, payload) => {
@@ -405,11 +458,13 @@ export function createTextToolsCommands(state, preferences, clipboard, assistanc
   function targets() {
     const source = state.find && noteOwner(state.find);
     const found = matches(source);
-    return { find: state.find ? { ...state.find, revision: source?.note.updatedAt ?? null, ...found } : null,
-      panel: state.panel ? { ...state.panel } : null, spelling: state.spelling ? { ...state.spelling, issues: state.spelling.issues.map(issue => ({ ...issue, suggestions: [...issue.suggestions] })) } : null,
-      liveSpelling: state.liveSpelling ? { ...state.liveSpelling, issues: state.liveSpelling.issues.map(issue => ({ ...issue, suggestions: [...issue.suggestions] })) } : null,
+    const readable = entry => entry && noteOwner(entry);
+    return { find: state.find && source ? { ...state.find, revision: source.note.revision, ...found } : null,
+      panel: readable(state.panel) ? { ...state.panel } : null,
+      spelling: readable(state.spelling) ? { ...state.spelling, issues: state.spelling.issues.map(issue => ({ ...issue, suggestions: [...issue.suggestions] })) } : null,
+      liveSpelling: readable(state.liveSpelling) ? { ...state.liveSpelling, issues: state.liveSpelling.issues.map(issue => ({ ...issue, suggestions: [...issue.suggestions] })) } : null,
       error: state.error ?? null,
-      ignored: [...ignored].map(([noteId, words]) => ({ noteId, words: [...words] })),
+      ignored: [...ignored].filter(([noteId]) => noteOwner({ windowId: state.panel?.windowId ?? state.find?.windowId, noteId })).map(([noteId, words]) => ({ noteId, words: [...words] })),
       drafts: [...draftHistory].map(([key, history]) => ({ key, undo: history.undo.length, redo: history.redo.length })) };
   }
   return { handlers, targets };

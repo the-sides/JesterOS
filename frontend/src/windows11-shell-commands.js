@@ -19,11 +19,10 @@ export function createWindows11ShellCommands(shell, context) {
     return result;
   };
   const openFile = async entry => {
+    if (!entry.folderId) return closeAfter('win11.files.open', { fileId: entry.fileId });
     const opened = await context.invoke('app.open', { appId: entry.appId }, {});
     if (opened.status !== 'applied') return opened;
-    return entry.folderId
-      ? closeAfter('win11.explorer.navigate', { folderId: entry.folderId, windowId: opened.target.windowId })
-      : closeAfter('win11.files.open', { fileId: entry.fileId, windowId: opened.target.windowId });
+    return closeAfter('win11.explorer.navigate', { folderId: entry.folderId, windowId: opened.target.windowId });
   };
   const handler = (targetNames, payloadNames, run, optional = [], allowModal = false) => async (target, payload) => {
     if (!fields(target, targetNames) || !fields(payload, payloadNames, payloadNames.filter((name) => !optional.includes(name)))) return invalid();

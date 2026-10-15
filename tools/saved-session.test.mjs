@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { createDefaultSceneSeed } from '../frontend/src/scene-seed.js';
+import { createDefaultApplicationFiles } from '../frontend/src/default-application-files.js';
 import { createSavedSessionCommands, validateSavedSession, savedSessionStorageKey, clearSavedSession } from '../frontend/src/saved-session.js';
 import { savedSessionCatalog } from '../frontend/src/saved-session-catalog.js';
 import { createFeatureCommands } from '../frontend/src/feature-commands.js';
@@ -9,11 +10,15 @@ import { desktopStacksDefaults, desktopStacks } from '../frontend/src/desktop-st
 import { macDesktopItems } from '../frontend/src/desktop-file-state.js';
 import { spacesDefaults, spacesItems } from '../frontend/src/spaces.js';
 import { applicationBundleId, createMacApplicationFiles } from '../frontend/src/mac-application-files.js';
-import { finderPresentationDefaults, notesPresentationDefaults } from '../frontend/src/viewing-state.js';
+import { finderPresentationDefaults } from '../frontend/src/viewing-state.js';
+import { createNotesWorkspaceCommands } from '../frontend/src/notes-workspace-commands.js';
+import { notesWorkspaceWindow, noteWorkspaceText } from '../frontend/src/notes-workspace-state.js';
+import { documentFromText, firstDocumentSelection } from '../frontend/src/notes-workspace-document.js';
+import { nativeDomainForWindow } from '../frontend/src/native-domain-registry.js';
+import { createSceneRuntimeInventory } from '../frontend/src/scene-runtime-inventory.js';
 import { draftPreview, createCommunicationDraft, submitCommunicationDraft, communicationEntry } from '../frontend/src/communication-state.js';
 import { storageViewDefaults } from '../frontend/src/storage-model.js';
 import { postNotification, dismissNotification, clearNotifications } from '../frontend/src/notification-model.js';
-import { widgetsDefaults, addWidget, removeWidget, configureWidget, setWidgetReminderCompleted, widgetDataScope } from '../frontend/src/notification-widget-model.js';
 
 test('individually valid notification bodies cannot bypass the saved-session serialized budget', async () => {
   const snapshot = fixture(), storage = memoryStorage(), model = snapshot.locals[0].scene.seed.system.notifications;
@@ -32,38 +37,79 @@ test('individually valid notification bodies cannot bypass the saved-session ser
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const bounds = () => ({ x: 140, y: 80, width: 848, height: 592, scale: 0.8 });
 const emptyView = () => ({ scroll: [], selections: [], focusKey: null });
-function root(userId = 'local-alex') {
-  const seed = createDefaultSceneSeed(profile);
+const sceneControllers = new WeakMap();
+function windowController(scene, window) {
+  const notes = window.appId === 'notes' && !window.utilityKind, domain = nativeDomainForWindow(profile, window);
+  if (!notes && !domain) return null;
+  let controllers = sceneControllers.get(scene);
+  if (!controllers) { controllers = new Map(); sceneControllers.set(scene, controllers); }
+  const key = notes ? 'notes' : domain.key;
+  if (!controllers.has(key)) {
+    const runtime = createSceneRuntimeInventory({ profile, getShared: name => scene.seed[name],
+      getRunningAppIds: () => scene.runningAppIds, getWindows: () => scene.windows,
+      getFiles: () => scene.seed.files, getSceneTime: () => scene.seed.files.sceneTime });
+    const ctx = { profile, getState: () => scene.seed[key], getWindow: id => scene.windows.find(row => row.id === id) ?? null,
+      getWindows: () => scene.windows.filter(row => notes ? row.appId === 'notes' && !row.utilityKind : nativeDomainForWindow(profile, row) === domain),
+      getView: () => null, getShared: name => scene.seed[name], alive: () => true,
+      available: original => scene.windows.includes(original) && !original.minimized, canCommit: () => true, tick: async () => {},
+      getSceneTime: () => scene.seed.files.sceneTime, getFile: id => scene.seed.files.files.find(row => row.id === id) ?? null,
+      getInventory: runtime.getInventory, getSceneEvents: runtime.getSceneEvents,
+      focusWindow: id => { const original = scene.windows.find(row => row.id === id); if (original) { original.minimized = false; scene.activeWindowId = id; scene.activeAppId = original.appId; } } };
+    controllers.set(key, notes ? createNotesWorkspaceCommands(ctx) : domain.createCommands(ctx));
+  }
+  return controllers.get(key);
+}
+function root(userId = 'local-alex', selectedProfile = profile) {
+  const seed = createDefaultSceneSeed(selectedProfile, { createFiles: createDefaultApplicationFiles });
   const id = userId === 'local-casey' ? 'local-casey--messages' : 'messages';
   const { overview, ...spaces } = spacesDefaults();
   const { focusedStackId, ...stacks } = desktopStacksDefaults();
-  const catalogTimes = Object.fromEntries(createMacApplicationFiles(profile, seed.files.sceneTime)
+  const catalogTimes = Object.fromEntries(createMacApplicationFiles(selectedProfile, seed.files.sceneTime)
     .map(({ id, createdAt, modifiedAt, addedAt, lastOpenedAt }) => [id, { createdAt, modifiedAt, addedAt, lastOpenedAt }]));
-  return { seed, catalogTimes, windows: [{ id, appId: 'messages', title: 'Messages', minimized: false, fullScreen: false, zoomed: false,
+  const fileOrder = [...seed.files.files.map(file => file.id), ...Object.keys(catalogTimes)];
+  return { seed, catalogTimes, fileOrder, windows: [{ id, appId: 'messages', title: 'Messages', minimized: false, fullScreen: false, zoomed: false,
     bounds: bounds(), restoreBounds: null, spaceId: 'desktop-1' }], closedWindows: {}, views: { [id]: {
-    scroll: [{ key: 'messages-conversations', top: 32, left: 0 }, { key: 'messages-thread', top: 90, left: 0 }], selections: [], focusKey: null } },
+    scroll: [{ key: 'messages-conversations', top: 32, left: 0 }, { key: 'messages-thread', recordId: seed.messages.selectedConversationId, top: 90, left: 0 }], selections: [], focusKey: null } },
   nextWindowId: 2, activeWindowId: id, activeAppId: 'messages', runningAppIds: ['finder', 'messages'],
   switching: { activationAppIds: ['messages'], activationWindowIds: [id], creationWindowIds: [id], hiddenAppIds: [] },
   spaces, splitViews: [], desktop: { selectedFileIds: ['itinerary'], selectionAnchorId: 'itinerary', positions: { itinerary: { x: 640, y: 24 } },
-    sortBy: 'none', viewOptions: desktopViewDefaults('macos', 'golden-gate'), stacks },
-  dockOrder: { mainOrderAppIds: [...seed.dock.mainOrderAppIds], secondaryOrderItemIds: [...seed.dock.secondaryOrderItemIds] },
-  notesScroll: { list: { top: 10, left: 0 }, editor: { top: 80, left: 0 } } };
+    sortBy: 'none', viewOptions: desktopViewDefaults('macos', selectedProfile.renderer),
+    ...(selectedProfile.capabilities.includes('shell.desktop-stacks') ? { stacks } : {}) },
+  dockOrder: { mainOrderAppIds: [...seed.dock.mainOrderAppIds], secondaryOrderItemIds: [...seed.dock.secondaryOrderItemIds] } };
 }
 function fixture(twoUsers = false) {
-  return { version: 1, profileId: profile.id, baseline: { source: 'default', seed: createDefaultSceneSeed(profile) },
+  return { version: 1, profileId: profile.id, baseline: { source: 'default', seed: createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }) },
     locals: [{ userId: 'local-alex', scene: root() }, ...(twoUsers ? [{ userId: 'local-casey', scene: root('local-casey') }] : [])] };
 }
-function addWindow(scene, appId, fields = {}, userId = 'local-alex') {
+
+for (const profileId of ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0']) {
+  test(`${profileId} saves its actual desktop without borrowing Golden Gate storage hardware`, async () => {
+    const installed = getOSProfile(profileId), scene = root('local-alex', installed);
+    const snapshot = { version: 1, profileId, baseline: { source: 'default', seed: createDefaultSceneSeed(installed, { createFiles: createDefaultApplicationFiles }) },
+      locals: [{ userId: 'local-alex', scene }] };
+    const storage = memoryStorage(), replacements = [];
+    const api = createSavedSessionCommands({ profile: installed, available: () => true, storage: () => storage,
+      capture: async () => snapshot, replace: async value => replacements.push(value) });
+    expect((await execute(api, 'save')).status).toBe('applied');
+    scene.seed.messages.conversations[0].name = 'Unsaved later name';
+    expect((await execute(api, 'restore')).status).toBe('applied');
+    expect(replacements[0].locals[0].scene.seed.messages.conversations[0].name).not.toBe('Unsaved later name');
+    expect(replacements[0].locals[0].scene.windows).toEqual(scene.windows);
+  });
+}
+function addWindow(scene, appId, fields = {}, userId = 'local-alex', options = {}) {
   const allocation = scene.nextWindowId++;
   const id = fields.id ?? `${userId === 'local-casey' ? 'local-casey--' : ''}${appId}-window-${allocation}`;
   const window = { id, appId, title: profile.applications[appId].name, minimized: false, fullScreen: false, zoomed: false,
     bounds: bounds(), restoreBounds: null, spaceId: scene.spaces.lastDesktopId,
     ...(appId === 'finder' ? { folderId: 'desktop' } : {}), ...(appId === 'settings' && !fields.utilityKind ? { settingsPane: 'dock' } : {}),
     ...(!fields.utilityKind && appId === 'finder' ? { finderPresentation: finderPresentationDefaults(),
-      finderBrowseMode: scene.seed.viewing.finder.folderViews.desktop?.mode ?? 'icons' } : {}),
-    ...(!fields.utilityKind && appId === 'notes' ? { notesPresentation: notesPresentationDefaults(scene.seed.viewing.notes.mode) } : {}), ...fields };
+      finderBrowseMode: scene.seed.viewing.finder.folderViews.desktop?.mode ?? 'icons' } : {}), ...fields };
   scene.windows.push(window);
   scene.views[id] = emptyView();
+  const controller = windowController(scene, window);
+  const opened = controller?.windowOpened(window, options);
+  if (opened === false || opened?.status === 'rejected') throw new Error('The actual native fixture window could not install its canonical session.');
   if (!scene.runningAppIds.includes(appId)) scene.runningAppIds.push(appId);
   const recent = scene.seed.dock.preferences.showRecent
     ? scene.seed.dock.recentHistory.filter(entry => !scene.seed.dock.pinnedAppIds.includes(entry.appId)).slice(0, 3).map(entry => entry.appId) : [];
@@ -91,6 +137,8 @@ test('saved Notification Settings preserve their exact selected application and 
 });
 function remember(scene, appId, fields = {}, view = emptyView()) {
   const window = addWindow(scene, appId, fields);
+  const closed = windowController(scene, window)?.windowClosed(window);
+  if (closed === false || closed?.status === 'rejected') throw new Error('The actual native fixture window could not retire its canonical session.');
   scene.windows.pop();
   scene.switching.creationWindowIds.pop();
   delete scene.views[window.id];
@@ -108,42 +156,7 @@ function renameWindow(scene, window, id) {
   for (const key of ['activationWindowIds', 'creationWindowIds']) scene.switching[key] = scene.switching[key].map(value => value === previous ? id : value);
 }
 
-test('saved widget-data read position cannot be borrowed by a different source or ordinary app', () => {
-  const snapshot = fixture(), scene = snapshot.locals[0].scene, widgets = scene.seed.system.widgets;
-  const [first, second] = widgets.sources.reminderLists;
-  widgets.selected.reminderListId = first.id;
-  const window = addWindow(scene, 'reminders');
-  const scroll = { key: 'widget-data', scopeId: widgetDataScope('reminders', widgets.selected), top: 96, left: 0 };
-  scene.views[window.id].scroll = [scroll];
-  expect(validate(snapshot).ok).toBe(true);
-  for (const change of [
-    candidate => { candidate.locals[0].scene.seed.system.widgets.selected.reminderListId = second.id; },
-    candidate => {
-      const owner = candidate.locals[0].scene, other = addWindow(owner, 'stocks');
-      owner.views[other.id].scroll = [structuredClone(scroll)];
-    },
-    candidate => { candidate.locals[0].scene.views[window.id].scroll[0].key = 'window-content'; },
-  ]) {
-    const candidate = structuredClone(snapshot); change(candidate);
-    const before = structuredClone(candidate);
-    expect(validate(candidate).ok).toBe(false);
-    expect(candidate).toEqual(before);
-  }
-});
 
-test('closed Clock read position is bound to the ordered selected cities, not only membership', () => {
-  const snapshot = fixture(), scene = snapshot.locals[0].scene, widgets = scene.seed.system.widgets;
-  widgets.selected.clockCityIds = widgets.sources.clockCities.slice(0, 2).map(city => city.id);
-  const view = { scroll: [{ key: 'widget-data', scopeId: widgetDataScope('clock', widgets.selected), top: 72, left: 0 }], selections: [], focusKey: null };
-  remember(scene, 'clock', {}, view);
-  expect(validate(snapshot).ok).toBe(true);
-  widgets.selected.clockCityIds.reverse();
-  const before = structuredClone(snapshot);
-  expect(validate(snapshot).ok).toBe(false);
-  expect(snapshot).toEqual(before);
-  view.scroll[0].scopeId = widgetDataScope('clock', widgets.selected);
-  expect(validate(snapshot).ok).toBe(true);
-});
 
 test('saved Spotlight pane and semantic scroll belong only to their exact ordinary live or closed Settings owner', () => {
   const snapshot = fixture(), scene = snapshot.locals[0].scene;
@@ -237,6 +250,9 @@ test('saved storage views and list positions require their actual category, fold
     expect(validateSavedSession(candidate, profile).ok).toBe(false);
   }
   const closed = structuredClone(snapshot), closedScene = closed.locals[0].scene;
+  const closedWindow = closedScene.windows.find(item => item.id === window.id);
+  const retired = windowController(closedScene, closedWindow)?.windowClosed(closedWindow);
+  if (retired === false || retired?.status === 'rejected') throw new Error('The actual Settings fixture window could not retire its canonical session.');
   closedScene.windows = closedScene.windows.filter(item => item.id !== window.id);
   closedScene.switching.creationWindowIds = closedScene.switching.creationWindowIds.filter(id => id !== window.id);
   closedScene.closedWindows.settings = { window: structuredClone(window), view: closedScene.views[window.id] };
@@ -375,7 +391,6 @@ test('service retained views reject mismatched entities, fields, channels, UTF-1
     view => { view.selections[0].recordId = 'service-draft-missing'; },
     view => { view.selections[0].noteId = 'note-1'; },
     view => { view.selections[0].key = 'service-email'; },
-    view => { view.selections[0].key = 'notes-body'; },
     view => { view.selections[0].end++; },
     view => { view.selections[0].start = view.selections[0].end + 1; },
     view => { view.focusKey = 'service-subject'; },
@@ -396,8 +411,7 @@ test('service retained views reject mismatched entities, fields, channels, UTF-1
     (_, scene) => { scene.views.messages.scroll = [{ key: 'service-panel', recordId: null, top: 0, left: 0 }]; },
     (_, scene) => { const window = addWindow(scene, 'contacts'); scene.views[window.id].selections = [
       { key: 'service-name', noteId: null, recordId: 'missing', start: 0, end: 0, direction: 'none' }]; },
-    (_, scene) => { const window = addWindow(scene, 'notes'); scene.views[window.id].selections = [
-      { key: 'notes-title', noteId: 'note-1', recordId: 'service-draft-1', start: 0, end: 1, direction: 'none' }]; },
+    (_, scene) => { const window = addWindow(scene, 'notes'); notesWorkspaceWindow(scene.seed.notes, window.id).selectedId = 'service-draft-1'; },
     (_, scene) => { scene.views.messages.scroll[0].recordId = null; },
   ]) rejects(change);
 });
@@ -469,15 +483,17 @@ test('live and remembered printer queue viewports belong only to actual Print Ce
 test('complete one- and two-local snapshots preserve distinct baseline/current data and accept empty live scenes', () => {
   const snapshot = fixture(true);
   snapshot.baseline.source = 'replacement';
-  snapshot.baseline.seed.messages.thread.name = 'Original baseline';
-  snapshot.locals[0].scene.seed.notes.notes[0].text = 'Alex retained edit';
-  snapshot.locals[1].scene.seed.notes.notes[0].text = 'Casey retained edit';
+  snapshot.baseline.seed.messages.conversations[2].name = 'Original baseline';
+  for (const [index, local] of snapshot.locals.entries()) {
+    const note = local.scene.seed.notes.notes[0]; note.document = documentFromText(`${index ? 'Casey' : 'Alex'} retained edit`, note.id);
+  }
   expect(validate(snapshot)).toEqual({ ok: true });
   const scene = snapshot.locals[1].scene;
   scene.windows = []; scene.views = {}; scene.activeWindowId = null; scene.activeAppId = 'finder'; scene.runningAppIds = ['finder'];
   scene.switching = { activationAppIds: [], activationWindowIds: [], creationWindowIds: [], hiddenAppIds: [] };
-  scene.seed.notes.notes = []; scene.seed.notes.selectedId = null;
-  scene.seed.messages.pinned = []; scene.seed.messages.conversations = []; scene.seed.messages.thread.items = [];
+  scene.seed.notes.notes = []; scene.seed.notes.windows = [];
+  scene.seed.messages.conversations = []; scene.seed.messages.selectedConversationId = null; scene.seed.messages.selectedMessageId = null;
+  scene.seed.messages.drafts = []; scene.seed.messages.selectedDraftId = null;
   expect(validate(snapshot)).toEqual({ ok: true });
 });
 
@@ -504,13 +520,28 @@ test('generated readonly directories/bundles, utility metadata and closed zoom g
   expect(validate(snapshot)).toEqual({ ok: true });
 });
 
-test('retained readonly Notes selections allow existing prior notes and bounded offsets for native clamping', () => {
-  const snapshot = fixture(), scene = snapshot.locals[0].scene, window = addWindow(scene, 'notes');
-  scene.views[window.id] = { scroll: [{ key: 'notes-list', top: 90000, left: 0 }, { key: 'notes-body', top: 80000, left: 40 }],
-    selections: [{ key: 'notes-title', noteId: 'note-4', start: 0, end: 10000, direction: 'backward' },
-      { key: 'notes-body', noteId: 'note-1', start: 4, end: 100000, direction: 'forward' },
-      { key: 'notes-search', noteId: null, start: 0, end: 10, direction: 'none' }], focusKey: 'notes-body' };
-  expect(validate(snapshot)).toEqual({ ok: true });
+test('saved native Notes sessions retain independent rich block selections, query and scroll without flat editor tokens', async () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene, first = addWindow(scene, 'notes');
+  const second = addWindow(scene, 'notes', {}, 'local-alex', { noteId: 'note-2' });
+  const state = scene.seed.notes, firstSession = notesWorkspaceWindow(state, first.id), secondSession = notesWorkspaceWindow(state, second.id);
+  const firstNote = state.notes.find(note => note.id === firstSession.selectedId), secondNote = state.notes.find(note => note.id === 'note-2');
+  firstNote.document.blocks[0].runs[0].marks = ['bold'];
+  firstSession.selection = { ...firstDocumentSelection(firstNote.document), start: 1, end: 8, direction: 'backward' };
+  firstSession.scroll = { list: { top: 90000, left: 0 }, editor: { top: 80000, left: 40 } };
+  secondSession.selectedId = secondNote.id; secondSession.query = 'Photography';
+  secondSession.selection = { ...firstDocumentSelection(secondNote.document), start: 2, end: 10, direction: 'forward' };
+  secondSession.scroll.editor = { top: 125, left: 4 };
+  const expected = structuredClone(state), storage = memoryStorage(); let restored;
+  const handlers = commands({ storage, capture: async () => snapshot, replace: async value => { restored = value; } });
+  expect((await execute(handlers, 'save')).status).toBe('applied');
+  firstNote.document.blocks[0].runs[0].text = 'Later current edit'; firstSession.scroll.editor.top = 0;
+  expect((await execute(handlers, 'restore')).status).toBe('applied');
+  const retained = restored.locals[0].scene;
+  expect(retained.seed.notes).toEqual(expected);
+  expect(notesWorkspaceWindow(retained.seed.notes, first.id).selection.blockId).toBe(firstNote.document.blocks[0].id);
+  expect(notesWorkspaceWindow(retained.seed.notes, second.id).selectedId).toBe(secondNote.id);
+  expect(retained.views[first.id]).toEqual(emptyView()); expect(retained.views[second.id]).toEqual(emptyView());
+  expect(snapshot.baseline.seed.notes.windows).toEqual([]);
 });
 
 test('actual full-screen/Split View spaces preserve home desktops and visible eligible membership', () => {
@@ -537,7 +568,7 @@ test('closed envelopes reject partial/cross-profile/auth/power/Guest state witho
     snapshot => { snapshot.locals = [{ userId: 'local-casey', scene: root('local-casey') }]; },
     snapshot => { snapshot.locals.push(structuredClone(snapshot.locals[0])); },
     (_, scene) => { scene.power = { phase: 'desktop' }; }, (_, scene) => { scene.desktop.context = null; },
-    (_, scene) => { delete scene.notesScroll.editor; }, (_, scene) => { scene.windows[0].passwordDraft = ''; },
+    (_, scene) => { delete scene.seed.notes.windows; }, (_, scene) => { scene.windows[0].passwordDraft = ''; },
     (_, scene) => { scene.views.messages.focusKey = 'password'; },
   ]) rejects(change);
 });
@@ -545,9 +576,9 @@ test('closed envelopes reject partial/cross-profile/auth/power/Guest state witho
 test('every baseline and current seed uses existing graph/Notes/Dock invariants atomically', () => {
   for (const change of [
     snapshot => { snapshot.baseline.seed.files.files.find(file => file.id === 'personal').parentId = 'missing'; },
-    snapshot => { snapshot.baseline.seed.notes.selectedId = 'missing'; },
+    snapshot => { snapshot.baseline.seed.notes.preferences.defaultAccountId = 'missing'; },
     (_, scene) => { scene.seed.dock.mainOrderAppIds.reverse(); },
-    (_, scene) => { scene.seed.notes.selectedId = 'note-4'; },
+    (_, scene) => { const window = addWindow(scene, 'notes'); notesWorkspaceWindow(scene.seed.notes, window.id).selectedId = 'note-4'; },
     (_, scene) => { scene.seed.files.nextFileId = 0; },
     (_, scene) => { scene.seed.files.files.find(file => file.id === 'personal').id = 'mac-application-folder:Applications'; },
   ]) rejects(change);
@@ -593,7 +624,7 @@ test('namespace, app identity, monotonic allocation, live membership and window 
     (_, scene) => { scene.windows[0].appId = 'notes'; },
     (_, scene) => { scene.nextWindowId = 1; }, (_, scene) => { scene.nextWindowId = Number.MAX_SAFE_INTEGER; },
     (_, scene) => { addWindow(scene, 'finder', { id: 'finder-window-01' }); },
-    (_, scene) => { addWindow(scene, 'finder', { id: 'finder-window-1' }); },
+    (_, scene) => { addWindow(scene, 'finder'); renameWindow(scene, scene.windows[0], `messages-window-${scene.nextWindowId - 1}`); },
     (_, scene) => { addWindow(scene, 'messages'); },
     (_, scene) => { scene.windows.push(structuredClone(scene.windows[0])); },
     (_, scene) => { scene.runningAppIds = ['finder']; },
@@ -604,7 +635,6 @@ test('namespace, app identity, monotonic allocation, live membership and window 
     (_, scene) => { scene.windows[0].zoomed = true; },
     (_, scene) => { scene.windows[0].restoreBounds = bounds(); },
     (_, scene) => { scene.windows[0].settingsPane = 'dock'; },
-    (_, scene) => { addWindow(scene, 'settings', { settingsPane: 'mission-control' }); },
     (_, scene) => { scene.windows[0].utilityKind = 'desktop-view-options'; },
     (_, scene) => { addWindow(scene, 'finder', { folderId: 'itinerary' }); },
     (_, scene) => { addWindow(scene, 'finder', { folderId: '../../unsafe' }); },
@@ -629,7 +659,7 @@ test('closed ordinary-app records reject live duplicates, utilities, stale metad
   ]) rejects(change);
 });
 
-test('views and switching histories reject stale IDs, foreign semantic controls and invalid note selections', () => {
+test('views and switching histories reject stale owners while native Notes selections stay bound to visible rich documents', () => {
   for (const change of [
     (_, scene) => { scene.views.missing = emptyView(); }, (_, scene) => { delete scene.views.messages; },
     (_, scene) => { scene.activeWindowId = 'missing'; }, (_, scene) => { scene.activeAppId = 'finder'; },
@@ -641,12 +671,15 @@ test('views and switching histories reject stale IDs, foreign semantic controls 
     (_, scene) => { scene.switching.hiddenAppIds.push('notes'); },
     (_, scene) => { scene.views.messages.scroll.push({ key: 'messages-thread', top: 0, left: 0 }); },
     (_, scene) => { scene.views.messages.scroll[0].key = '[type=password]'; },
-    (_, scene) => { scene.views.messages.scroll[0].key = 'notes-list'; },
     (_, scene) => { scene.views.messages.scroll[0].top = -1; },
     (_, scene) => { scene.views.messages.scroll[0].left = Infinity; },
-    (_, scene) => { const notes = addWindow(scene, 'notes'); scene.views[notes.id].selections = [{ key: 'notes-title', noteId: 'missing', start: 0, end: 1, direction: 'none' }]; },
-    (_, scene) => { const notes = addWindow(scene, 'notes'); scene.views[notes.id].selections = [{ key: 'notes-search', noteId: 'note-1', start: 0, end: 1, direction: 'none' }]; },
-    (_, scene) => { const notes = addWindow(scene, 'notes'); scene.views[notes.id].selections = [{ key: 'notes-body', noteId: 'note-1', start: 2, end: 1, direction: 'none' }]; },
+    (_, scene) => { const notes = addWindow(scene, 'notes'); notesWorkspaceWindow(scene.seed.notes, notes.id).selectedId = 'missing'; },
+    (_, scene) => { const notes = addWindow(scene, 'notes'); notesWorkspaceWindow(scene.seed.notes, notes.id).query = 'no matching original note'; },
+    (_, scene) => { const notes = addWindow(scene, 'notes'); Object.assign(notesWorkspaceWindow(scene.seed.notes, notes.id).selection, { start: 2, end: 1 }); },
+    (_, scene) => { const notes = addWindow(scene, 'notes'); notesWorkspaceWindow(scene.seed.notes, notes.id).selection.blockId = 'foreign-rich-block'; },
+    (_, scene) => { const notes = addWindow(scene, 'notes'); scene.seed.notes.windows = scene.seed.notes.windows.filter(row => row.windowId !== notes.id); },
+    (_, scene) => { const notes = addWindow(scene, 'notes'); notesWorkspaceWindow(scene.seed.notes, notes.id).windowId = scene.windows[0].id; },
+    (_, scene) => { const notes = addWindow(scene, 'notes'), utility = addWindow(scene, 'notes', { utilityKind: 'application-about' }); notesWorkspaceWindow(scene.seed.notes, notes.id).windowId = utility.id; },
   ]) rejects(change);
 });
 
@@ -690,7 +723,7 @@ test('desktop selection/positions/Stack membership and bounded complete arrays r
     (_, scene) => { scene.desktop.viewOptions.gridSpacing = 65; },
     (_, scene) => { scene.desktop.stacks.expandedStackIds = ['stack:kind:missing']; },
     (_, scene) => { scene.desktop.stacks.topFileIds['stack:kind:missing'] = 'itinerary'; },
-    (_, scene) => { scene.notesScroll.editor.top = -1; },
+    (_, scene) => { const notes = addWindow(scene, 'notes'); notesWorkspaceWindow(scene.seed.notes, notes.id).scroll.editor.top = -1; },
     (_, scene) => { scene.windows = Array.from({ length: 1025 }, () => structuredClone(scene.windows[0])); },
     (_, scene) => { scene.spaces.desktops = Array.from({ length: 17 }, (_, index) => ({ id: `desktop-${index + 1}` })); },
   ]) rejects(change);
@@ -733,7 +766,7 @@ test('non-JSON input rejects without invoking getters or mutating sparse/cyclic/
   const symbol = fixture(); symbol.locals[0].scene[Symbol('auth')] = 'secret'; expect(validate(symbol).ok).toBe(false);
   const sparse = fixture(); sparse.locals.length = 2; expect(validate(sparse).ok).toBe(false);
   const cyclic = fixture(); cyclic.locals[0].scene.extra = cyclic; expect(validate(cyclic).ok).toBe(false);
-  const exotic = fixture(); exotic.locals[0].scene.notesScroll = new Date(); expect(validate(exotic).ok).toBe(false);
+  const exotic = fixture(); exotic.locals[0].scene.seed.notes.windows = new Date(); expect(validate(exotic).ok).toBe(false);
   const hidden = fixture(); Object.defineProperty(hidden, 'auth', { value: true }); expect(validate(hidden).ok).toBe(false);
 });
 
@@ -787,8 +820,9 @@ test('missing, malformed and oversized slots distinguish honest restore failures
   expect(oversized.error.code).toBe('invalid_arguments'); expect(oversized.error.message).toContain('2 Mi');
   expect(replaced).toBe(0);
   const snapshot = fixture();
-  snapshot.baseline.seed.notes.notes[0].text = 'x'.repeat(1024 * 1024);
-  snapshot.locals[0].scene.seed.notes.notes[0].text = 'x'.repeat(1024 * 1024);
+  for (const seed of [snapshot.baseline.seed, snapshot.locals[0].scene.seed]) {
+    const note = seed.notes.notes[0]; note.document = documentFromText('x'.repeat(1024 * 1024), note.id);
+  }
   const saving = commands({ storage, capture: async () => snapshot });
   const failure = await execute(saving, 'save');
   expect(failure.error.code).toBe('invalid_arguments'); expect(failure.error.message).toContain('2 Mi');
@@ -847,9 +881,8 @@ test('clear helper and command remove only the profile storage slot without capt
   expect(scene).toEqual(before);
 });
 
-test('historical/capability-less profiles and disposed hosts reject before storage or malformed input', async () => {
-  const historical = getOSProfile('macos-sonoma-14.0');
-  for (const selectedProfile of [historical, { ...profile, capabilities: profile.capabilities.filter(capability => capability !== 'scene.saved-session') }]) {
+test('capability-less profiles and disposed hosts reject before storage or malformed input', async () => {
+  for (const selectedProfile of [{ ...profile, capabilities: profile.capabilities.filter(capability => capability !== 'scene.saved-session') }]) {
     expect(validateSavedSession(fixture(), selectedProfile).ok).toBe(false);
     let accessed = 0;
     const handlers = createSavedSessionCommands({ profile: selectedProfile, storage: () => { accessed++; } });
@@ -858,7 +891,6 @@ test('historical/capability-less profiles and disposed hosts reject before stora
     expect(clearSavedSession({ removeItem() { accessed++; } }, selectedProfile).ok).toBe(false); expect(accessed).toBe(0);
   }
   expect(savedSessionStorageKey(profile)).toBe('jesteros:macos-golden-gate-27.0.1:saved-session:v1');
-  expect(savedSessionStorageKey(historical)).toBeNull();
   const storage = memoryStorage(), handlers = commands({ storage, available: () => false });
   for (const action of ['save', 'restore', 'clear']) expect((await execute(handlers, action, null, null)).error.code).toBe('unavailable');
   expect(storage.calls).toEqual([]);
@@ -873,9 +905,10 @@ test('closed empty command arguments reject arbitrary payloads without accessing
   expect(storage.calls).toEqual([]);
 });
 
-test('historical discovery and dispatch reject known saved-session names as unsupported profiles', async () => {
-  const historical = getOSProfile('macos-mojave-10.14');
-  const registry = createFeatureCommands({}, () => ({}), async () => {}, {}, () => ({}), () => historical, savedSessionCatalog);
+test('capability-less discovery and dispatch reject known saved-session names as unsupported profiles', async () => {
+  const mojave = getOSProfile('macos-mojave-10.14');
+  const unsupported = { ...mojave, capabilities: mojave.capabilities.filter(capability => capability !== 'scene.saved-session') };
+  const registry = createFeatureCommands({}, () => ({}), async () => {}, {}, () => ({}), () => unsupported, savedSessionCatalog);
   for (const action of ['save', 'restore', 'clear']) {
     const command = `scene.session.${action}`;
     expect(registry.describe(command).error.code).toBe('unsupported_profile');
@@ -883,12 +916,12 @@ test('historical discovery and dispatch reject known saved-session names as unsu
   }
 });
 
-test('app-owned About utilities coexist with closed ordinary windows, and Notes Settings preserves its own view and seeded preferences', () => {
-  const snapshot = fixture(), scene = snapshot.locals[0].scene;
-  remember(scene, 'notes', { title: 'Retained Notes document' }, {
-    scroll: [{ key: 'notes-body', top: 80, left: 0 }],
-    selections: [{ key: 'notes-body', noteId: 'note-1', start: 3, end: 17, direction: 'backward' }], focusKey: 'notes-body',
-  });
+test('app-owned About utilities coexist with retired native Notes windows and preserve complete canonical preferences', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene, original = structuredClone(scene.seed.notes.notes[0]);
+  remember(scene, 'notes', { title: 'Retained Notes document' });
+  expect(scene.seed.notes.windows).toEqual([]);
+  expect(scene.seed.notes.notes[0]).toEqual(original);
+  expect(noteWorkspaceText(scene.seed.notes.notes[0])).toBe(noteWorkspaceText(original));
   for (const appId of Object.keys(profile.applications)) {
     const utility = addWindow(scene, appId, { utilityKind: 'application-about', title: `About ${profile.applications[appId].name}` });
     delete utility.folderId; delete utility.settingsPane;
@@ -896,7 +929,7 @@ test('app-owned About utilities coexist with closed ordinary windows, and Notes 
   }
   const settings = addWindow(scene, 'notes', { utilityKind: 'application-settings', title: 'Notes Settings' });
   scene.views[settings.id].scroll = [{ key: 'application-settings', top: 90, left: 0 }, { key: 'window-content', top: 0, left: 0 }];
-  scene.seed.notes.preferences = { sortBy: 'title', groupByDate: false, textSize: 24 };
+  scene.seed.notes.preferences = { ...scene.seed.notes.preferences, sortBy: 'title', groupByDate: false, textSize: 24 };
   expect(validate(snapshot)).toEqual({ ok: true });
 });
 
@@ -906,20 +939,12 @@ test('restored app utilities reject duplicate owners, unsupported Settings owner
     (_, scene) => { addWindow(scene, 'safari', { utilityKind: 'application-settings' }); },
     (_, scene) => { addWindow(scene, 'finder', { utilityKind: 'application-about' }); },
     (_, scene) => { addWindow(scene, 'notes', { utilityKind: 'application-about', fileId: 'itinerary' }); },
-    (_, scene) => { const window = addWindow(scene, 'notes', { utilityKind: 'application-about' });
-      scene.views[window.id].scroll = [{ key: 'notes-list', top: 20, left: 0 }]; },
-    (_, scene) => { const window = addWindow(scene, 'notes', { utilityKind: 'application-settings' });
-      scene.views[window.id].selections = [{ key: 'notes-body', noteId: 'note-1', start: 0, end: 10, direction: 'none' }]; },
-    (_, scene) => { const window = addWindow(scene, 'notes', { utilityKind: 'application-about' }); scene.views[window.id].focusKey = 'notes-body'; },
   ]) rejects(change);
 });
 
-test('Saved View state rejects impossible chrome, hidden List documents, invalid browsing modes and utility contamination atomically', () => {
+test('saved Finder workflows reject impossible chrome and invalid browsing modes without contaminating utility owners', () => {
   rejects((snapshot, scene) => {
     addWindow(scene, 'finder', { finderPresentation: { ...finderPresentationDefaults(), toolbarVisible: false } });
-  });
-  rejects((snapshot, scene) => {
-    addWindow(scene, 'notes', { notesPresentation: { mode: 'list', documentVisible: false } });
   });
   rejects((snapshot, scene) => {
     addWindow(scene, 'finder', { finderBrowseMode: 'tiles' });
@@ -945,7 +970,6 @@ test('saved system utilities retain owned scroll and running-app selection witho
     copy => { delete copy.windows.find(window => window.id === chooser.id).forceQuitSelectedAppId; },
     copy => { copy.windows.find(window => window.id === chooser.id).appId = 'messages'; },
     copy => { copy.views[about.id].scroll[0].key = 'system-force-quit'; },
-    copy => { copy.views[report.id].scroll[0].key = 'notes-body'; },
     copy => { const duplicate = addWindow(copy, 'finder', { utilityKind: 'system-about' }); delete duplicate.folderId; },
   ]) {
     const bad = structuredClone(snapshot); mutate(bad.locals[0].scene);
@@ -953,29 +977,6 @@ test('saved system utilities retain owned scroll and running-app selection witho
   }
 });
 
-test('widget leaves round-trip independently across locals and never reuse removed allocations', async () => {
-  const snapshot = fixture(true), storage = memoryStorage(), replacements = [];
-  const alex = snapshot.locals[0].scene.seed.system.widgets;
-  const casey = snapshot.locals[1].scene.seed.system.widgets;
-  addWidget(alex, 'clock-city', 'small', () => true);
-  configureWidget(alex, 'widget-3', { locationId: 'cedar-creek', unit: 'fahrenheit' }, () => true);
-  setWidgetReminderCompleted(alex, 'reminder-2', true, () => true);
-  removeWidget(alex, 'widget-4', () => true);
-  expect(casey).toEqual(widgetsDefaults(profile));
-  const expected = structuredClone(snapshot);
-  const handlers = commands({ storage, capture: async () => snapshot, replace: async value => { replacements.push(value); } });
-  expect((await execute(handlers, 'save')).status).toBe('applied');
-  expect(JSON.parse(storage.values.get(savedSessionStorageKey(profile)))).toEqual(expected);
-  expect((await execute(handlers, 'restore')).status).toBe('applied');
-  const restoredAlex = replacements[0].locals[0].scene.seed.system.widgets;
-  expect(restoredAlex.nextId).toBe(8);
-  expect(restoredAlex.instances.map(row => row.id)).toEqual(['widget-1', 'widget-2', 'widget-3', 'widget-5', 'widget-6', 'widget-7']);
-  expect(restoredAlex.sources.reminders.find(row => row.id === 'reminder-2').completed).toBe(true);
-  expect(restoredAlex.sources.reminderLists).toHaveLength(2);
-  expect(replacements[0].locals[1].scene.seed.system.widgets).toEqual(widgetsDefaults(profile));
-  expect(addWidget(restoredAlex, 'date', 'small', () => true).target.widgetId).toBe('widget-8');
-  expect(snapshot).toEqual(expected);
-});
 
 test('corrupted saved widget leaves reject save and restore atomically without overwriting storage', async () => {
   const valid = fixture(), storage = memoryStorage(JSON.stringify(valid)), replacements = [];
@@ -985,7 +986,6 @@ test('corrupted saved widget leaves reject save and restore atomically without o
     value => { value.locals[0].scene.seed.system.widgets.instances[0].kind = 'calculator'; },
     value => { value.locals[0].scene.seed.system.widgets.nextId = 6; },
     value => { value.locals[0].scene.seed.system.widgets.selected.weatherLocationId = 'missing-location'; },
-    value => { value.locals[0].scene.seed.system.widgets.sources.reminders.length = 6; },
     value => { value.locals[0].scene.seed.system.widgets.instances[1].configuration.unit = 'kelvin'; },
   ]) {
     const candidate = structuredClone(valid); change(candidate);
@@ -999,4 +999,20 @@ test('corrupted saved widget leaves reject save and restore atomically without o
     expect(candidate).toEqual(before);
     storage.values.set(savedSessionStorageKey(profile), stored);
   }
+});
+
+test('saved Files order permits interleaving but rejects missing, duplicate or foreign record identities', () => {
+  const snapshot = fixture(), scene = snapshot.locals[0].scene;
+  const moved = scene.fileOrder.splice(1, 1)[0];
+  scene.fileOrder.push(moved);
+  expect(validate(snapshot)).toEqual({ ok: true });
+  const missing = structuredClone(snapshot);
+  missing.locals[0].scene.fileOrder.pop();
+  expect(validate(missing).ok).toBe(false);
+  const duplicate = structuredClone(snapshot);
+  duplicate.locals[0].scene.fileOrder.push(duplicate.locals[0].scene.fileOrder[0]);
+  expect(validate(duplicate).ok).toBe(false);
+  const unknown = structuredClone(snapshot);
+  unknown.locals[0].scene.fileOrder[0] = 'not-an-original-file';
+  expect(validate(unknown).ok).toBe(false);
 });

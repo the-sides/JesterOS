@@ -35,6 +35,12 @@
   }
   let dockDragStart = null;
   function dragShortcut(event, file) {
+    if (!['folder', 'application'].includes(file.kind)) {
+      if (!event.dataTransfer || unavailable || isTrashed(store, file) || !contents.includes(file)) { event.preventDefault(); return; }
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.setData('application/x-jesteros-file-id', file.id);
+      return;
+    }
     const application = file.kind === 'application', source = application ? 'bundle' : 'folder';
     const itemId = application ? `app:${file.bundleAppId}` : dockFolderItemId(file.id);
     event.dataTransfer.effectAllowed = 'copy';
@@ -43,6 +49,7 @@
       payload: { x: event.clientX, y: event.clientY, source } });
   }
   async function endShortcutDrag(event, file) {
+    if (!['folder', 'application'].includes(file.kind)) return;
     if (event.dataTransfer.dropEffect !== 'none') return;
     await dockDragStart;
     const application = file.kind === 'application', source = application ? 'bundle' : 'folder';
@@ -70,7 +77,7 @@
         {#if fileWorkflows}
           <button class={file.kind === 'folder' ? 'folder-directory' : 'folder-file'} type="button"
             data-finder-file-id={file.id} aria-label={file.name}
-            draggable={!!dockState && folderId !== 'trash' && (file.kind === 'folder' || file.kind === 'application') && file.id !== 'disk'}
+            draggable={folderId !== 'trash' && file.id !== 'disk' && (!['folder', 'application'].includes(file.kind) || !!dockState)}
             ondragstart={event => dragShortcut(event, file)} ondragend={event => endShortcutDrag(event, file)}
             onclick={event => selectFile(file, event)} ondblclick={() => openFile(file)}
             onkeydown={event => { if (event.key === 'Enter') { event.preventDefault(); openFile(file); } }}>
@@ -92,7 +99,14 @@
               <Icon name={file.icon} assets={profile.assets}/><span class="folder-label">{file.name}</span>
             </button>
           {:else}
-            <div class="folder-file"><Icon name={file.icon ?? 'pdf'} assets={profile.assets}/><span class="folder-label">{file.name}</span></div>
+            <button class="folder-file" type="button" aria-label={`Open ${file.name}`} data-finder-file-id={file.id}
+              draggable={folderId !== 'trash'} disabled={folderId === 'trash'}
+              ondragstart={event => dragShortcut(event, file)}
+              onclick={event => selectFile(file, event)}
+              ondblclick={() => execute({ command: 'desktop.open', target: { fileId: file.id }, payload: {} })}
+              onkeydown={event => { if (event.key === 'Enter') { event.preventDefault(); execute({ command: 'desktop.open', target: { fileId: file.id }, payload: {} }); } }}>
+              <Icon name={file.icon ?? 'pdf'} assets={profile.assets}/><span class="folder-label">{file.name}</span>
+            </button>
           {/if}
         {/if}
         {/if}

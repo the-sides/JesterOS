@@ -1,0 +1,7 @@
+import {systemInformationSession,systemInformationAvailability} from './system-information-state.js';
+export function systemInformationMenus(profile,state,windowId){const s=systemInformationSession(state,windowId),windows=systemInformationAvailability(profile).appId==='msinfo32',item=(id,label,command,payload={},enabled=true,checked=false)=>({id,label,enabled,checked,request:{command:'systeminformation.'+command,target:{windowId},payload}});return [
+ {id:'file',label:'File',items:[item('open','Open…','open'),item('save',windows?'Export Text Report…':s?.fileId?'Save':'Save…',!windows&&s?.fileId?'save':'panel',!windows&&s?.fileId?{}:{panel:'save'}),...(!windows?[item('save-as','Save As…','panel',{panel:'save'})]:[]),item('print','Print…','print'),item('live',windows?'Refresh':'New System Report','live'),item('close','Close','close')]},
+ {id:'view',label:'View',items:[item('more','Show More Information','detail',{detail:'more'},true,s?.detail==='more'),item('less','Show Less Information','detail',{detail:'less'},true,s?.detail==='less'),item('find','Find…','focus',{controlId:'search'})]},
+ {id:'help',label:'Help',items:[item('help','System Information Help','panel',{panel:'help'})]}
+ ];}
+export function systemInformationMenuItems(state,windowId){return systemInformationMenus({id:state.profileId},state,windowId).map(group=>({...group,items:group.items.map(({request,...item})=>({...item,...request}))}));}

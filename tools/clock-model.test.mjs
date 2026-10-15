@@ -6,6 +6,7 @@ import { notesPreferencesDefaults } from '../frontend/src/notes-preferences.js';
 import { createNotesCommands } from '../frontend/src/notes-commands.js';
 import { communicationDefaults, draftPreview, createCommunicationDraft, changeCommunicationDraft, submitCommunicationDraft } from '../frontend/src/communication-state.js';
 import { createDefaultSceneSeed, validateSceneSeed } from '../frontend/src/scene-seed.js';
+import { createDefaultApplicationFiles } from '../frontend/src/default-application-files.js';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 
 const instant = text => Date.parse(text), MAX_TIME = 8_640_000_000_000_000 - 1;
@@ -129,6 +130,10 @@ test('record labels and Notes groups compare selected-zone civil days across DST
   expect(clockRecordLabel(previous, now, zone, true)).toBe('Yesterday');
   expect(clockRecordLabel(previous, now, zone, true, true)).toBe('Yesterday 00:30');
   expect(clockRecordLabel(now, now, zone, false, true)).toBe('Today 12:30 AM');
+  const authored = now + 18_000;
+  expect(clockRecordLabel(authored, now, zone, false, true, true)).toBe('Today 12:30:18 AM');
+  expect(clockRecordLabel(authored, now, zone, true, true, true)).toBe('Today 00:30:18');
+  expect(clockRecordLabel(authored, now, 'UTC', true, true, true)).toBe('Today 04:30:18');
   const model = { ...createNotesState(previous - 42 * 60_000), preferences: notesPreferencesDefaults() };
   model.notes.forEach(note => { note.pinned = false; note.deleted = false; note.createdAt = previous; note.updatedAt = previous; });
   const before = clone(model), context = { sceneTime: now, timeZone: zone, use24Hour: true };
@@ -184,7 +189,7 @@ test('communications previews, updates and submission use the same supplied cloc
 });
 
 test('required closed Clock roots and numeric Messages records remain isolated through account seed round trips', () => {
-  const alex = createDefaultSceneSeed(profile), casey = createDefaultSceneSeed(profile), before = clone(casey);
+  const alex = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }), casey = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles }), before = clone(casey);
   configureClockMenu(alex.system.clock, { style: 'analog', showDate: 'always' });
   setClockZone(alex.system.clock, 'America/New_York'); setClockFormat(alex.system.clock, true);
   alex.files.sceneTime += 86_400_000;
@@ -196,9 +201,7 @@ test('required closed Clock roots and numeric Messages records remain isolated t
   for (const mutate of [
     value => { delete value.system.clock; }, value => { delete value.system.clock.use24Hour; },
     value => { value.system.clock.currentInstant = value.files.sceneTime; },
-    value => { value.messages.conversations[0].time = '9:32 AM'; },
     value => { value.messages.conversations[0].timestamp = -1; },
-    value => { value.messages.thread.timestampLabel = 'Today'; },
   ]) {
     const candidate = clone(saved); mutate(candidate);
     const invalid = clone(candidate);

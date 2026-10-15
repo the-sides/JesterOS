@@ -2,6 +2,8 @@ import { text, identity, choice, object, empty } from './command-schema.js';
 import { applied, invalid, stale, unavailable, uiState, liveFile, createFile, validName, uniqueName, drawingSvg } from './windows11-app-helpers.js';
 
 export const createState = () => ({ ui: uiState(), phase: 'empty', source: null, sourceWindowId: null, selection: null, selectionAnchor: null, pointerId: null, annotations: [], activeStrokeId: null, nextStrokeId: 1, color: '#e53935', saveName: 'Snip.svg', savedFileId: null });
+// Same authored-SVG producer contract as Paint: canonical Files association.
+const svgAssociation = { appId: 'photos', icon: 'image', mime: 'image/svg+xml', encoding: 'utf8' };
 export const menus = ['snip'];
 const pointerId = { type: 'integer', minimum: 0 };
 const x = { type: 'number', minimum: 0, maximum: 640 };
@@ -84,7 +86,7 @@ export function createCommands(apps, context) {
     'win11.snipping.dialog.open': (_, p) => { if (s.ui.dialog || s.pointerId !== null) return invalid('Finish the active gesture or dialog first.'); if (p.dialog === 'save' && !annotating()) return invalid('Capture a Paint region first.'); s.ui.dialog = p.dialog; s.ui.menu = null; return applied(); },
     'win11.snipping.dialog.close': () => { if (!s.ui.dialog) return stale(); s.ui.dialog = null; return applied(); },
     'win11.snipping.save.name': (_, p) => { if (s.ui.dialog !== 'save') return stale('Save dialog is not open.'); s.saveName = p.value; return applied(); },
-    'win11.snipping.save': () => { if (s.ui.dialog !== 'save' || s.phase !== 'captured') return stale('No captured image is awaiting save.'); if (!validName(s.saveName) || !/\.svg$/i.test(s.saveName)) return invalid('Enter a valid image name ending in .svg.'); if (liveFile(apps,'pictures')?.kind !== 'folder') return stale('Pictures is unavailable.'); if (!uniqueName(apps,'pictures',s.saveName)) return invalid('An image with that name already exists.'); const file = createFile(apps,'pictures',s.saveName,'image',croppedSvg(s)); s.savedFileId = file.id; s.ui.dialog = null; return applied({ fileId: file.id }); },
+    'win11.snipping.save': () => { if (s.ui.dialog !== 'save' || s.phase !== 'captured') return stale('No captured image is awaiting save.'); if (!validName(s.saveName) || !/\.svg$/i.test(s.saveName)) return invalid('Enter a valid image name ending in .svg.'); if (liveFile(apps,'pictures')?.kind !== 'folder') return stale('Pictures is unavailable.'); if (!uniqueName(apps,'pictures',s.saveName)) return invalid('An image with that name already exists.'); const file = createFile(apps,'pictures',s.saveName,'image',croppedSvg(s),svgAssociation); s.savedFileId = file.id; s.ui.dialog = null; return applied({ fileId: file.id }); },
   };
 }
 export const readTargets = apps => ({ scope: 'Mounted Paint canvas only; no desktop or host screen capture', phase: apps.snipping.phase, sourceWindowId: apps.snipping.sourceWindowId, source: apps.snipping.source ? { windowId: apps.snipping.source.windowId, width: apps.snipping.source.width, height: apps.snipping.source.height, label: apps.snipping.source.label } : null, selection: apps.snipping.selection ? { ...apps.snipping.selection } : null, pointerId: apps.snipping.pointerId, activeStrokeId: apps.snipping.activeStrokeId, annotations: apps.snipping.annotations.map(item => ({ id: item.id })), savedFileId: apps.snipping.savedFileId, ui: { menu: apps.snipping.ui.menu, dialog: apps.snipping.ui.dialog } });

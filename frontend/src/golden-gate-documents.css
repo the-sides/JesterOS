@@ -115,7 +115,7 @@
 .golden-gate-notes-context [role='separator'] { height: 1px; margin: 4px 8px; background: var(--appearance-soft-border, rgb(0 0 0 / 10%)); }
 
 /* Current Messages structure: pinned contacts, floating recipient, plus composer. */
-.golden-gate-messages { display: grid; grid-template-columns: clamp(190px, 30%, 254px) minmax(0, 1fr); }
+.golden-gate-messages { position: relative; display: grid; grid-template-columns: clamp(190px, 30%, 254px) minmax(0, 1fr); }
 .golden-gate-messages-sidebar { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: color-mix(in srgb, var(--appearance-panel, #eeeeef) 78%, transparent); }
 .golden-gate-messages-sidebar-toolbar { height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 16px; gap: 10px; }
 .golden-gate-messages-sidebar-actions { display: flex; gap: 6px; }
@@ -124,12 +124,12 @@
 .golden-gate-messages-pinned { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; list-style: none; margin: 0; padding: 2px 8px 14px; }
 .golden-gate-messages-pinned li { min-width: 0; border-radius: 13px; }
 .golden-gate-messages-pinned li.selected { background: var(--appearance-selection, #148bfa); color: var(--appearance-selection-ink, #fff); }
-.golden-gate-messages-pinned button { display: flex; align-items: center; flex-direction: column; gap: 6px; width: 100%; padding: 7px 2px; border: 0; border-radius: 13px; background: none; opacity: 1; }
-.golden-gate-messages-pinned button > span:last-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.golden-gate-messages-pinned button { position: relative; display: flex; align-items: center; flex-direction: column; gap: 6px; width: 100%; padding: 7px 2px; border: 0; border-radius: 13px; background: none; opacity: 1; }
+.golden-gate-messages-pinned button > span:not(.golden-gate-messages-avatar):not(.golden-gate-messages-unread) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .golden-gate-messages-avatar { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; color: #fff; font-size: 12px; font-weight: 600; background: radial-gradient(circle at 35% 18%, rgb(255 255 255 / 30%), transparent 72%), var(--avatar-tint, #789d82); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 5%); }
 .golden-gate-messages-pinned .golden-gate-messages-avatar { width: 53px; height: 53px; font-size: 17px; }
 .golden-gate-messages-conversations { list-style: none; margin: 0; padding: 0 6px 12px; }
-.golden-gate-messages-conversations button { width: 100%; display: flex; gap: 9px; padding: 12px 8px; border: 0; border-radius: 11px; background: none; text-align: left; opacity: 1; }
+.golden-gate-messages-conversations button { position: relative; width: 100%; display: flex; gap: 9px; padding: 12px 8px; border: 0; border-radius: 11px; background: none; text-align: left; opacity: 1; }
 .golden-gate-messages-conversation-copy { display: block; flex: 1; min-width: 0; }
 .golden-gate-messages-conversation-heading { display: flex; align-items: baseline; gap: 4px; margin-bottom: 3px; }
 .golden-gate-messages-conversation-heading strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 650; }
@@ -137,6 +137,7 @@
 .golden-gate-messages-conversation-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 15px; font-size: 11px; color: var(--appearance-muted, #77777d); }
 .golden-gate-messages-thread { position: relative; display: grid; grid-template-rows: 67px minmax(0, 1fr) 42px 23px; min-width: 0; min-height: 0; background: var(--appearance-surface, #fff); }
 .golden-gate-messages-recipient-toolbar { position: relative; display: flex; justify-content: center; align-items: center; padding: 7px 45px; min-width: 0; background: color-mix(in srgb, var(--appearance-surface, #fff) 93%, transparent); }
+.golden-gate-messages-recipient-toolbar { z-index: 3; }
 .golden-gate-messages-recipient { display: flex; align-items: center; flex-direction: column; position: relative; min-width: 85px; max-width: 100%; gap: 3px; padding: 4px 14px; border-radius: 18px; color: inherit; opacity: 1; }
 .golden-gate-messages-recipient .golden-gate-messages-avatar { width: 29px; height: 29px; font-size: 10px; }
 .golden-gate-messages-recipient > span:not(.golden-gate-messages-avatar) { font-size: 10px; line-height: 12px; font-weight: 650; }
@@ -145,7 +146,7 @@
 .golden-gate-messages-history { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; list-style: none; min-height: 0; overflow: auto; margin: 0; padding: 6px 17px 14px; }
 .golden-gate-messages-timestamp { align-self: center; font-size: 10px; color: var(--appearance-muted, #919196); margin-bottom: 9px; }
 .golden-gate-messages-bubble { display: flex; align-items: flex-start; flex-direction: column; max-width: 82%; }
-.golden-gate-messages-bubble p { margin: 0; padding: 7px 11px; border-radius: 16px; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+.golden-gate-messages-bubble p { margin: 0; padding: 7px 11px; border-radius: 16px; font-size: 13px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .golden-gate-messages-bubble.incoming p { background: var(--appearance-incoming-bubble, #e9e9eb); border-bottom-left-radius: 5px; }
 .golden-gate-messages-bubble.outgoing { align-self: flex-end; align-items: flex-end; }
 .golden-gate-messages-bubble.outgoing p { background: #198ffa; color: #fff; border-bottom-right-radius: 5px; }
@@ -155,10 +156,35 @@
 .golden-gate-messages-delivered { display: block; margin-top: 4px; padding-right: 3px; font-size: 9px; color: var(--appearance-muted, #89898e); }
 .golden-gate-messages-composer { display: flex; gap: 6px; align-items: center; min-width: 0; padding: 3px 10px; background: color-mix(in srgb, var(--appearance-surface, #fff) 93%, transparent); }
 .golden-gate-messages-input { display: flex; min-width: 0; flex: 1; align-items: center; height: 32px; padding: 0 3px 0 11px; border-radius: 20px; border: 1px solid var(--appearance-soft-border, #e5e5e8); background: var(--appearance-input, #fafafa); box-shadow: inset 0 1px 3px rgb(0 0 0 / 2%); }
-.golden-gate-messages-input input { width: 100%; min-width: 0; border: 0; background: none; outline: none; font-size: 12px; }
-.golden-gate-messages-input input::placeholder { color: var(--appearance-disabled, #aaaab0); }
+.golden-gate-messages-input textarea { width: 100%; min-width: 0; height: 24px; line-height: 24px; border: 0; padding: 0; color: var(--appearance-ink, #222); background: none; outline: none; font-size: 12px; }
+.golden-gate-messages-input textarea::placeholder { color: var(--appearance-disabled, #aaaab0); }
 .golden-gate-messages-input .golden-gate-document-tool { height: 27px; width: 27px; }
 .golden-gate-messages-sample-notice { margin: 0; padding: 1px 9px 6px; text-align: center; font-size: 9px; line-height: 13px; color: var(--appearance-muted, #8a8a90); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.golden-gate-messages-conversations li.selected button { background: var(--appearance-selection, #148bfa); color: var(--appearance-selection-ink, white); }
+.golden-gate-messages-conversations li.selected .golden-gate-messages-conversation-preview, .golden-gate-messages-conversations li.selected time { color: inherit; opacity: .75; }
+.golden-gate-messages.inactive .golden-gate-messages-pinned li.selected, .golden-gate-messages.inactive .golden-gate-messages-conversations li.selected button { background: var(--appearance-inactive-selection, #ccc); color: var(--appearance-inactive-ink, #333); }
+.golden-gate-messages-unread { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #148bfa; left: 0; top: calc(50% - 3px); }
+.golden-gate-messages-pinned .golden-gate-messages-unread { left: calc(50% + 21px); top: 9px; }
+.golden-gate-messages li.selected .golden-gate-messages-unread { background: currentColor; }
+.golden-gate-messages-empty { align-self: center; margin: auto; padding: 20px 12px; text-align: center; color: var(--appearance-muted, #888); font-size: 12px; }
+.golden-gate-messages-artwork.outgoing, .golden-gate-messages-emoji.outgoing { align-self: flex-end; }
+.golden-gate-messages-artwork > img { display: block; max-width: 100%; height: auto; border-radius: 18px; }
+.golden-gate-messages-emoji { display: flex; align-items: center; gap: 4px; max-width: 100%; }
+.golden-gate-messages-emoji img { max-width: 30%; height: 54px; object-fit: contain; }
+.golden-gate-messages-search-heading { margin: 7px 12px; font-size: 12px; font-weight: 600; }
+.golden-gate-messages-search-results { list-style: none; margin: 0 0 12px; padding: 0 10px; }
+.golden-gate-messages-search-results button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; border: 0; background: none; padding: 8px 3px; text-align: left; }
+.golden-gate-messages-search-results strong { font-size: 11px; font-weight: 500; }
+.golden-gate-messages-search-results button > span:not(.golden-gate-messages-hit-text) { font-size: 10px; color: var(--appearance-muted, #888); }
+.golden-gate-messages-hit-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; margin-top: 5px; padding: 7px 10px; border-radius: 13px; background: var(--appearance-incoming-bubble, #e9e9eb); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+.golden-gate-messages-context { z-index: 20; padding: 4px; border: 1px solid var(--appearance-border, #bbb); border-radius: 8px; background: var(--appearance-menu, #f6f6f6); box-shadow: 0 4px 14px #0003; }
+.golden-gate-messages-context { position: absolute; width: 174px; }
+.golden-gate-messages-context button { display: block; width: 100%; border: 0; border-radius: 4px; padding: 5px 9px; background: none; text-align: left; font-size: 12px; }
+.golden-gate-messages-context button:hover, .golden-gate-messages-context button:focus-visible { background: var(--appearance-selection, #148bfa); color: var(--appearance-selection-ink, white); }
+.golden-gate-messages-filter-label { display: flex; gap: 6px; align-items: center; padding: 0 12px 8px; font-size: 12px; }
+.golden-gate-messages-filter-label button { border: 0; background: none; padding: 0 6px; font-size: 23px; }
+.golden-gate-messages-history [data-messages-control]:focus { outline: 2px solid var(--appearance-focus, #148bfa); outline-offset: 2px; }
+.golden-gate-messages-search:focus-within { outline: 2px solid var(--appearance-focus, #148bfa); outline-offset: -2px; border-radius: 6px; }
 
 @container (max-width: 850px) {
   .golden-gate-notes-toolbar,
@@ -178,4 +204,30 @@
   .golden-gate-notes,
   .golden-gate-messages { background: var(--appearance-panel, #f2f2f3); backdrop-filter: none; }
   .golden-gate-notes-context { background: var(--appearance-surface, #fafafa); backdrop-filter: none; }
+}
+
+/* Native title hover disclosure; focus-visible supplies the keyboard equivalent. */
+.golden-gate-messages-history [data-message-timestamp] { position: relative; }
+.golden-gate-messages-history [data-message-timestamp]:focus-visible::before {
+  content: attr(data-message-timestamp);
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: 280px;
+  padding: 3px 6px;
+  border: 1px solid var(--appearance-divider, #b7b7b7);
+  border-radius: 3px;
+  background: var(--appearance-panel, #f5f5f5);
+  color: var(--appearance-ink, #222);
+  box-shadow: 0 2px 4px #0003;
+  font: 11px/15px var(--golden-gate-font);
+  white-space: normal;
+  pointer-events: none;
+}
+.golden-gate-messages-history .outgoing [data-message-timestamp]:focus-visible::before,
+.golden-gate-messages-history [data-message-timestamp].outgoing:focus-visible::before {
+  left: auto;
+  right: 0;
 }

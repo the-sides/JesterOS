@@ -8,5 +8,6 @@ export default defineConfig({
     strictPort: true,
     proxy: { '/api': 'http://127.0.0.1:3000' },
   },
-  build: { outDir: 'dist' },
+  // Live local scenes may not have requested their versioned lazy modules yet.
+  build: { outDir: 'dist', emptyOutDir: false },
 });

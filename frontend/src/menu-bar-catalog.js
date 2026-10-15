@@ -1,7 +1,7 @@
 import { defineCommand, NONE, identity, flag, offset, choice, object, empty, match } from './command-schema.js';
 import { APP_COMMAND_MENU_IDS } from './app-command-menus.js';
 
-const profiles = ['macos-golden-gate-27.0.1'];
+const profiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1'];
 const menuId = choice('apple', 'application', 'window', 'users', 'wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input', ...APP_COMMAND_MENU_IDS);
 const commandMenuId = choice(...APP_COMMAND_MENU_IDS);
 const statusMenuId = choice('wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input');
@@ -12,13 +12,16 @@ const target = object({ menuId });
 const selection = object({ menuId: nullable(menuId), itemId: nullable(identity), level: nullable(level) });
 const mounted = 'Matching current provider/owner and available native presentation: live invoker for opening/idempotent close, owned popup for selection/execution/scroll. Hidden, inert, stale, disabled or wrong-provider targets reject before mutation.';
 const define = (name, requestTarget, payload, requires, effects, result) => {
-  const entry = defineCommand(profiles, name, 'shell.menu-bar', requestTarget, payload, requires, effects,
+  const help = name.startsWith('menu.help.');
+  const shared = help || name.startsWith('app.commandMenu.') || ['menu.navigate', 'menu.submenu.open', 'menu.submenu.close', 'menu.scroll'].includes(name);
+  const entry = defineCommand(shared ? profiles : ['macos-golden-gate-27.0.1'], name,
+    help ? 'shell.help-workflows' : shared ? 'shell.window-menu' : 'shell.menu-bar', requestTarget, payload, requires, effects,
     ['Only transient host-owned menuBar selection/path/actual scroll/Help query and location; no authentication, retained document, application or window changes except a selected existing canonical leaf action.'], NONE, result);
   entry[1].resultSchema.additionalProperties = false;
   return entry;
 };
 
-/** Golden Gate navigation and explicitly owned represented app command trees. */
+/** Shared native Mac navigation and explicitly owned represented app command trees. */
 const commandSelection = object({ menuId: commandMenuId, appId: identity, itemId: nullable(identity) });
 export const menuBarCatalog = Object.fromEntries([
   define('status.menu.open', object({ menuId: statusMenuId }), {
@@ -36,7 +39,7 @@ export const menuBarCatalog = Object.fromEntries([
   define('menu.navigate', target, object({ key: choice('ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter', 'Space', 'Escape', 'Tab') }),
     [mounted, 'Left/Right on a visible enabled closed invoker instead opens the adjacent available provider. All other keys require the matching open menu.'],
     ['Up/Down wrap enabled rendered rows; Home/End choose endpoints except on the selected Sound range, where Left/Right adjust one point and Home/End set0/100 through sound.volume.set; Enter/Space leaves this slider focused. Right/Enter/Space opens a selected child; Enter/Space executes a selected enabled leaf through its real canonical operation.',
-      'Left or Escape pops a child and focuses its parent row. Root Left/Right switches providers under one original-focus token. Root Escape and unmodified Tab dismiss to the invoker; Tab is consumed.',
+      'Left or Escape pops a child and focuses its parent row. Root Left/Right switches providers under one original-focus token. Root Escape dismisses Help to the captured original control and other menus to their invoker. Unmodified Tab dismisses to the invoker and is consumed.',
       'Leaf execution dismisses and restores original captured focus before dispatch, so lock/power capture the original editor. Failed native preparation/focus or dispatch restores the previous popup path, scroll and native focus. Empty enabled sets focus the actual panel, never a fake leaf.'], selection),
   define('menu.submenu.open', object({ menuId, itemId: identity }), object({ position: choice('first', 'last') }, []),
     [mounted, 'Exact enabled rendered parent with a real child array; at most eight open levels.'],
@@ -52,7 +55,7 @@ export const menuBarCatalog = Object.fromEntries([
     ...object({ position: choice('first', 'last'), itemId: identity }, []),
     not: match({ position: true, itemId: true }),
   }, [mounted, 'appId must be the actual active app that supplies this represented command heading; position and itemId are mutually exclusive.'],
-  ['Open the real app-owned File/Edit/Format/View/Go/Conversation/History/Bookmarks/Help provider at its native heading; select first/last/exact enabled root row, or null for an empty enabled set. Help without explicit position/itemId instead focuses its actual search input while retaining app-help as semantic selection.'],
+  ['Open the real app-owned File/Edit/Format/View/Go/Conversation/History/Bookmarks/Help provider at its native heading; select first/last/exact enabled root row, or null for an empty enabled set. Help without explicit position/itemId instead focuses its actual search input while retaining the current enabled underlying application Help row as semantic selection.'],
   commandSelection),
   define('app.commandMenu.close', commandOwner, object({ restoreFocus: flag }, []),
     [mounted, 'The requested app still owns this provider; a different open provider rejects.'],
@@ -65,7 +68,7 @@ export const menuBarCatalog = Object.fromEntries([
     ['Dismiss and restore original focus before invoking the selected current request. Re-read selected record, document/window availability and owner after settling; disabled/stale rows reject without dispatch. Canonical failure restores the popup/native focus. Keep the real action’s focus on applied.'], commandSelection),
   define('menu.help.search', object({ appId: identity }), object({ query: { type: 'string', maxLength: 256 } }),
     [mounted, 'Matching active-app Help popup with its actual search field.'],
-    ['Set the bounded literal query; derive current-app nested and disabled menu matches from the live canonical provider trees plus matching original offline articles. Preserve reader/document data and native input focus; clear old location.'],
+    ['Set the bounded literal query; derive current-app nested and disabled menu matches from live canonical provider trees. Include matching original offline articles only where this profile has an installed article catalog. Preserve reader/document data and native input focus; clear old location.'],
     object({ appId: identity, query: { type: 'string', maxLength: 256 },
       menuResultIds: { type: 'array', items: identity }, articleIds: { type: 'array', items: identity } })),
   define('menu.help.focus', object({ appId: identity }), object({ observe: flag }, []),

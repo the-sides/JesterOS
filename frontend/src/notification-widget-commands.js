@@ -3,7 +3,7 @@ import { defineCommand, object, empty, identity, flag, choice } from './command-
 import {
   widgetKinds, widgetCatalog, widgetCategories, widgetConfigurationSchema, validateWidgetsState,
   addWidget, removeWidget, resizeWidget, reorderWidget, configureWidget,
-  setWidgetReminderCompleted, selectWidgetData,
+  selectWidgetData,
 } from './notification-widget-model.js';
 
 const fields = (value, required, optional = []) => isRecord(value)
@@ -82,6 +82,7 @@ export function createNotificationWidgetCommands(ctx) {
   let ownerCenter = null, epoch = 0, revision = 0, sequence = 0, disposed = false, wasAvailable = false;
   const supported = () => ctx.profile.id === 'macos-golden-gate-27.0.1'
     && ctx.profile.capabilities?.includes('shell.notification-widgets') === true;
+  const projections = () => ({ ...ctx.getCalendarWidgetProjection(), ...ctx.getReminderWidgetProjection() });
   function alive() {
     try { return !disposed && supported() && ctx.alive() === true && ctx.getState() === state && ctx.getUi() === ui; }
     catch { return false; }
@@ -257,7 +258,7 @@ export function createNotificationWidgetCommands(ctx) {
       if (!paneTarget(target, ['editorId']) || !fields(payload, ['kind', 'size']) || !widgetKinds.includes(payload.kind)
         || !widgetCatalog.find(row => row.kind === payload.kind)?.sizes.includes(payload.size)) return fail('invalid_arguments');
       const { kind, size } = payload;
-      return changeEditor(target, `add:${kind}:${size}`, ({ guard }) => addWidget(state, kind, size, quota(guard)), true);
+      return changeEditor(target, `add:${kind}:${size}`, ({ guard }) => addWidget(state, kind, size, quota(guard), projections()), true);
     },
     'widgets.remove': (target, payload) => {
       if (!paneTarget(target, ['widgetId']) || !fields(payload, [])) return fail('invalid_arguments');
@@ -277,7 +278,7 @@ export function createNotificationWidgetCommands(ctx) {
     'widgets.configure': (target, payload) => {
       if (!paneTarget(target, ['widgetId']) || !fields(payload, ['configuration']) || !isRecord(payload.configuration)) return fail('invalid_arguments');
       const configuration = payload.configuration;
-      return mutateWidget(target, budget => configureWidget(state, target.widgetId, configuration, budget));
+      return mutateWidget(target, budget => configureWidget(state, target.widgetId, configuration, budget, projections()));
     },
     ...Object.fromEntries([['edit', 'editingWidgetId'], ['context', 'contextWidgetId']].flatMap(([name, field]) => [true, false].map(opening => [
       `widgets.${name}.${opening ? 'open' : 'close'}`, (target, payload) => {
@@ -289,29 +290,45 @@ export function createNotificationWidgetCommands(ctx) {
       if (!paneTarget(target, ['widgetId'], ['recordId']) || Object.hasOwn(target, 'recordId') && !id(target.recordId) || !fields(payload, []))
         return fail('invalid_arguments');
       const recordId = target.recordId ?? null;
-      return withWidget(target, `widget:${target.widgetId}:open${recordId ? `:${recordId}` : ''}`, async ({ pane, widget, guard, base }) => {
+      const originalWidget = state.instances.find(widget => widget.id === target.widgetId);
+      const getter = originalWidget?.kind === 'calendar' ? ctx.getCalendar
+        : originalWidget?.kind === 'reminders' ? ctx.getReminders : null;
+      if (['calendar', 'reminders'].includes(originalWidget?.kind) && typeof getter !== 'function') return fail('unavailable');
+      const domain = getter?.(), rowsKey = originalWidget?.kind === 'calendar' ? 'events' : 'tasks';
+      const source = getter && recordId !== null ? domain[rowsKey].find(row => row.id === recordId) : null;
+      if (getter && recordId !== null && !source) return fail('stale_target');
+      const unchanged = source ? retainData(source) : () => true;
+      const sourceCurrent = () => !getter || getter() === domain && (!source || domain[rowsKey].includes(source) && unchanged());
+      return withWidget(target, `widget:${target.widgetId}:open${recordId ? `:${recordId}` : ''}`, async ({ pane, widget, guard: widgetGuard, base }) => {
+        const guard = () => widgetGuard() && sourceCurrent();
+        if (!guard()) return fail('stale_target');
         // Resolve and budget the exact source before any application activation.
         const candidate = { ...state, selected: { ...state.selected, clockCityIds: [...state.selected.clockCityIds] } };
-        const selection = selectWidgetData(candidate, widget.id, recordId, quota(guard));
+        const selection = selectWidgetData(candidate, widget.id, recordId, quota(guard), projections());
         if (selection.status !== 'applied') return selection;
         const result = await native(() => ctx.openData(selection.target, guard,
-          () => selectWidgetData(state, widget.id, recordId, quota(guard))));
-        if (!result || result.status !== 'applied' || !base()) return result?.status === 'rejected' ? result : failure(pane);
-        ctx.closeCenter(pane); reconcile();
+          () => selectWidgetData(state, widget.id, recordId, quota(guard), projections())));
+        if (!result || result.status !== 'applied') return result?.status === 'rejected' ? result : failure(pane);
+        if (base()) { ctx.closeCenter(pane); reconcile(); }
         return applied({ ...selection.target, windowId: result.target.windowId });
       });
     },
     'widgets.reminder.setCompleted': (target, payload) => {
       if (!paneTarget(target, ['widgetId', 'reminderId']) || !fields(payload, ['completed']) || typeof payload.completed !== 'boolean') return fail('invalid_arguments');
-      const completed = payload.completed;
+      const completed = payload.completed, domain = ctx.getReminders();
+      const reminder = domain.tasks.find(row => row.id === target.reminderId), revision = reminder?.revision;
+      if (!reminder) return fail('stale_target');
+      const unchangedTask = retainData(reminder);
       return withWidget(target, `widget:${target.widgetId}:reminder:${target.reminderId}`, async ({ pane, widget, view, guard, base }) => {
-        const reminder = state.sources.reminders.find(row => row.id === target.reminderId);
-        if (widget.kind !== 'reminders' || !reminder || reminder.listId !== widget.configuration.listId) return fail('stale_target');
-        if (!await focus(view, 'center', guard)) return failure(pane);
-        const result = setWidgetReminderCompleted(state, target.reminderId, completed, quota(guard));
-        if (result.status !== 'applied') return result;
+        if (widget.kind !== 'reminders' || ctx.getReminders() !== domain || !domain.tasks.includes(reminder)
+          || reminder.revision !== revision || !unchangedTask() || reminder.listId !== widget.configuration.listId) return fail('stale_target');
+        const sourceGuard = () => guard() && ctx.getReminders() === domain && domain.tasks.includes(reminder)
+          && reminder.revision === revision && unchangedTask() && reminder.listId === widget.configuration.listId;
+        if (!await focus(view, 'center', sourceGuard)) return failure(pane);
+        const result = await native(() => ctx.setReminderCompleted(reminder.id, completed, { guard: sourceGuard }));
+        if (result?.status !== 'applied') return result?.status === 'rejected' ? result : fail('unavailable');
         if (await settle() && live(view, base)) observe(view);
-        return applied({ centerId: pane.centerId, widgetId: widget.id, ...result.target });
+        return applied({ centerId: pane.centerId, widgetId: widget.id, reminderId: reminder.id, completed: reminder.completed });
       });
     },
     'widgets.focus': async (target, payload) => {
@@ -340,26 +357,6 @@ export function createNotificationWidgetCommands(ctx) {
       if (!offsets(result) || !offsets(actual) || result.top !== actual.top || result.left !== actual.left) return failure(pane);
       observe(view, editor); return applied({ centerId: pane.centerId, ...(editor ? { editorId: editor.editorId } : {}),
         ...(owner ? { widgetId: target.widgetId } : {}), ...actual });
-    },
-    'widgets.data.reminder.setCompleted': async (target, payload) => {
-      if (!fields(target, ['windowId', 'reminderId']) || !id(target.windowId) || !id(target.reminderId)
-        || !fields(payload, ['completed']) || typeof payload.completed !== 'boolean') return fail('invalid_arguments');
-      const completed = payload.completed;
-      return withData(target, `reminder:${target.reminderId}`, async ({ owner, view, guard, base }) => {
-        const reminder = state.sources.reminders.find(row => row.id === target.reminderId);
-        if (owner.appId !== 'reminders' || !reminder || reminder.listId !== state.selected.reminderListId) return fail('stale_target');
-        const focused = describe(view)?.focusedControl;
-        const focusedReminder = state.sources.reminders.find(row => focused === `reminder:${row.id}`);
-        const result = setWidgetReminderCompleted(state, target.reminderId, completed, quota(guard));
-        if (result.status !== 'applied') return result;
-        if (await settle() && dataLive(owner, view, base) && focused && controls(view).includes(focused)
-          && describe(view)?.focusedControl !== focused) {
-          const recover = () => dataLive(owner, view, base) && (!focusedReminder
-            || state.sources.reminders.includes(focusedReminder) && focusedReminder.listId === state.selected.reminderListId);
-          await native(() => view.focus(focused, recover));
-        }
-        return applied({ windowId: owner.windowId, ...result.target });
-      });
     },
     'widgets.data.focus': async (target, payload) => {
       if (!fields(target, ['windowId', 'controlId']) || !id(target.windowId) || !id(target.controlId) || !fields(payload, [])) return fail('invalid_arguments');
@@ -460,8 +457,6 @@ export const notificationWidgetCatalog = Object.fromEntries([
     { oneOf: [object({ centerId: identity, top: position, left: position }),
       object({ centerId: identity, editorId: identity, top: position, left: position }),
       object({ centerId: identity, widgetId: identity, top: position, left: position })] }),
-  catalogue('data.reminder.setCompleted', object({ windowId: identity, reminderId: identity }), object({ completed: flag }),
-    { windowId: identity, reminderId: identity, completed: flag }, ['complete/uncomplete only a reminder in the original ordinary selected-list window']),
   catalogue('data.focus', object({ windowId: identity, controlId: identity }), empty, { windowId: identity, controlId: identity }),
   catalogue('data.scroll', windowTarget, scrollPayload, { windowId: identity, top: position, left: position }),
 ]);

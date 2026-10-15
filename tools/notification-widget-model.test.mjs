@@ -3,15 +3,21 @@ import { getOSProfile, listOSProfiles } from '../frontend/src/os-profiles.js';
 import {
   widgetsDefaults, validateWidgetsState, widgetPresentation,
   addWidget, removeWidget, resizeWidget, reorderWidget, configureWidget,
-  setWidgetReminderCompleted, selectWidgetData,
+  selectWidgetData,
 } from '../frontend/src/notification-widget-model.js';
 import { systemDefaults, validateSystemState } from '../frontend/src/system-state.js';
 import { clockDefaults, clockSchema } from '../frontend/src/clock-model.js';
+import { createRemindersState, reminderWidgetProjection } from '../frontend/src/reminders-state.js';
+import { createCalendarState, calendarWidgetProjection } from '../frontend/src/calendar-state.js';
+import { seedWeatherSources } from '../frontend/src/weather-app-state.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 const sceneTime = Date.parse(profile.defaults.sceneTime);
 const clock = () => ({ ...clockDefaults(), sceneTime });
 const leaf = () => structuredClone(widgetsDefaults(profile));
+const reminders = () => createRemindersState(profile);
+const calendar = () => createCalendarState(profile);
+const projections = () => ({ ...reminderWidgetProjection(reminders()), ...calendarWidgetProjection(calendar()) });
 const dateAt = (instant, timeZone) => widgetPresentation(leaf(), {
   id: 'widget-9', kind: 'date', size: 'small', configuration: {},
 }, { ...clockDefaults(), timeZone, sceneTime: instant }).date;
@@ -19,34 +25,27 @@ const dateAt = (instant, timeZone) => widgetPresentation(leaf(), {
 
 test('empty Golden sources and unconfigured widgets stay valid while foreign ids reject', () => {
   const state = leaf();
-  state.instances = []; state.sources = { calendars: [], events: [], reminderLists: [], reminders: [], weather: [], stocks: [], clockCities: [] };
-  state.selected = { calendarEventId: null, reminderListId: null, weatherLocationId: null, stockSymbolId: null, clockCityIds: [] };
+  state.instances = []; state.sources = { weather: [], stocks: [], clockCities: [] };
+  state.selected = { weatherLocationId: null, stockSymbolId: null, clockCityIds: [] };
   expect(validateWidgetsState(state, profile)).toEqual({ ok: true });
   const base = leaf();
   for (const change of [
-    value => { value.instances[1].configuration.calendarIds.push('missing-calendar'); },
     value => { value.instances[1].configuration.calendarIds.push('trail-crew'); },
     value => { value.instances[4].configuration.symbolId = 'missing-symbol'; },
     value => { value.instances[5].configuration.cityIds.push('missing-city'); },
     value => { value.instances[5].configuration.cityIds = ['los-angeles', 'los-angeles', 'london', 'tokyo']; },
-    value => { value.instances[3].configuration.listId = 'missing-list'; },
     value => { value.instances[2].configuration.locationId = 'missing-location'; },
     value => { value.instances[1].size = 'medium-plus'; },
     value => { value.instances[1].kind = 'reminders'; },
     value => { value.selected.stockSymbolId = 'missing-symbol'; },
     value => { value.selected.clockCityIds = ['london', 'london']; },
     value => { value.selected.clockCityIds = ['london', 'tokyo', 'los-angeles', 'new-york', 'london']; },
-    value => { value.selected.calendarEventId = 'missing-event'; },
-    value => { value.sources.events[0].calendarId = 'missing-calendar'; },
-    value => { value.sources.reminders[0].listId = 'missing-list'; },
-    value => { value.sources.events[0].end = value.sources.events[0].start; value.sources.events[0].start += 1; },
     value => { value.sources.weather[0].condition = 'sunny-ish'; },
     value => { value.sources.weather[0].timeZone = 'Europe/Berlin'; },
     value => { value.sources.weather[0].hourly.length = 25; },
     value => { value.sources.stocks[0].previousClose = 0; },
     value => { value.sources.stocks[0].previousClose = 0.001; },
     value => { value.sources.stocks[0].currency = 'dollars'; },
-    value => { value.sources.calendars[0].color = 'c'.repeat(65); },
     value => { value.nextId = 6; },
     value => { value.instances[0].id = 'widget-6'; },
   ]) {
@@ -60,19 +59,18 @@ test('empty Golden sources and unconfigured widgets stay valid while foreign ids
 test('mutations reject closed foreign ids and preserve surviving instances atomically', () => {
   const state = leaf(), before = structuredClone(state);
   const bad = [
-    () => configureWidget(state, 'widget-2', { calendarIds: ['missing-calendar'] }, () => true),
+    () => configureWidget(state, 'widget-2', { calendarIds: ['missing-calendar'] }, () => true, projections()),
     () => configureWidget(state, 'widget-3', { locationId: 'cedar-creek', unit: 'kelvin' }, () => true),
     () => configureWidget(state, 'widget-6', { cityIds: ['london', 'london', 'tokyo', 'los-angeles', 'new-york'] }, () => true),
     () => configureWidget(state, 'widget-3', { locationId: 'cedar-creek' }, () => true),
     () => resizeWidget(state, 'widget-5', 'large', () => true),
     () => resizeWidget(state, 'widget-1', 'medium', () => true),
     () => reorderWidget(state, 'widget-1', 6, () => true),
-    () => selectWidgetData(state, 'widget-2', 'missing-event', () => true),
+    () => selectWidgetData(state, 'widget-2', 'missing-event', () => true, projections()),
     () => selectWidgetData(state, 'widget-3', 'cedar-creek', () => true),
     () => selectWidgetData(state, 'widget-6', 'missing-city', () => true),
     () => selectWidgetData(state, 'widget-1', 'event-1', () => true),
     () => removeWidget(state, 'widget-9', () => true),
-    () => setWidgetReminderCompleted(state, 'missing-reminder', true, () => true),
     () => addWidget(state, 'stock-watchlist', 'small', () => true),
   ];
   for (const mutate of bad) {
@@ -114,49 +112,34 @@ test('resize and reorder keep original instance identity and literal configurati
   expect(state.instances.map(row => row.id)).toEqual(['widget-3', 'widget-1', 'widget-2', 'widget-4', 'widget-5', 'widget-6']);
   const calendar = state.instances.find(row => row.kind === 'calendar');
   const sourcesBefore = structuredClone(state.sources);
-  expect(configureWidget(state, 'widget-2', { calendarIds: ['volunteers'] }, () => true).target.configuration)
+  expect(configureWidget(state, 'widget-2', { calendarIds: ['volunteers'] }, () => true, projections()).target.configuration)
     .toEqual({ calendarIds: ['volunteers'] });
   expect(calendar.configuration).toEqual({ calendarIds: ['volunteers'] });
   expect(state.sources).toEqual(sourcesBefore);
   expect(calendarConfiguration).toEqual({ calendarIds: ['trail-crew', 'volunteers'] });
-  expect(selectWidgetData(state, 'widget-2', 'event-2', () => true)).toEqual({ status: 'applied', target: { widgetId: 'widget-2', appId: 'calendar', recordId: 'event-2' } });
-  expect(state.selected.calendarEventId).toBe('event-2');
+  expect(selectWidgetData(state, 'widget-2', 'event-2', () => true, projections())).toEqual({ status: 'applied', target: { widgetId: 'widget-2', appId: 'calendar', recordId: 'event-2' } });
+  expect(Object.hasOwn(state.selected, 'calendarEventId')).toBe(false);
 });
 
-test('null headers resolve their own configured source and clear stale selections', () => {
-  const state = leaf();
-  selectWidgetData(state, 'widget-2', 'event-2', () => true);
-  expect(state.selected.calendarEventId).toBe('event-2');
-  expect(selectWidgetData(state, 'widget-2', null, () => true)).toEqual({ status: 'applied', target: { widgetId: 'widget-2', appId: 'calendar', recordId: null } });
-  expect(state.selected.calendarEventId).toBe(null);
-  expect(selectWidgetData(state, 'widget-1', null, () => true)).toEqual({ status: 'applied', target: { widgetId: 'widget-1', appId: 'calendar', recordId: null } });
-  expect(state.selected.calendarEventId).toBe(null);
-  expect(selectWidgetData(state, 'widget-3', null, () => true)).toEqual({ status: 'applied', target: { widgetId: 'widget-3', appId: 'weather', recordId: null } });
-  expect(state.selected.weatherLocationId).toBe('pine-valley');
-  const unconfigured = leaf();
-  unconfigured.instances[2].configuration.locationId = null;
-  expect(selectWidgetData(unconfigured, 'widget-3', null, () => true).status).toBe('applied');
-  expect(unconfigured.selected.weatherLocationId).toBe(null);
-  const watchlist = leaf();
-  expect(selectWidgetData(watchlist, 'widget-4', null, () => true)).toEqual({ status: 'applied', target: { widgetId: 'widget-4', appId: 'reminders', recordId: null } });
-  expect(watchlist.selected.reminderListId).toBe('packing');
-  expect(selectWidgetData(state, 'widget-6', null, () => true)).toEqual({ status: 'applied', target: { widgetId: 'widget-6', appId: 'clock', recordId: null } });
-  expect(state.selected.clockCityIds).toEqual(['los-angeles', 'new-york', 'london', 'tokyo']);
-});
-
-test('shared reminder completion mutates the canonical row once for every consumer', () => {
-  const state = leaf(), row = state.sources.reminders.find(entry => entry.id === 'reminder-2');
-  const other = state.sources.reminders.find(entry => entry.id === 'reminder-4');
-  expect(setWidgetReminderCompleted(state, 'reminder-2', true, () => true)).toEqual({ status: 'applied', target: { reminderId: 'reminder-2', completed: true } });
-  expect(row.completed).toBe(true);
-  expect(state.sources.reminders).toContain(row);
-  expect(other.completed).toBe(false);
-  const twin = structuredClone(leaf());
-  expect(setWidgetReminderCompleted(twin, 'reminder-1', true, () => true).status).toBe('applied');
-  expect(widgetPresentation(twin, twin.instances.find(entry => entry.kind === 'reminders'), clock())
-    .reminders.find(entry => entry.id === 'reminder-1').completed).toBe(true);
-  expect(setWidgetReminderCompleted(state, 'reminder-2', true, () => true)).toEqual({ status: 'applied', target: { reminderId: 'reminder-2', completed: true } });
-  expect(state.sources.reminders.filter(entry => entry.completed)).toHaveLength(2);
+test('canonical projections remain live without writable widget domain shadows', () => {
+  const state = leaf(), domain = reminders(), events = calendar(), before = structuredClone(state);
+  const read = () => ({ ...reminderWidgetProjection(domain), ...calendarWidgetProjection(events) });
+  expect(Object.keys(state.sources).sort()).toEqual(['clockCities', 'stocks', 'weather']);
+  const task = domain.tasks.find(row => row.listId === 'packing');
+  expect(widgetPresentation(state, state.instances[3], clock(), read()).reminders.find(row => row.id === task.id).title).toBe(task.title);
+  task.title = 'Canonical edited task'; task.completed = true; task.revision++;
+  expect(widgetPresentation(state, state.instances[3], clock(), read()).reminders.find(row => row.id === task.id)).toMatchObject({ title: task.title, completed: true });
+  expect(selectWidgetData(state, 'widget-4', task.id, () => true, read()).target).toEqual({ widgetId: 'widget-4', appId: 'reminders', recordId: task.id, listId: 'packing' });
+  expect(selectWidgetData(state, 'widget-2', 'event-2', () => true, read()).target.recordId).toBe('event-2');
+  expect(state).toEqual(before);
+  domain.lists = domain.lists.filter(row => row.id !== 'packing');
+  domain.tasks = domain.tasks.filter(row => row.listId !== 'packing');
+  expect(widgetPresentation(state, state.instances[3], clock(), read()).reminders).toEqual([]);
+  expect(configureWidget(state, 'widget-4', { listId: 'packing' }, () => true, read()).status).toBe('rejected');
+  for (const key of ['reminders', 'reminderLists', 'calendars', 'events']) {
+    const invalid = leaf(); invalid.sources[key] = [];
+    expect(validateWidgetsState(invalid, profile).ok).toBe(false);
+  }
 });
 
 test('quota refusals and reentrant mutations stay atomic without corrupting the lease', () => {
@@ -182,7 +165,7 @@ test('accessor leaves reject validation and mutations without a single getter re
     const [owner, key] = level === 'leaf' ? [candidate, 'instances']
       : level === 'array' ? [candidate.instances, '0']
         : level === 'instance' ? [candidate.instances[0], 'kind']
-          : level === 'row' ? [candidate.sources.calendars[0], 'name']
+          : level === 'row' ? [candidate.sources.weather[0], 'name']
             : level === 'config' ? [candidate.instances[2].configuration, 'locationId']
               : [candidate.selected, 'clockCityIds'];
     Object.defineProperty(owner, key, { enumerable: true, get() { reads++; throw new Error('Getter must not run'); } });
@@ -202,10 +185,36 @@ test('accessor leaves reject validation and mutations without a single getter re
   expect(validateWidgetsState(frozen, profile).ok).toBe(true);
 });
 
-test('historical profiles keep empty widget leaves and reject foreign widget data', () => {
+test('historical profiles share original Weather and Clock sources without inventing editable widget instances', () => {
   for (const historical of listOSProfiles().filter(entry => entry.id !== profile.id)) {
     const empty = widgetsDefaults(historical);
     expect(validateWidgetsState(empty, historical)).toEqual({ ok: true });
+    const shared = seedWeatherSources(empty), first = shared.sources.weather[0], hourly = first.hourly;
+    expect(validateWidgetsState(shared, historical)).toEqual({ ok: true });
+    expect(shared.selected.weatherLocationId).toBe(first.id);
+    expect(seedWeatherSources(shared)).toBe(shared);
+    expect(shared.sources.weather[0]).toBe(first);
+    expect(first.hourly).toBe(hourly);
+    expect(shared.instances).toHaveLength(0);
+    const cities = shared.sources.clockCities;
+    cities.push(...leaf().sources.clockCities);
+    shared.selected.clockCityIds.push(...cities.map(city => city.id));
+    const originalCity = cities[0];
+    expect(validateWidgetsState(shared, historical)).toEqual({ ok: true });
+    expect(seedWeatherSources(shared).sources.clockCities).toBe(cities);
+    expect(cities[0]).toBe(originalCity);
+    const invalidClockSelection = structuredClone(shared);
+    invalidClockSelection.selected.clockCityIds[0] = 'missing-clock-city';
+    expect(validateWidgetsState(invalidClockSelection, historical).ok).toBe(false);
+    const unsupportedCounter = structuredClone(shared);
+    unsupportedCounter.nextId = 2;
+    expect(validateWidgetsState(unsupportedCounter, historical).ok).toBe(false);
+    const invalidSelection = structuredClone(shared);
+    invalidSelection.selected.weatherLocationId = 'missing-weather-row';
+    expect(validateWidgetsState(invalidSelection, historical).ok).toBe(false);
+    const unsupportedStocks = structuredClone(shared);
+    unsupportedStocks.sources.stocks.push(leaf().sources.stocks[0]);
+    expect(validateWidgetsState(unsupportedStocks, historical).ok).toBe(false);
     const corrupted = structuredClone(empty);
     corrupted.instances.push({ id: 'widget-1', kind: 'date', size: 'small', configuration: {} });
     expect(validateWidgetsState(corrupted, historical).ok).toBe(false);
@@ -307,8 +316,8 @@ test('forecast values remain usable at scene zero and the upper Date boundary in
 
 test('configuration owns submitted and returned arrays even across quota callbacks', () => {
   const state = leaf(), widget = state.instances.find(row => row.kind === 'calendar');
-  const [first, second] = state.sources.calendars, submitted = { calendarIds: [first.id] };
-  const result = configureWidget(state, widget.id, submitted, () => { submitted.calendarIds[0] = second.id; return true; });
+  const [first, second] = projections().calendars, submitted = { calendarIds: [first.id] };
+  const result = configureWidget(state, widget.id, submitted, () => { submitted.calendarIds[0] = second.id; return true; }, projections());
   expect(result.status).toBe('applied');
   expect(widget.configuration.calendarIds).toEqual([first.id]);
   result.target.configuration.calendarIds.length = 0;
@@ -321,7 +330,7 @@ test('configuration rejects indexed accessors without invoking actor getters', (
   const state = leaf(), widget = state.instances.find(row => row.kind === 'calendar'), before = structuredClone(state);
   let reads = 0;
   const ids = [];
-  Object.defineProperty(ids, '0', { enumerable: true, get() { reads++; return state.sources.calendars[0].id; } });
+  Object.defineProperty(ids, '0', { enumerable: true, get() { reads++; return projections().calendars[0].id; } });
   expect(configureWidget(state, widget.id, { calendarIds: ids }).status).toBe('rejected');
   expect(reads).toBe(0);
   expect(state).toEqual(before);

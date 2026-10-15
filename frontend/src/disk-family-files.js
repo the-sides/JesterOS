@@ -1,0 +1,19 @@
+import { diskRejected,diskFileBytes,diskUniqueName,diskDescendants } from './disk-family-controller.js';
+export function diskRootForFile(files,fileId){const seen=new Set();let f=files.find(f=>f.id===fileId);while(f&&f.parentId!==null&&f.parentId!==undefined&&!seen.has(f.id)){seen.add(f.id);f=files.find(p=>p.id===f.parentId);}return f??null;}
+export function planDiskTree(files,rows,destinationRootId,{collision='ask',sourceRootId=null,prefix='tree',mergeFolderIds=null}={}){
+ const operations=[],mapping=new Map(),simulated=files.filter(f=>!f.deleted).map(f=>({...f}));if(sourceRootId)mapping.set(sourceRootId,{fileId:destinationRootId});let byteDelta=0;
+ for(let i=0;i<rows.length;i++){const f=rows[i],parent=mapping.get(f.parentId??f.parentSourceId)?.fileId??destinationRootId;let name=f.name;const matches=simulated.filter(v=>v.parentId===parent&&v.name.toLocaleLowerCase('en-US')===name.toLocaleLowerCase('en-US')&&!v.deleted);if(matches.length>1)return {error:diskRejected('conflict','Ambiguous destination filename.')};const existing=matches[0],folder=f.kind==='folder',merge=folder&&existing?.kind==='folder'&&mergeFolderIds?.has(f.id)===true;
+  if(existing&&collision==='ask'&&!merge)return {error:diskRejected('conflict',`“${name}” already exists. Choose Replace, Keep Both, or Skip.`)};
+  if(existing&&collision==='skip'&&!merge){mapping.set(f.id,{fileId:existing.id,skipped:true});continue;}
+  if(mapping.get(f.parentId??f.parentSourceId)?.skipped){mapping.set(f.id,{fileId:parent,skipped:true});continue;}
+  if(existing&&collision==='keepBoth'&&!merge)name=diskUniqueName(simulated,parent,name);
+  else if(existing&&folder&&existing.kind==='folder'){mapping.set(f.id,{fileId:existing.id});continue;}
+  else if(existing&&folder!== (existing.kind==='folder'))return {error:diskRejected('conflict','Cannot replace a folder with a document or vice versa; choose Keep Both.')};
+  const ref=`${prefix}-${i}`,index=operations.length;
+  if(folder){operations.push({type:'mkdir',parentId:parent,name,ref});mapping.set(f.id,{fileId:'$'+ref,resultIndex:index});simulated.push({id:'$'+ref,parentId:parent,name,kind:'folder'});}
+  else {const mime=f.mime||f.mimeType||(f.kind==='text'||f.appId==='textedit'?'text/plain':'application/octet-stream'),content=f.content??'',encoding=f.encoding==='base64'?'base64':'utf8';const op=existing&&collision==='replace'?{type:'write',fileId:existing.id,expectedRevision:existing.revision,content,mime,encoding}:{type:'write',parentId:parent,name,content,mime,encoding,ref};operations.push(op);byteDelta+=diskFileBytes(f)-(existing&&collision==='replace'?diskFileBytes(existing):0);mapping.set(f.id,{fileId:existing&&collision==='replace'?existing.id:'$'+ref,resultIndex:index});if(!existing||collision==='keepBoth')simulated.push({id:'$'+ref,parentId:parent,name,kind:'document'});}
+ }
+ return {operations,mapping,byteDelta};
+}
+export function diskRowsFromImage(image){const byPath=new Map(),rows=[];for(const entry of image.entries){const parts=entry.path.split('/').filter(Boolean);let parentId='image-root',path='';for(let i=0;i<parts.length;i++){path+=(path?'/':'')+parts[i];if(byPath.has(path)){parentId=byPath.get(path);continue;}const terminal=i===parts.length-1,id='image-entry-'+rows.length,kind=terminal?entry.kind:'folder';rows.push({id,parentId,name:parts[i],kind,content:terminal?entry.content??'':'',encoding:terminal?entry.encoding??'utf8':'utf8',mime:terminal?entry.mime??'application/octet-stream':''});byPath.set(path,id);parentId=id;}}return rows;}
+export function diskImageEntries(files,rootId){const paths=new Map([[rootId,'']]);return diskDescendants(files,rootId).map(f=>{const path=(paths.get(f.parentId)?paths.get(f.parentId)+'/':'')+f.name;paths.set(f.id,path);return {path,kind:f.kind==='folder'?'folder':'document',content:f.content??'',encoding:f.encoding??'utf8',mime:f.mime??f.mimeType??'application/octet-stream'};});}

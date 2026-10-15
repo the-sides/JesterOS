@@ -2,9 +2,13 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import GoldenGateNotificationCard from './GoldenGateNotificationCard.svelte';
 
-  let { banner, entry, app, actions = [], showPreview = true,
+  let { profile, banner, entry, app, actions = [], snoozeChoices = [], showPreview = true,
     itemUi = { expanded: false, optionsOpen: false, replyBody: null }, timestamp = '',
     foreground = true, execute, registerView, onerror } = $props();
+  const renderer = $derived(profile.renderer);
+  const windows = $derived(renderer === 'windows11');
+  const classic = $derived(renderer === 'high-sierra' || renderer === 'mojave');
+  const golden = $derived(renderer === 'golden-gate');
   let bannerNode = $state(null);
   let ownerRoot = null, ownerNode = null, disposed = false, sequence = 0;
   const temporary = $derived(banner.style === 'temporary' && Number.isFinite(banner.remainingMs));
@@ -100,7 +104,7 @@
   }
 </script>
 
-<div class="notification-banner" bind:this={bannerNode} data-notification-banner-id={banner.bannerId}
+<div class="notification-banner" class:windows class:classic class:golden bind:this={bannerNode} data-notification-profile={renderer} data-notification-banner-id={banner.bannerId}
   data-notification-control="banner" role="region"
   aria-label={`${app.name} ${banner.style === 'persistent' ? 'persistent' : 'banner'} notification`}
   data-notification-style={banner.style} data-notification-remaining={temporary ? Math.max(0, banner.remainingMs) : null}
@@ -110,9 +114,9 @@
   onfocusout={event => { if (!bannerNode?.contains(event.relatedTarget)) void paused(false); }}
   onerror={event => event.stopPropagation()}>
   <button class="close" data-notification-control="dismiss" aria-label={showPreview ? `Dismiss ${entry.title} banner` : `Dismiss ${app.name} notification`}
-    onpointerdown={event => event.stopPropagation()} onpointerup={event => event.stopPropagation()} onclick={dismiss}>×</button>
-  <GoldenGateNotificationCard {entry} {app} ownerTarget={{ bannerId: banner.bannerId }} {actions} {showPreview}
-    {itemUi} {timestamp} {foreground} {execute} {onerror} />
+    onpointerdown={event => event.stopPropagation()} onpointerup={event => event.stopPropagation()} onclick={dismiss}>{classic ? 'Close' : '×'}</button>
+  <GoldenGateNotificationCard {profile} {entry} {app} ownerTarget={{ bannerId: banner.bannerId }} {actions} {showPreview}
+    {snoozeChoices} {itemUi} {timestamp} {foreground} {execute} {onerror} />
 </div>
 
 <style>
@@ -120,4 +124,15 @@
   .notification-banner :global(.notification-card) { overflow-wrap:anywhere; }
   .close { position:absolute; left:4px; top:4px; z-index:2; width:23px; height:23px; border:0; border-radius:50%; padding:0; background:var(--appearance-panel,#eee); color:inherit; box-shadow:0 0 0 1px var(--appearance-soft-border,#8883); line-height:20px; font-size:18px; cursor:default; }
   .close:focus-visible { outline:2px solid var(--appearance-focus,#0878ef); outline-offset:2px; }
+  .notification-banner:not(.golden):not(.classic):not(.windows) { border-radius:16px; }
+  .classic { border-radius:8px; box-shadow:0 5px 20px #0003; }
+  .classic .close { left:auto; right:0; top:0; width:82px; height:34px; font-size:12px; line-height:32px; border-radius:0 8px 0 0; border-left:1px solid var(--appearance-soft-border,#bbb); border-bottom:1px solid var(--appearance-soft-border,#bbb); background:transparent; box-shadow:none; }
+  .classic :global(.notification-card) { display:grid; grid-template-columns:minmax(0,1fr) 82px; border-radius:8px; }
+  .classic :global(.notification-card .content) { padding:12px; border-radius:8px 0 0 8px; }
+  .classic :global(.notification-card .card-controls) { grid-column:2; grid-row:1; display:flex; flex-direction:column-reverse; justify-content:flex-end; padding:34px 0 0; gap:0; border-left:1px solid var(--appearance-soft-border,#bbb); }
+  .classic :global(.notification-card .card-controls button) { width:100%; min-height:30px; margin:0; border:0; border-bottom:1px solid var(--appearance-soft-border,#bbb); border-radius:0; background:transparent; padding:5px; }
+  .classic :global(.notification-card .options),.classic :global(.notification-card .reply) { grid-column:1 / -1; }
+  .windows { border-radius:8px; box-shadow:0 8px 28px #0003; border:1px solid var(--appearance-soft-border,#bbb); }
+  .windows .close { left:auto; right:9px; top:9px; border-radius:4px; background:transparent; box-shadow:none; width:26px; height:26px; font:20px 'Segoe UI',sans-serif; }
+  .windows .close:hover { background:var(--appearance-hover,#8882); }
 </style>

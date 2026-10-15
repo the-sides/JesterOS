@@ -3,9 +3,13 @@ import Window from './Windows11Window.svelte';
 import Applications from './Windows11Applications.svelte';
 import { createWindows11ShellState } from './windows11-shell-state.js';
 import { createWindows11ShellCommands, readWindows11ShellTargets } from './windows11-shell-commands.js';
-import { createWindows11AppState, startWindows11AppClock, createWindows11AppWindow, releaseWindows11AppWindow, windows11AppsForWindow, canCreateWindows11AppWindow, readWindows11AppWindows } from './windows11-app-state.js';
+import { createWindows11AppState, startWindows11AppClock, createWindows11AppWindow, releaseWindows11AppWindow, windows11AppsForWindow, canCreateWindows11AppWindow, readWindows11AppWindows, snapshotWindows11SdkWindows, restoreWindows11SdkWindows } from './windows11-app-state.js';
 import { createWindows11AppCommands, readWindows11AppTargets } from './windows11-app-commands.js';
 import { fitNormalBounds as fitBounds } from './window-state.js';
+import { createDefaultApplicationFiles } from './default-application-files.js';
+import { createDefaultSceneSeed } from './scene-seed.js';
+import { windows11Profile } from './windows11-profile.js';
+import { nativeDomainForWindow } from './native-domain-registry.js';
 
 function windowScale(app, area) {
   const gutter = area.width <= 520 ? 24 : 48;
@@ -26,8 +30,10 @@ function prepareDocument() {
   document.documentElement.classList.toggle('native-windows-font', /Win/.test(navigator.platform));
 }
 
-function createSceneData() {
-  return { native: { shell: createWindows11ShellState(), apps: createWindows11AppState() } };
+function createSceneData(seed, profile = windows11Profile) {
+  const data = seed ? structuredClone(seed) : createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles });
+  const native = { shell: createWindows11ShellState(), apps: createWindows11AppState(profile, data) };
+  return { ...data, native };
 }
 
 function createCommands(native, context) {
@@ -61,8 +67,7 @@ function nativeForWindow(native, windowId) {
 }
 
 function releaseWindow(native, windowId, appId) {
-  releaseWindows11AppWindow(native.apps, windowId, appId);
-  nativeWindows.get(native)?.delete(windowId);
+  if (releaseWindows11AppWindow(native.apps, windowId, appId)) nativeWindows.get(native)?.delete(windowId);
 }
 
 function startScene(native, execute) {
@@ -75,6 +80,10 @@ export const windows11Adapter = Object.freeze({
   closeKeepsRunning: false,
   windowInteractionsAvailable: native => native.shell.dialog === null,
   prepareDocument, createSceneData, createCommands, readTargets,
+  snapshotWindows: (native, windows, profile) => snapshotWindows11SdkWindows(native.apps,
+    windows.filter(window => !nativeDomainForWindow(profile, window))),
+  restoreWindows: (native, windows, savedScene, profile) => restoreWindows11SdkWindows(native.apps,
+    windows.filter(window => !nativeDomainForWindow(profile, window)), savedScene),
   initialBounds, fitNormalBounds, requestClose, startScene,
   createWindow: (native, windowId, appId, options) => createWindows11AppWindow(native.apps, windowId, appId, options),
   releaseWindow, nativeForWindow,

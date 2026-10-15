@@ -1,0 +1,5 @@
+import { object } from './command-schema.js';
+import { baseDiskProperties,boundedArray,boundedText,diskId,diskInteger,validateDiskFamily,profileId } from './disk-family-state.js';
+export const bootCampSchema=object({...baseDiskProperties,installations:boundedArray(object({id:diskId,volumeRootId:diskId,isoFileId:diskId,bootSourceFileId:diskId,isoFingerprint:boundedText(64,1),preparedAt:diskInteger(),capacityBytes:diskInteger(65536,1024*1024*1024),fileCount:diskInteger(0,512),result:{const:'virtual-boot-volume'}}),16)});
+export function createBootCampState(profile){return {version:1,profileId:profileId(profile),revision:0,nextId:1,sessions:[],installations:[]};}
+export function validateBootCampState(state,profile){const base=validateDiskFamily(state,bootCampSchema,profile);if(!base.ok)return base;if(new Set(state.installations.map(r=>r.id)).size!==state.installations.length||new Set(state.installations.map(r=>r.volumeRootId)).size!==state.installations.length)return {ok:false,message:'Duplicate boot volume.'};return {ok:true};}

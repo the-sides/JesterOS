@@ -1,0 +1,9 @@
+import {gamesWindow} from './games-tips-state.js';
+export function createGamesTipsNativeView({getRoot,getState,getProfile,windowId,kind,available,tick}){
+ const root=getRoot(),state=getState(),profile=getProfile(),windows=state.windows,session=gamesWindow(state,windowId);let destroyed=false;
+ const ready=()=>!destroyed&&root?.isConnected===true&&getRoot()===root&&getState()===state&&getProfile()===profile&&state.windows===windows&&gamesWindow(state,windowId)===session&&available()===true;
+ function controls(){if(!ready())return [];const scope=root.querySelector('[role="dialog"][aria-modal="true"]')??root;return [...scope.querySelectorAll(`[data-${kind}-control]`)].filter(node=>{if(node.disabled||node.hidden||node.closest('[inert]'))return false;const collapsed=node.closest('details:not([open])');if(collapsed&&node.tagName!=='SUMMARY')return false;for(let ancestor=node;ancestor&&ancestor!==root.parentElement;ancestor=ancestor.parentElement){const style=node.ownerDocument.defaultView?.getComputedStyle?.(ancestor);if(style?.display==='none'||style?.visibility==='hidden')return false;}return true;});}
+ async function focus(id,guard){if(!ready()||guard()!==true)return false;const node=controls().find(row=>row.getAttribute(`data-${kind}-control`)===id);if(!node)return false;node.focus();await tick();return ready()&&guard()===true&&controls().includes(node)&&node.ownerDocument.activeElement===node;}
+ function describe(){return {windowId,available:ready(),controls:controls().map(node=>({id:node.getAttribute(`data-${kind}-control`),label:node.getAttribute('aria-label')??node.textContent?.trim()??'',kind:node.tagName.toLowerCase(),value:'value' in node?String(node.value):null})),content:ready()?root.querySelector(`[data-${kind}-content]`)?.textContent??'':null};}
+ return {available:ready,focus,describe,destroy(){destroyed=true;}};
+}

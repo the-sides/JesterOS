@@ -1,8 +1,10 @@
 import Desktop from './Desktop.svelte';
 import Window from './Window.svelte';
 import MessagesWindow from './MessagesWindow.svelte';
-import NotesWindow from './NotesWindow.svelte';
-import { createNotesState } from './notes-state.js';
+import NotesWindow from './NotesApp.svelte';
+import { createDefaultApplicationFiles } from './default-application-files.js';
+import { createDefaultSceneSeed } from './scene-seed.js';
+import { mojaveProfile } from './mojave-applications.js';
 import { fitNormalBounds as fitBounds } from './window-state.js';
 
 // Bounds are physical workspace pixels; scale keeps Mojave's logical UI size.
@@ -30,8 +32,8 @@ function prepareDocument() {
   document.documentElement.classList.toggle('native-apple-font', /Mac|iPhone|iPad|iPod/.test(navigator.platform));
 }
 
-function createSceneData() {
-  return { notes: createNotesState() };
+function createSceneData(seed, profile = mojaveProfile) {
+  return seed ? structuredClone(seed) : createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles });
 }
 
 export const mojaveAdapter = Object.freeze({

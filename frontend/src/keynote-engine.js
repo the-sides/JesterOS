@@ -1,0 +1,48 @@
+import { PDFDocument } from 'pdf-lib';
+import { inspectMediaContent } from './media-codec.js';
+import { createKeynoteObject } from './keynote-state.js';
+const fail=(code,message)=>{throw Object.assign(Error(message),{code});};
+const current=guard=>{if(guard&&guard()!==true)fail('stale_target','Original slide, scene or source changed.');};
+export function keynotePinGraph(value){
+ const entries=[],seen=new Set();let safe=true;
+ function visit(v){if(!v||typeof v!=='object'||seen.has(v))return;seen.add(v);const descriptors=Object.getOwnPropertyDescriptors(v),keys=Reflect.ownKeys(descriptors);if(keys.some(k=>!Object.hasOwn(descriptors[k],'value'))){safe=false;return;}entries.push([v,keys,keys.map(k=>descriptors[k])]);for(const k of keys)visit(descriptors[k].value);}
+ visit(value);
+ return()=>safe&&entries.every(([v,keys,before])=>{const descriptors=Object.getOwnPropertyDescriptors(v),now=Reflect.ownKeys(descriptors);return now.length===keys.length&&now.every((k,i)=>k===keys[i]&&Object.hasOwn(descriptors[k],'value')&&descriptors[k].value===before[i].value&&descriptors[k].enumerable===before[i].enumerable&&descriptors[k].configurable===before[i].configurable&&descriptors[k].writable===before[i].writable);});
+}
+const xml=value=>String(value).replace(/[&<>"']/gu,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+export function keynoteSlideSVG(content,slide,fontCSS=null){
+ if(slide.objects.some(o=>['audio','video'].includes(o.type)))fail('unsupported_content','Static slide export cannot preserve audio/video playback. Remove audiovisual objects before PDF/PNG/SVG export.');
+ const shapes=slide.objects.map(o=>{
+  const common=`opacity="${o.opacity}" transform="rotate(${o.rotation} ${o.x+o.width/2} ${o.y+o.height/2})"`;
+  if(o.type==='image'){const c=o.crop,cw=o.width/(1-c.left-c.right),ch=o.height/(1-c.top-c.bottom);return `<g ${common}><defs><clipPath id="${xml(o.id)}-clip"><rect x="${o.x}" y="${o.y}" width="${o.width}" height="${o.height}"/></clipPath></defs><image clip-path="url(#${xml(o.id)}-clip)" x="${o.x-c.left*cw}" y="${o.y-c.top*ch}" width="${cw}" height="${ch}" preserveAspectRatio="none" href="${xml(o.content)}"/></g>`;}
+  if(o.type==='shape'){const style=`fill="${o.fill}" stroke="${o.stroke}" stroke-width="2"`;const shape=o.shape==='ellipse'?`<ellipse cx="${o.x+o.width/2}" cy="${o.y+o.height/2}" rx="${o.width/2}" ry="${o.height/2}" ${style}/>`:o.shape==='triangle'?`<polygon points="${o.x+o.width/2},${o.y} ${o.x+o.width},${o.y+o.height} ${o.x},${o.y+o.height}" ${style}/>`:o.shape==='line'?`<line x1="${o.x}" y1="${o.y}" x2="${o.x+o.width}" y2="${o.y+o.height}" ${style}/>`:`<rect x="${o.x}" y="${o.y}" width="${o.width}" height="${o.height}" ${style}/>`;return `<g ${common}>${shape}</g>`;}
+  if(o.type==='chart'){
+   const max=Math.max(1,...o.values.map(Math.abs)),step=o.width/Math.max(1,o.values.length),mixed=o.values.some(v=>v<0),base=o.y+o.height*(mixed ? .45 : .85),scale=o.height*(mixed ? .4 : .75)/max;let plot='';
+   if(o.kind==='pie'){
+    const sum=o.values.reduce((a,v)=>a+Math.max(0,v),0);let angle=0;
+    plot=o.values.map((v,i)=>{const fraction=sum?Math.max(0,v)/sum:0,r=Math.min(o.width,o.height)*.4,cx=o.x+o.width/2,cy=o.y+o.height/2;
+     if(fraction===1)return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="hsl(${i*67} 55% 50%)"/>`;
+     const next=angle+fraction*Math.PI*2,x1=cx+r*Math.cos(angle),y1=cy+r*Math.sin(angle),x2=cx+r*Math.cos(next),y2=cy+r*Math.sin(next),large=next-angle>Math.PI?1:0;angle=next;
+     return `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z" fill="hsl(${i*67} 55% 50%)"/>`;
+    }).join('');
+   }else if(o.kind==='line')plot=`<polyline fill="none" stroke="${o.fill}" stroke-width="4" points="${o.values.map((v,i)=>`${o.x+step*(i+.5)},${base-v*scale}`).join(' ')}"/>`;
+   else plot=o.values.map((v,i)=>`<rect x="${o.x+step*i+4}" y="${base-Math.max(0,v)*scale}" width="${Math.max(1,step-8)}" height="${Math.abs(v)*scale}" fill="${o.fill}"/>`).join('');
+   return `<g ${common}>${plot}${o.labels.map((l,i)=>`<text x="${o.x+step*(i+.5)}" y="${o.y+o.height}" text-anchor="middle" font-size="14" fill="${o.color}">${xml(l)}</text>`).join('')}</g>`;
+  }
+  const anchor=o.align==='center'?'middle':o.align==='right'?'end':'start',x=o.align==='center'?o.x+o.width/2:o.align==='right'?o.x+o.width:o.x;
+  const lines=[];const chars=Math.max(1,Math.floor(o.width/(o.size*.58)));for(const line of o.text.split('\n')){let rest=line;while(rest.length>chars){let cut=rest.lastIndexOf(' ',chars);if(cut<1)cut=chars;lines.push(rest.slice(0,cut));rest=rest.slice(cut).replace(/^ /u,'');}lines.push(rest);}
+  return `<text ${common} x="${x}" y="${o.y+o.size}" fill="${o.color}" font-family="${xml(fontCSS?fontCSS(o.font,o.bold,o.italic):o.font)}" font-size="${o.size}" font-weight="${o.bold?'bold':'normal'}" font-style="${o.italic?'italic':'normal'}" text-anchor="${anchor}">${lines.map((line,i)=>`<tspan x="${x}" dy="${i?o.size*1.2:0}">${xml(line)}</tspan>`).join('')}</text>`;
+ }).join('');
+ return `<svg xmlns="http://www.w3.org/2000/svg" width="${fontCSS?'100%':content.width}" height="${fontCSS?'100%':content.height}" viewBox="0 0 ${content.width} ${content.height}"><rect width="100%" height="100%" fill="${slide.background}"/>${shapes}</svg>`;
+}
+export async function keynoteRaster(content,slide,guard){current(guard);const svg=keynoteSlideSVG(content,slide);if(typeof Image==='undefined'||typeof document==='undefined')fail('unavailable','Genuine browser image/canvas rendering is unavailable.');const image=new Image();image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);await image.decode();current(guard);const canvas=document.createElement('canvas');canvas.width=content.width;canvas.height=content.height;const ctx=canvas.getContext('2d');if(!ctx)fail('unavailable','Actual canvas renderer is unavailable.');ctx.drawImage(image,0,0);const result=canvas.toDataURL('image/png');current(guard);return result;}
+export async function keynotePDF(content,guard){const pdf=await PDFDocument.create();current(guard);for(const slide of content.slides){const png=await keynoteRaster(content,slide,guard);const image=await pdf.embedPng(png);current(guard);pdf.addPage([content.width,content.height]).drawImage(image,{x:0,y:0,width:content.width,height:content.height});}pdf.setTitle(content.title);return await pdf.saveAsBase64({dataUri:true});}
+export async function keynoteInspectMedia(file,content,guard){current(guard);if(['image/png','image/jpeg'].includes(file.mime)){if(!content.startsWith(`data:${file.mime};base64,`))fail('invalid_format','Image bytes and File MIME differ.');if(typeof Image==='undefined')fail('unavailable','Actual browser image decoder required.');const image=new Image();image.src=content;await image.decode();current(guard);if(!image.naturalWidth||!image.naturalHeight)fail('invalid_format','Image has no actual pixels.');return {type:'image',width:image.naturalWidth,height:image.naturalHeight,duration:0};}if(!['audio/wav','video/webm'].includes(file.mime))fail('unsupported_content','Media editor supports actual PNG/JPEG images, PCM WAV audio and WebM movies.');const meta=await inspectMediaContent(content,file.mime,{guard});current(guard);return {type:file.mime.startsWith('audio/')?'audio':'video',width:meta.width??300,height:meta.height??80,duration:meta.duration};}
+export function keynoteDecodeModel(decoded,state){
+ const slides=decoded.slides.map(s=>({id:`keynote-slide-${state.nextId++}`,name:s.name||'Slide',background:s.background||'#ffffff',transition:typeof s.transition==='string'?s.transition:s.transition?.type??'none',transitionDuration:s.transitionDuration??s.transition?.duration??1,notes:s.notes??'',objects:s.objects.map(o=>{
+  if(!['text','shape','image','chart'].includes(o.type))fail('unsupported_content','Unsupported embedded presentation object.');
+  if(o.runs?.some(r=>r.font!==o.runs[0]?.font||r.size!==o.runs[0]?.size||r.color!==o.runs[0]?.color||r.bold!==o.runs[0]?.bold||r.italic!==o.runs[0]?.italic||r.underline))fail('unsupported_content','Mixed text runs or underlining are not flattened by the local slide editor.');
+  const run=o.runs?.[0];return createKeynoteObject(`keynote-object-${state.nextId++}`,o.type,{x:o.x,y:o.y,width:o.width,height:o.height,text:o.text??o.runs?.map(r=>r.text).join('')??'',font:o.font??o.fontFamily??run?.font??'Helvetica Neue',size:o.size??o.fontSize??run?.size??44,color:o.color??run?.color??'#222222',bold:o.bold??run?.bold??false,italic:o.italic??run?.italic??false,align:o.align??'left',shape:o.shape==='rectangle'?'rect':o.shape??'rect',fill:o.fill??'#4076bd',stroke:o.stroke??'#284e7b',content:o.content??'',mime:o.type==='image'?/^data:([^;]+)/u.exec(o.content)?.[1]??'':'',kind:o.kind??'bar',labels:o.labels??[],values:o.values??[]});})}));
+ return {title:decoded.title||'Imported Presentation',theme:'white',width:decoded.width,height:decoded.height,slides};
+}
+export function keynotePPTXModel(content){if(content.slides.some(s=>s.objects.some(o=>['audio','video'].includes(o.type))))fail('unsupported_content','PPTX export does not support embedded audio or video. The original media remains in this document; remove audiovisual objects to export.');if(content.slides.some(s=>s.objects.some(o=>o.rotation||o.opacity!==1||Object.values(o.crop).some(Boolean))))fail('unsupported_content','PPTX codec cannot preserve image crops, rotation or opacity. Use genuine static PDF/PNG/SVG export or reset those properties.');return {title:content.title,width:content.width,height:content.height,slides:content.slides.map(s=>({...s,transition:{type:s.transition,duration:s.transitionDuration},objects:s.objects.map(o=>({...o}))}))};}

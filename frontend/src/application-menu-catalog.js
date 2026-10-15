@@ -1,15 +1,17 @@
-import { defineCommand, NONE, identity, flag, offset, choice, object, empty } from './command-schema.js';
-import { notesPreferencesSchema } from './notes-preferences.js';
+import { defineCommand, NONE, identity, flag, offset, object, empty } from './command-schema.js';
 
 const profiles = ['macos-golden-gate-27.0.1'];
+const aboutProfiles = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0', ...profiles];
 const app = object({ appId: identity });
 const window = object({ windowId: identity });
-const panel = object({ windowId: identity, control: choice('panel', 'sort-by', 'group-by-date', 'text-size') });
-const available = 'Alive interactive Golden scene; no lock/login/power/global modal or competing window-blocking presentation.';
+const panel = object({ windowId: identity, control: { const: 'panel' } });
+const available = 'Alive interactive Mac scene; no lock/login/power/global modal or competing window-blocking presentation. Historical/modern Messages About is supported; other app panels retain their declared profile boundary.';
 const owner = 'The registered, running, visible, nonquitting active application owns the requested utility; closed ordinary documents remain closed.';
-const mounted = 'Exact visible, nonminimized, nonhidden, nonquitting app-owned About/Settings utility and its actual connected, noninert native panel.';
+const mounted = 'Exact visible, nonminimized, nonhidden, nonquitting app-owned About utility and its actual connected, noninert native panel.';
 const define = (name, target, payload, requires, presentation, data, result) => {
-  const entry = defineCommand(profiles, name, 'shell.application-menu', target, payload,
+  const settings = name === 'app.settings.open';
+  const entry = defineCommand(settings ? profiles : aboutProfiles, name,
+    settings ? 'shell.application-menu' : 'messages.conversations', target, payload,
     requires, presentation, data, NONE, result);
   entry[1].resultSchema.additionalProperties = false;
   if (payload.minProperties && !entry[1].requestSchema.required.includes('payload')) entry[1].requestSchema.required.push('payload');
@@ -22,16 +24,11 @@ export const applicationMenuCatalog = Object.fromEntries([
       'Display real registered app identity/coverage and exact OS profile, explicitly identified as JesterOS simulation; do not invent native bundle version/build.',
       'Restore/minimize/close/hide/quit behavior uses the shared managed window/application lifecycle. Opening or closing a utility never consumes remembered ordinary-window geometry, document state or native view.'],
     ['windows', 'activeWindowId', 'activeAppId', 'runningAppIds', 'switching'], object({ appId: identity, windowId: identity })),
-  define('app.settings.open', app, empty, [available, owner, 'Notes has the represented working app Settings panel; other unimplemented app preference interiors reject disabled.'],
-    ['Open/focus one app-owned Notes Settings utility, including while its last ordinary window is closed. Never reopen an ordinary Notes window as a substitute.',
-      'Native-named sort/date-group/default-text-size controls use the same app.settings.set operation as direct callers. Focus the actual Sort notes by control.'],
-    ['windows', 'activeWindowId', 'activeAppId', 'switching'], object({ appId: identity, windowId: identity })),
-  define('app.settings.set', object({ appId: { const: 'notes' } }),
-    { ...object(notesPreferencesSchema.properties, []), minProperties: 1 }, [available],
-    ['Validate the entire nonempty partial preference update before mutation; apply immediately without opening/activating a window or changing record selection, text, timestamps or lifetime.',
-      'Pinned notes stay first in all nondeleted sort modes. Date grouping is presented only outside title sorting; choosing title preserves the retained group flag. Text size is bounded simulation pixels, not factory points.'],
-    ['notes.preferences', 'seed.notes.preferences', 'saved-session local-user Notes preferences'], object({ appId: { const: 'notes' } })),
-  define('app.panel.focus', panel, empty, [available, mounted, 'About supports panel only; Notes Settings supports panel and its currently rendered controls. Hidden Group notes by date cannot be focused.'],
+  define('app.settings.open', app, empty, [available, owner, 'Notes owns its canonical managed preferences sheet; other unimplemented app preferences reject disabled.'],
+    ['Route through the real Notes preferences bridge to an original available managed Notes session and mounted view.',
+      'The canonical notes.sheet.open command opens preferences; notes.preferences.set applies the complete canonical preferences object. No mirrored utility or partial app settings mutation exists.'],
+    ['notes.windows.sheet', 'activeWindowId', 'activeAppId'], object({ appId: identity, windowId: identity })),
+  define('app.panel.focus', panel, empty, [available, mounted, 'About supports its actual panel only. Notes preferences use canonical Notes focus commands.'],
     ['Activate the exact owned utility and focus the actual requested native panel/control; settle DOM and observe physical focus.'],
     ['activeWindowId', 'activeAppId', 'native app-panel focus'], panel),
   define('app.panel.scroll', window, object({ top: offset, left: offset, observe: flag }, ['top']), [available, mounted],

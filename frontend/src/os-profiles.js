@@ -1,4 +1,4 @@
-import { applications, desktopFiles } from './mojave-applications.js';
+import { mojaveProfile } from './mojave-applications.js';
 import { highSierraProfile } from './high-sierra-profile.js';
 import { sonomaProfile } from './sonoma-profile.js';
 import { windows11Profile } from './windows11-profile.js';
@@ -16,31 +16,7 @@ function freezeTree(value) {
 }
 
 const profiles = freezeTree({
-  [MOJAVE_PROFILE_ID]: {
-    id: MOJAVE_PROFILE_ID,
-    name: 'macOS Mojave',
-    family: 'macos',
-    version: '10.14',
-    releaseYear: 2018,
-    renderer: 'mojave',
-    capabilities: [
-      'shell.apps', 'shell.windows', 'shell.macos-window-zoom', 'shell.window-resize',
-      'shell.window-create', 'app.lifecycle', 'shell.switcher', 'app.visibility',
-      'shell.full-screen', 'shell.split-view', 'shell.mission-control', 'shell.launchpad', 'shell.dashboard',
-      'shell.desktop', 'shell.desktop-stacks', 'shell.dock-context', 'shell.dock-management', 'shell.dock-recents', 'shell.dock-stacks', 'shell.window-menu',
-      'shell.appearance', 'scene.profile-selection',
-      'notes.plain-text', 'notes.presentation', 'messages.sample',
-    ],
-    applications,
-    desktopFiles,
-    assets: {
-      wallpaper: '/wallpapers/mojave-day.webp',
-      icons: '/icons',
-      messages: '/messages',
-      fonts: ['/fonts/InterVariable.woff2', '/fonts/LiberationSans-Regular.ttf'],
-    },
-    defaults: { startupAppId: 'messages', desktopAppId: 'finder', clockLabel: 'Mon 5:42 PM', batteryPercent: 87 },
-  },
+  [MOJAVE_PROFILE_ID]: mojaveProfile,
   [highSierraProfile.id]: highSierraProfile,
   [sonomaProfile.id]: sonomaProfile,
   [windows11Profile.id]: windows11Profile,

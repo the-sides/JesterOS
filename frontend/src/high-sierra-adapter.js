@@ -1,8 +1,10 @@
 import Desktop from './HighSierraDesktop.svelte';
 import Window from './Window.svelte';
 import MessagesWindow from './HighSierraMessagesWindow.svelte';
-import NotesWindow from './NotesWindow.svelte';
-import { createNotesState } from './notes-state.js';
+import NotesWindow from './NotesApp.svelte';
+import { createDefaultApplicationFiles } from './default-application-files.js';
+import { createDefaultSceneSeed } from './scene-seed.js';
+import { highSierraProfile } from './high-sierra-profile.js';
 import { fitNormalBounds as fitBounds } from './window-state.js';
 import './high-sierra.css';
 
@@ -30,22 +32,8 @@ function prepareDocument() {
   document.documentElement.classList.toggle('native-apple-font', /Mac|iPhone|iPad|iPod/.test(navigator.platform));
 }
 
-function createSceneData() {
-  const time = Date.UTC(2017, 8, 25, 9, 41);
-  const notes = createNotesState(time);
-  const texts = [
-    'Camilla and Bob anniversary\nCall 4–5 days ahead for party reservation and confirm the guest list.',
-    'Kitchen remodel ideas\nRomano wants marble or granite. Bring the samples when we meet on Thursday.',
-    'Romano Contractor Notes\nThe inspector will visit next Thursday. Check with Diana to see who should work from home.',
-    'Old packing list\nRain jacket\nExtra socks\nWater bottles',
-  ];
-  notes.notes.forEach((note, index) => {
-    note.text = texts[index];
-    note.createdAt = time - (index + 1) * 24 * 60 * 60 * 1000;
-    note.updatedAt = time - index * 60 * 1000;
-  });
-  notes.selectedId = 'note-3';
-  return { notes };
+function createSceneData(seed, profile = highSierraProfile) {
+  return seed ? structuredClone(seed) : createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles });
 }
 
 export const highSierraAdapter = Object.freeze({

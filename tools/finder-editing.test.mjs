@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { createFinderEditing } from '../frontend/src/finder-editing.js';
 import { createFinderFileCommands } from '../frontend/src/finder-file-commands.js';
 import { createDefaultSceneSeed } from '../frontend/src/scene-seed.js';
+import { createDefaultApplicationFiles } from '../frontend/src/default-application-files.js';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { createFile } from '../frontend/src/windows11-app-helpers.js';
 
@@ -9,7 +10,7 @@ const clone = value => structuredClone(value);
 const textUnits = value => typeof value === 'string' ? value.length : !value || typeof value !== 'object' ? 0
   : Object.keys(value).reduce((total, key) => total + key.length + textUnits(value[key]), 0);
 function scene() {
-  const seed = createDefaultSceneSeed(getOSProfile('macos-golden-gate-27.0.1')), files = seed.files;
+  const seed = createDefaultSceneSeed(getOSProfile('macos-golden-gate-27.0.1'), { createFiles: createDefaultApplicationFiles }), files = seed.files;
   const window = { id: 'finder-window-1', folderId: 'downloads', finderSelectedFileIds: [] };
   const clipboard = { kind: 'empty', text: '', fileIds: [] };
   let desktop = null, capacity = true, active = window.id, changed = 0;
@@ -320,7 +321,7 @@ test('eight Mi UTF-16 retained history evicts oldest even when unrelated edits f
 });
 
 test('post-commit selection and change notification failures cannot reject a valid data edit', () => {
-  const files = createDefaultSceneSeed(getOSProfile('macos-golden-gate-27.0.1')).files;
+  const files = createDefaultSceneSeed(getOSProfile('macos-golden-gate-27.0.1'), { createFiles: createDefaultApplicationFiles }).files;
   const source = createFile(files, 'desktop', 'Body.md', 'document', 'Body');
   Object.assign(source, { appId: 'textedit', icon: 'pdf', tags: [] });
   const clipboard = { kind: 'files', text: '', fileIds: [source.id] };

@@ -60,13 +60,13 @@
 :root[data-os-renderer='high-sierra'] .messages-window.inactive .messages-toolbar-sidebar,
 :root[data-os-renderer='high-sierra'] .messages-window.inactive .messages-recipient-toolbar { background: #e2e2e2; }
 :root[data-os-renderer='high-sierra'] .messages-search { background: rgb(176 183 191 / 30%); }
-:root[data-os-renderer='high-sierra'] .messages-conversations li { height: 89px; }
+:root[data-os-renderer='high-sierra'] .messages-conversations li:not(.search-result) { height: 89px; }
 :root[data-os-renderer='high-sierra'] .messages-conversations li.selected { background: var(--appearance-selection, #1a95f6); }
 :root[data-os-renderer='high-sierra'] .conversation-name { color: #171717; }
 :root[data-os-renderer='high-sierra'] .selected .conversation-name,
 :root[data-os-renderer='high-sierra'] .selected .conversation-time,
 :root[data-os-renderer='high-sierra'] .selected .conversation-preview { color: var(--appearance-selection-ink, #fff); }
-:root[data-os-renderer='high-sierra'] .messages-input-capsule input::placeholder { color: #888; }
+:root[data-os-renderer='high-sierra'] .messages-input-capsule textarea::placeholder { color: #888; }
 :root[data-os-renderer='high-sierra'] .message-bubble { font-size: 18px; }
 :root[data-os-renderer='high-sierra'] .hs-miami-photo { top: 0; right: 23px; width: 388px; height: 199px; overflow: hidden; border-radius: 0 0 17px 17px; }
 :root[data-os-renderer='high-sierra'] .hs-miami-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }

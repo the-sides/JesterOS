@@ -13,7 +13,10 @@ export function createFeatureCommands(handlers, readState, afterApply, catalog, 
   if (!isRecord(catalog) || !isRecord(knownCatalog)
     || commandNames.some((name) => !Object.hasOwn(catalog, name) || !Object.hasOwn(knownCatalog, name))
     || Object.keys(catalog).some((name) => !Object.hasOwn(handlers, name))) {
-    throw new Error('Every feature handler needs exactly one command catalog descriptor.');
+    const missing = isRecord(catalog) ? Object.keys(catalog).filter(name => !Object.hasOwn(handlers, name)) : [];
+    const undescribed = isRecord(catalog) && isRecord(knownCatalog)
+      ? commandNames.filter(name => !Object.hasOwn(catalog, name) || !Object.hasOwn(knownCatalog, name)) : commandNames;
+    throw new Error(`Every feature handler needs exactly one command catalog descriptor. Missing handlers: ${missing.join(', ')}. Undescribed handlers: ${undescribed.join(', ')}.`);
   }
   function supported(name, profile) {
     return Object.hasOwn(handlers, name) && profile !== null && profile !== undefined
@@ -28,8 +31,8 @@ export function createFeatureCommands(handlers, readState, afterApply, catalog, 
   // without repeating the outer request's DOM-settlement step.
   for (const name of commandNames) {
     const handler = handlers[name];
-    handlers[name] = (target, payload) => supported(name, readProfile())
-      ? handler(target, payload)
+    handlers[name] = (target, payload, ownership) => supported(name, readProfile())
+      ? handler(target, payload, ownership)
       : unsupportedProfile(name);
   }
   Object.freeze(handlers);
@@ -40,7 +43,7 @@ export function createFeatureCommands(handlers, readState, afterApply, catalog, 
   }
 
   return Object.freeze({
-    async execute(request) {
+    async execute(request, ownership) {
       if (!isRecord(request)
         || Object.keys(request).some((key) => !['requestId', 'command', 'target', 'payload'].includes(key))
         || typeof request.command !== 'string'
@@ -57,7 +60,10 @@ export function createFeatureCommands(handlers, readState, afterApply, catalog, 
       if (!isRecord(target) || !isRecord(payload)) {
         return finish(request, rejected('invalid_arguments', 'Target and payload must be plain objects.'));
       }
-      const result = await handlers[request.command](target, payload);
+      if (ownership?.guard && !ownership.guard()) {
+        return finish(request, rejected('stale_target', 'The original command owner changed.'));
+      }
+      const result = await handlers[request.command](target, payload, ownership);
       if (result.status === 'applied') await afterApply();
       return finish(request, result);
     },

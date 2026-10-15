@@ -8,15 +8,17 @@ const identity = { type: 'string', minLength: 1, maxLength: 128,
   pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$', not: { enum: [...forbiddenIds] } };
 const entryKeys = ['id', 'appId', 'title', 'body', 'createdAt', 'destination', 'snoozedUntil'];
 const preferenceKeys = ['doNotDisturb', 'showPreviews', 'applications'];
-const appKeys = ['appId', 'allow', 'desktop', 'center', 'style', 'previews'];
+const appKeys = ['appId', 'allow', 'desktop', 'center', 'badges', 'sound', 'style', 'previews'];
 const appPatchKeys = appKeys.slice(1), globalPatchKeys = preferenceKeys.slice(0, 2);
 const previews = ['always', 'when-unlocked', 'never'], styles = ['temporary', 'persistent'];
-const destinationApps = { message: 'messages', mail: 'mail', event: 'calendar', reminder: 'reminders', note: 'notes' };
+const destinationApps = { message: ['messages', 'teams'], mail: ['mail'], event: ['calendar'],
+  reminder: ['reminders'], note: ['notes'], call: ['facetime', 'teams'],
+  'stocks-price': ['stocks'], 'stocks-story': ['stocks'], 'news-story': ['news'], clock: ['clock'] };
 const destinationKinds = [...Object.keys(destinationApps), 'file'];
 const timestampSchema = { type: 'integer', minimum: 0, maximum: MAX_TIME };
 const titleSchema = { type: 'string', minLength: 1, maxLength: 256,
   pattern: '^(?=[\\s\\S]*\\S)(?![\\s\\S]*[\\r\\n\\u2028\\u2029])[\\s\\S]+$' };
-const appSchema = object({ appId: identity, allow: flag, desktop: flag, center: flag,
+const appSchema = object({ appId: identity, allow: flag, desktop: flag, center: flag, badges: flag, sound: flag,
   style: choice(...styles), previews: choice('default', ...previews) });
 const preferencesSchema = object({ doNotDisturb: flag, showPreviews: choice(...previews),
   applications: { type: 'array', maxItems: MAX_APPLICATIONS, items: appSchema } });
@@ -26,9 +28,9 @@ const entrySchema = object({
   destination: { anyOf: [{ type: 'null' }, object({ kind: choice(...destinationKinds), recordId: identity })] },
   snoozedUntil: { anyOf: [{ type: 'null' }, timestampSchema] },
 });
-entrySchema.allOf = Object.entries(destinationApps).map(([kind, appId]) => ({
+entrySchema.allOf = Object.entries(destinationApps).map(([kind, appIds]) => ({
   if: { properties: { destination: { type: 'object', properties: { kind: { const: kind } }, required: ['kind'] } } },
-  then: { properties: { appId: { const: appId } } },
+  then: { properties: { appId: { enum: appIds } } },
 }));
 export const notificationsSchema = object({
   nextId: { type: 'integer', minimum: 1, maximum: MAX_COUNTER },
@@ -36,7 +38,7 @@ export const notificationsSchema = object({
 });
 export const notificationsDefaults = () => ({ nextId: 1, entries: [],
   preferences: { doNotDisturb: false, showPreviews: 'when-unlocked', applications: [] } });
-const appDefaults = appId => ({ appId, allow: true, desktop: true, center: true, style: 'temporary', previews: 'default' });
+const appDefaults = appId => ({ appId, allow: true, desktop: true, center: true, badges: true, sound: true, style: 'temporary', previews: 'default' });
 const bounded = (value, minimum, maximum) => Number.isSafeInteger(value) && value >= minimum && value <= maximum;
 const validIdentity = value => typeof value === 'string' && value.length <= 128
   && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value) && !forbiddenIds.has(value);
@@ -45,9 +47,14 @@ const title = value => typeof value === 'string' && value.length > 0 && value.le
 const body = value => typeof value === 'string' && value.length <= MAX_TEXT;
 const invalid = () => ({ ok: false, message: 'Notifications require closed plain preferences and destinations, distinct registered applications, at most 256 entries, unique positive allocations below nextId, bounded literal text and scene timestamps.' });
 const fail = (code, message) => rejected(code, message);
-const supported = profile => profile?.id === 'macos-golden-gate-27.0.1'
-  && profile.capabilities?.includes('shell.notification-center');
-const unsupported = () => fail('unsupported_profile', 'Only the current Golden Gate profile accepts notification changes.');
+export const notificationProfileIds = Object.freeze([
+  'macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0',
+  'macos-golden-gate-27.0.1', 'windows11-23h2-22631.2428',
+]);
+export const supportsNotifications = profile => notificationProfileIds.includes(profile?.id)
+  && profile.capabilities?.includes('shell.notification-center') === true;
+const supported = supportsNotifications;
+const unsupported = () => fail('unsupported_profile', 'This profile does not support native notifications.');
 const descriptorSame = (a, b) => a && b && a.enumerable === b.enumerable && a.configurable === b.configurable
   && a.writable === b.writable && a.value === b.value && a.get === b.get && a.set === b.set;
 
@@ -91,16 +98,18 @@ function literalUnits(descriptors) {
     units += key.length + (typeof field.value === 'string' ? field.value.length : 0);
   return units;
 }
-function destinationData(value, appId) {
+function destinationData(value, appId, profile) {
   if (value === null) return { fields: null, copy: null, units: 0 };
   const fields = record(value, ['kind', 'recordId']);
   if (!fields || !destinationKinds.includes(fields.kind.value) || !validIdentity(fields.recordId.value)
-    || fields.kind.value !== 'file' && destinationApps[fields.kind.value] !== appId) return null;
+    || fields.kind.value !== 'file' && !destinationApps[fields.kind.value].includes(appId)
+    || fields.kind.value === 'message' && profile !== undefined
+      && appId !== (profile.family === 'windows' ? 'teams' : 'messages')) return null;
   return { fields, copy: { kind: fields.kind.value, recordId: fields.recordId.value }, units: literalUnits(fields) };
 }
 function validApp(fields, profile) {
   return fields && registered(profile, fields.appId.value)
-    && ['allow', 'desktop', 'center'].every(key => typeof fields[key].value === 'boolean')
+    && ['allow', 'desktop', 'center', 'badges', 'sound'].every(key => typeof fields[key].value === 'boolean')
     && styles.includes(fields.style.value) && ['default', ...previews].includes(fields.previews.value);
 }
 function inspect(state, profile) {
@@ -125,7 +134,7 @@ function inspect(state, profile) {
   for (let index = 0; index < list.length.value; index++) {
     const entry = list[String(index)].value, data = record(entry, entryKeys);
     if (!data) return null;
-    const ordinal = allocation(data.id.value), destination = destinationData(data.destination.value, data.appId.value);
+    const ordinal = allocation(data.id.value), destination = destinationData(data.destination.value, data.appId.value, profile);
     if (ordinal === null || ordinal >= fields.nextId.value || ids.has(ordinal)
       || !registered(profile, data.appId.value) || !title(data.title.value) || !body(data.body.value)
       || !bounded(data.createdAt.value, 0, MAX_TIME) || !destination
@@ -209,14 +218,47 @@ function quotaError(original, delta, canCommit) {
   if (!current(original.snapshots)) return fail('stale_target', 'The original notification state changed during its quota decision.');
   return accepted ? null : fail('limit_exceeded', 'The complete-scene notification text budget rejected this change.');
 }
-export function postNotification(state, profile, appId, payload, sceneTime, canCommit = () => true) {
+
+function transactionCommit(original, delta, canCommit, transaction, commit) {
+  const reserveUnits = transaction?.reserveTextUnits ?? 0;
+  if (typeof canCommit !== 'function' || !Number.isSafeInteger(reserveUnits) || !Number.isSafeInteger(delta + reserveUnits)
+    || typeof transaction?.guard !== 'undefined' && typeof transaction.guard !== 'function'
+    || typeof transaction?.onCommit !== 'undefined' && typeof transaction.onCommit !== 'function'
+    || typeof transaction?.reserve !== 'undefined' && typeof transaction.reserve !== 'function')
+    return fail('invalid_arguments', 'Notification transactions require signed safe text units and synchronous guard, reserve and commit callbacks.');
+  const guard = () => {
+    try { return (!transaction?.guard || transaction.guard() === true) && current(original.snapshots); }
+    catch { return false; }
+  };
+  if (!guard()) return fail('stale_target', 'The original notification transaction retired.');
+  const denied = quotaError(original, delta, change => canCommit(change + reserveUnits));
+  if (denied) return denied;
+  let acknowledged = null;
+  const apply = () => {
+    if (!guard()) return fail('stale_target', 'The original notification transaction changed before commit.');
+    // reserve holds only this graph's delta: the domain callback budgets its
+    // own actual change, without double-counting the declared domain estimate.
+    if (transaction?.onCommit && transaction.onCommit(transaction.notificationId) !== true)
+      return fail('unavailable', 'The original domain did not acknowledge its atomic notification transaction.');
+    // A successful callback intentionally changes its domain lease. Its own
+    // acknowledgement is final, not grounds for a subsequent stale rejection.
+    acknowledged = commit();
+    return acknowledged;
+  };
+  try {
+    const result = transaction?.reserve ? transaction.reserve(delta, apply) : apply();
+    return acknowledged ?? (result?.status === 'rejected' ? result : fail('unavailable', 'The synchronous reservation did not commit its notification transaction.'));
+  }
+  catch { return acknowledged ?? fail('unavailable', 'The synchronous notification transaction was not acknowledged.'); }
+}
+export function postNotification(state, profile, appId, payload, sceneTime, canCommit = () => true, transaction) {
   try {
     if (!supported(profile)) return unsupported();
     const data = record(payload, ['title', 'body'], ['createdAt', 'destination']);
     if (!data || !registered(profile, appId) || !title(data.title.value) || !body(data.body.value))
       return fail('invalid_arguments', 'Post a registered application and a closed literal title/body payload with optional createdAt and destination.');
     const createdAt = Object.hasOwn(data, 'createdAt') ? data.createdAt.value : sceneTime;
-    const destination = destinationData(Object.hasOwn(data, 'destination') ? data.destination.value : null, appId);
+    const destination = destinationData(Object.hasOwn(data, 'destination') ? data.destination.value : null, appId, profile);
     if (!bounded(createdAt, 0, MAX_TIME) || !destination) return fail('invalid_arguments', invalid().message);
     const entry = { id: '', appId, title: data.title.value, body: data.body.value, createdAt,
       destination: destination.copy, snoozedUntil: null };
@@ -226,9 +268,10 @@ export function postNotification(state, profile, appId, payload, sceneTime, canC
       return fail('limit_exceeded', 'Notification capacity or the nonreusable allocation counter is exhausted.');
     entry.id = `notification-${original.nextId}`;
     const delta = String(original.entries.length).length + literalUnits(Object.getOwnPropertyDescriptors(entry)) + destination.units;
-    const denied = quotaError(original, delta, canCommit); if (denied) return denied;
-    state.entries = [...original.entries, entry]; state.nextId = original.nextId + 1;
-    return { status: 'applied', target: { notificationId: entry.id, appId, createdAt } };
+    return transactionCommit(original, delta, canCommit, transaction && { ...transaction, notificationId: entry.id }, () => {
+      state.entries = [...original.entries, entry]; state.nextId = original.nextId + 1;
+      return { status: 'applied', target: { notificationId: entry.id, appId, createdAt } };
+    });
   } catch { return fail('invalid_arguments', invalid().message); }
 }
 function patchData(patch, keys) {
@@ -237,7 +280,7 @@ function patchData(patch, keys) {
   const copy = {};
   for (const [key, field] of Object.entries(fields)) {
     const value = field.value;
-    if (['allow', 'desktop', 'center', 'doNotDisturb'].includes(key) ? typeof value !== 'boolean'
+    if (['allow', 'desktop', 'center', 'badges', 'sound', 'doNotDisturb'].includes(key) ? typeof value !== 'boolean'
       : key === 'style' ? !styles.includes(value)
         : key === 'previews' ? !['default', ...previews].includes(value) : !previews.includes(value)) return null;
     copy[key] = value;
@@ -324,5 +367,64 @@ export function clearNotifications(state, groupId) {
     if (groupId !== undefined && !removedIds.length) return fail('not_found', 'The original notification application group no longer exists.');
     if (removedIds.length) state.entries = groupId === undefined ? [] : original.entries.filter(entry => entry.appId !== groupId);
     return { status: 'applied', target: { removedIds } };
+  } catch { return fail('invalid_arguments', invalid().message); }
+}
+
+/** Domain-ledger dismissal uses the exact retained entry, never a same-ID replacement. */
+export function updateDomainNotification(state, profile, entry, patch, canCommit = () => true, transaction) {
+  try {
+    if (!supported(profile)) return unsupported();
+    const data = record(patch, ['dismissed']);
+    if (!data || data.dismissed.value !== true)
+      return fail('invalid_arguments', 'Domain notification updates require dismissed:true.');
+    const original = mutationState(state, profile);
+    if (!original || !writable(original, ['entries'])) return fail('invalid_arguments', invalid().message);
+    if (!original.entries.includes(entry)) return fail('stale_target', 'The actual original notification no longer exists.');
+    const entries = original.entries.filter(value => value !== entry);
+    const candidate = inspect({ nextId: original.nextId, entries, preferences: original.preferences }, profile);
+    if (!candidate) return fail('invalid_arguments', invalid().message);
+    return transactionCommit(original, candidate.units - original.units, canCommit,
+      transaction && { ...transaction, notificationId: entry.id }, () => {
+        state.entries = entries;
+        return { status: 'applied', target: { notificationId: entry.id, dismissed: true } };
+      });
+  } catch { return fail('invalid_arguments', invalid().message); }
+}
+
+/** Stage a whole batch before the one domain acknowledgement and graph commit. */
+export function removeDomainNotifications(state, profile, originals, canCommit = () => true, transaction) {
+  try {
+    if (!supported(profile)) return unsupported();
+    const list = dense(originals, MAX_ENTRIES);
+    if (!list || new Set(originals).size !== originals.length) return fail('invalid_arguments', invalid().message);
+    const original = mutationState(state, profile);
+    if (!original || !writable(original, ['entries'])) return fail('invalid_arguments', invalid().message);
+    if (originals.some(entry => !original.entries.includes(entry))) return fail('stale_target', 'An original notification in the batch retired.');
+    const removed = new Set(originals), entries = original.entries.filter(entry => !removed.has(entry));
+    const candidate = inspect({ nextId: original.nextId, entries, preferences: original.preferences }, profile);
+    if (!candidate) return fail('invalid_arguments', invalid().message);
+    const removedIds = originals.map(entry => entry.id);
+    return transactionCommit(original, candidate.units - original.units, canCommit,
+      transaction && { ...transaction, notificationId: removedIds }, () => {
+        state.entries = entries;
+        return { status: 'applied', target: { removedIds } };
+      });
+  } catch { return fail('invalid_arguments', invalid().message); }
+}
+
+/** A prospective allocation lease: planning does not insert or consume an ID. */
+export function planNotificationAllocation(state, profile, guard = () => true) {
+  try {
+    if (!supported(profile)) return unsupported();
+    const original = mutationState(state, profile);
+    if (!original || !writable(original, ['entries', 'nextId']) || typeof guard !== 'function')
+      return fail('invalid_arguments', invalid().message);
+    if (original.entries.length >= MAX_ENTRIES || original.nextId >= MAX_COUNTER)
+      return fail('limit_exceeded', 'Notification capacity or the nonreusable allocation counter is exhausted.');
+    const retained = () => {
+      try { return guard() === true && current(original.snapshots); } catch { return false; }
+    };
+    if (!retained()) return fail('stale_target', 'The original notification allocation plan retired.');
+    return { notificationId: `notification-${original.nextId}`, current: retained };
   } catch { return fail('invalid_arguments', invalid().message); }
 }

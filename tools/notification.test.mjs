@@ -7,6 +7,8 @@ import {
   notificationDesktopStyle, configureNotificationApp, configureNotificationGlobals, snoozeNotification,
 } from '../frontend/src/notification-model.js';
 import { createNotificationCommands } from '../frontend/src/notification-commands.js';
+import { createPreferencesState, preferencesSession, validatePreferencesState } from '../frontend/src/preferences-state.js';
+import { createPreferencesCommands } from '../frontend/src/preferences-commands.js';
 
 const frontendRequire = createRequire(new URL('../frontend/package.json', import.meta.url));
 const { proxy } = await import(frontendRequire.resolve('svelte/internal/client'));
@@ -183,7 +185,7 @@ test('app and global patches are closed descriptor-only intent and reject unknow
   const quota = () => { calls++; return true; };
   const appAccessor = Object.defineProperty({}, 'style', { enumerable: true, get() { reads++; return 'persistent'; } });
   for (const patch of [
-    {}, appAccessor, { appId: 'mail' }, { allow: 1 }, { style: 'alert' }, { previews: 'sometimes' },
+    {}, appAccessor, { appId: 'mail' }, { allow: 1 }, { badges: 'true' }, { sound: 1 }, { style: 'alert' }, { previews: 'sometimes' },
     { desktop: true, foreign: true }, { center: false, [Symbol('actor')]: true },
     Object.defineProperty({ allow: false }, 'previews', { value: 'never' }),
   ]) unchanged(state, () => configureNotificationApp(state, profile, 'mail', patch, quota), 'invalid_arguments');
@@ -780,4 +782,142 @@ test('async actor targets remain literal even when their caller changes them dur
   target.groupId = 'notes'; payload.expanded = false; gate.resolve();
   expect((await pending).target).toEqual({ centerId: model.pane().centerId, groupId: 'mail', expanded: true });
   expect(model.commands.summary().expandedGroupIds).toEqual(['mail']);
+});
+
+test('final authored clock changes retire original native center leases and reject quota-time arrival rebasing', async () => {
+  const state = notificationsDefaults(); event(state, 'mail', 'Original');
+  const model = centerFixture(state); await model.run('open'); const gate = model.gate();
+  const pending = model.run('dismiss', model.target({ notificationId: 'notification-1' }));
+  await gate.started.promise; model.sceneTime(TIME + 1); gate.resolve();
+  expect((await pending).status).toBe('rejected'); expect(state.entries).toHaveLength(1);
+  const arrival = centerFixture();
+  arrival.ctx.canCommit = () => { arrival.sceneTime(TIME + 1); return true; };
+  expect((await arrival.run('post', { appId: 'mail' }, { title: 'Not rebased', body: '' })).status).toBe('rejected');
+  expect(arrival.state().entries).toEqual([]); expect(arrival.state().nextId).toBe(1);
+});
+
+function embeddedSettingsFixture() {
+  const model = centerFixture();
+  const window = { id: 'preferences-window-1', appId: 'settings' };
+  const preferences = createPreferencesState(profile, { sceneTime: TIME });
+  const inventory = { hardware: {} };
+  let owner = null;
+  const view = { available: () => owner?.view === view, focus: async () => true };
+  const preferencesView = { available: () => owner?.session === preferencesSession(preferences, window.id) };
+  const preferencesController = createPreferencesCommands(preferences, {
+    profile, getState: () => preferences, alive: () => true, getSceneTime: () => TIME,
+    getShared: name => name === 'notifications' ? model.state() : undefined,
+    getInventory: () => inventory, getWindow: id => id === window.id ? window : null,
+    getView: () => preferencesView, available: actual => actual === window && owner !== null,
+    canCommit: delta => model.ctx.canCommit(delta),
+  });
+  expect(preferencesController.windowOpened(window, { pane: 'notifications' })).toBe(true);
+  const session = preferencesSession(preferences, window.id);
+  owner = { window, view, session };
+  expect(preferencesController.selectNotificationApp(window.id, 'mail', () => true).status).toBe('applied');
+  model.ctx.getSettingsOwner = id => id === window.id ? owner : null;
+  model.ctx.getSettingsSelection = retained => retained.session.selectedId;
+  model.ctx.prepareSettings = async (_retained, _control, guard) => guard();
+  model.ctx.selectSettingsApp = (retained, appId, guard) =>
+    preferencesController.selectNotificationApp(retained.window.id, appId, guard);
+  return { ...model, window, session, preferences, preferencesController, inventory,
+    replaceOwner: value => { owner = value; }, owner: () => owner };
+}
+
+test('embedded Preferences selection retains the original hardware source and strict final supplied guard', () => {
+  const replaced = embeddedSettingsFixture(), originalPreferences = snapshot(replaced.preferences);
+  const originalPolicy = snapshot(replaced.state());
+  replaced.ctx.canCommit = () => { replaced.inventory.hardware = {}; return true; };
+  expect(replaced.preferencesController.selectNotificationApp(replaced.window.id, 'notes', () => true).error.code).toBe('stale_target');
+  expect(replaced.preferences).toEqual(originalPreferences);
+  expect(replaced.state()).toEqual(originalPolicy);
+  for (const retired of [false, 1, Promise.resolve(true)]) {
+    const model = embeddedSettingsFixture(), before = snapshot(model.preferences);
+    let supplied = true;
+    model.ctx.canCommit = () => { supplied = retired; return true; };
+    expect(model.preferencesController.selectNotificationApp(model.window.id, 'notes', () => supplied).error.code).toBe('stale_target');
+    expect(model.preferences).toEqual(before);
+    expect(model.session.selectedId).toBe('mail');
+    expect(model.state().preferences.applications).toEqual([]);
+  }
+});
+
+test('embedded Preferences selection uses the original canonical session, never copied window authority', async () => {
+  const model = embeddedSettingsFixture();
+  expect((await model.run('settings.select', { windowId: model.window.id, appId: 'notes' })).status).toBe('applied');
+  expect(model.session.selectedId).toBe('notes');
+  expect(Object.hasOwn(model.window, 'notificationAppId')).toBe(false);
+  expect((await model.run('settings.configure', { windowId: model.window.id, appId: 'notes' },
+    { configuration: { allow: false } })).status).toBe('applied');
+  expect(notificationAppSettings(model.state(), 'notes').allow).toBe(false);
+  expect((await model.run('settings.configure', { windowId: model.window.id, appId: 'mail' },
+    { configuration: { allow: false } })).status).toBe('rejected');
+  expect(preferencesSession(model.preferences, model.window.id)).toBe(model.session);
+  expect(validatePreferencesState(structuredClone(model.preferences), profile).ok).toBe(true);
+});
+
+test('same-ID Preferences session replacement during native preparation cannot authorize notification policy writes', async () => {
+  const model = embeddedSettingsFixture(), gate = deferred(), started = deferred();
+  model.ctx.prepareSettings = async () => { started.resolve(); await gate.promise; return true; };
+  const pending = model.run('settings.configure', { windowId: model.window.id, appId: 'mail' },
+    { configuration: { desktop: false } });
+  await started.promise;
+  model.replaceOwner({ ...model.owner(), session: { ...model.session } });
+  gate.resolve();
+  expect((await pending).status).toBe('rejected');
+  expect(model.state().preferences.applications).toEqual([]);
+});
+
+test('original embedded Settings retirement during quota cannot commit a Preferences selection or notification policy', async () => {
+  const selecting = embeddedSettingsFixture(), before = snapshot(selecting.preferences);
+  selecting.ctx.canCommit = () => { selecting.replaceOwner(null); return true; };
+  expect((await selecting.run('settings.select', { windowId: selecting.window.id, appId: 'notes' })).status).toBe('rejected');
+  expect(selecting.preferences).toEqual(before);
+  const configuring = embeddedSettingsFixture(), originalPolicy = snapshot(configuring.state());
+  configuring.ctx.canCommit = () => { configuring.replaceOwner(null); return true; };
+  expect((await configuring.run('settings.configure', { windowId: configuring.window.id, appId: 'mail' },
+    { configuration: { badges: false, sound: false } })).status).toBe('rejected');
+  expect(configuring.state()).toEqual(originalPolicy);
+});
+
+test('committed embedded notification policy survives presentation retirement without rewriting its Preferences session', async () => {
+  const model = embeddedSettingsFixture(), originalPreferences = snapshot(model.preferences);
+  model.ctx.settle = async () => { model.replaceOwner(null); };
+  expect((await model.run('settings.configure', { windowId: model.window.id, appId: 'mail' },
+    { configuration: { sound: false } })).status).toBe('applied');
+  expect(notificationAppSettings(model.state(), 'mail').sound).toBe(false);
+  expect(model.preferences).toEqual(originalPreferences);
+  expect(preferencesSession(model.preferences, model.window.id)).toBe(model.session);
+});
+
+test('embedded selection requires genuine source callbacks and retains acknowledged changes after presentation retires', async () => {
+  const missing = embeddedSettingsFixture();
+  delete missing.ctx.selectSettingsApp;
+  expect((await missing.run('settings.select', { windowId: missing.window.id, appId: 'notes' })).status).toBe('rejected');
+  expect(missing.session.selectedId).toBe('mail');
+  const unacknowledged = embeddedSettingsFixture();
+  unacknowledged.ctx.selectSettingsApp = () => ({ status: 'applied' });
+  expect((await unacknowledged.run('settings.select', { windowId: unacknowledged.window.id, appId: 'notes' })).status).toBe('rejected');
+  expect(unacknowledged.session.selectedId).toBe('mail');
+  const acknowledged = embeddedSettingsFixture();
+  const commit = acknowledged.ctx.selectSettingsApp;
+  acknowledged.ctx.selectSettingsApp = (...args) => {
+    const result = commit(...args);
+    acknowledged.replaceOwner(null);
+    return result;
+  };
+  expect((await acknowledged.run('settings.select', { windowId: acknowledged.window.id, appId: 'notes' })).status).toBe('applied');
+  expect(acknowledged.session.selectedId).toBe('notes');
+  expect(validatePreferencesState(structuredClone(acknowledged.preferences), profile).ok).toBe(true);
+});
+
+test('native settings badge and sound controls commit only the canonical per-app policies', async () => {
+  const model = embeddedSettingsFixture();
+  const otherPolicy = snapshot(notificationAppSettings(model.state(), 'notes'));
+  expect((await model.run('settings.configure', { windowId: model.window.id, appId: 'mail' },
+    { configuration: { badges: false, sound: false } })).status).toBe('applied');
+  const policy = notificationAppSettings(model.state(), 'mail');
+  expect(policy.badges).toBe(false); expect(policy.sound).toBe(false);
+  expect(notificationAppSettings(model.state(), 'notes')).toEqual(otherPolicy);
+  expect(model.state().entries).toEqual([]);
 });

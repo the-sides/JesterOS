@@ -1,9 +1,8 @@
 import { rejected } from './feature-commands.js';
-import { createNote, nextNoteTimestamp } from './notes-state.js';
-import { applicableServices, serviceMenuItems, contactDraftFields } from './service-registry.js';
+import { applyNotesWorkspaceCandidate } from './notes-workspace-state.js';
+import { prepareNotesWorkspaceCreation } from './notes-workspace-projections.js';
+import { applicableServices, serviceMenuItems, contactServiceFields } from './service-registry.js';
 import { lookupOfflineDefinition } from './offline-dictionary.js';
-import { draftPreview, createCommunicationDraft, changeCommunicationDraft, submitCommunicationDraft,
-  discardCommunicationDraft, selectCommunicationEntry, validCommunicationField } from './communication-state.js';
 
 function fields(value, required, optional = []) {
   try {
@@ -23,37 +22,34 @@ const fail = code => rejected(code, code === 'invalid_arguments' ? 'Use the clos
 const applied = target => ({ status: 'applied', target });
 const clone = value => Array.isArray(value) ? value.map(clone)
   : value !== null && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clone(item)])) : value;
-const draftApp = kind => kind === 'contact' ? 'contacts' : kind === 'message' ? 'messages' : 'mail';
 
-/** Native ownership is App's; record transitions are communication-state's.
- * Every cross-app delivery prepares its real destination before allocating data. */
-export function createServiceCommands(state, ctx) {
+/** Services own no app records. Parent prepares the original native destination
+ * and commits its canonical domain under the shared scene budget and clock. */
+export function createServiceCommands(ctx) {
   let disposed = false, sequence = 0, generation = 0;
   const scopeId = globalThis.crypto.randomUUID();
   let lookupReturn = null, contextReturn = null;
   const guard = () => !ctx.profile.capabilities.includes('shell.services-workflows') ? fail('unsupported_profile')
     : disposed || ctx.available() !== true ? fail('unavailable') : null;
-  const currentSource = source => ctx.sourceCurrent(source) === true;
-  const sourceOwner = source => !guard() && ctx.ownsSourcePresentation(source) === true;
+  const currentSource = source => ctx.sourceCurrent?.(source) === true;
+  const sourceOwner = source => !guard() && ctx.ownsSourcePresentation?.(source) === true;
   const native = async call => { try { return await call(); } catch { return null; } };
+  const sharedCommit = call => { try { const result = call(); return result && typeof result.then !== 'function' ? result : null; } catch { return null; } };
   const serialId = kind => `${ctx.namespace()}services-${kind}-${scopeId}-${++sequence}`;
   const provider = target => {
-    const value = ctx.getProvider(target.windowId);
-    return value?.appId === target.appId && channels.includes(target.appId) ? value : null;
+    const value = ctx.getProvider?.(target.windowId);
+    return value?.appId === target.appId && value.windowId === target.windowId && channels.includes(target.appId)
+      && value.view?.available?.() === true && typeof value.isCurrent === 'function' && value.isCurrent() === true ? value : null;
   };
   const providerTarget = (target, extra = []) => fields(target, ['appId', 'windowId', ...extra]) && channels.includes(target.appId) && id(target.windowId);
   const providerLease = entry => {
-    const epoch = generation, entryId = entry.entry?.id ?? null, revision = entry.entry?.revision ?? null;
-    return () => !guard() && epoch === generation && ctx.getProvider(entry.windowId)?.view === entry.view
-      && ctx.getProvider(entry.windowId)?.entry?.id === (entryId ?? undefined)
-      && (entryId === null || ctx.getProvider(entry.windowId)?.entry?.revision === revision);
+    const epoch = generation, record = entry.record ?? null, revision = record?.revision;
+    return () => !guard() && epoch === generation && entry.isCurrent() === true && provider(entry)?.view === entry.view
+      && (provider(entry)?.record ?? null) === record && (record === null || record.revision === revision);
   };
-  async function prepareProvider(entry, control) {
-    const lease = providerLease(entry);
-    return await native(() => entry.view.prepare(control)) === true && lease()
-      && await native(() => entry.view.focus(control)) === true && lease() ? lease : null;
+  async function rollback(preparation, source) {
+    if (preparation) await native(() => ctx.rollbackServiceDestination(preparation, source));
   }
-  async function rollback(preparation, source) { if (preparation) await native(() => ctx.rollbackDestination(preparation, source)); }
   function lookupOwner(lookupId) {
     const pane = ctx.ui.lookup;
     return pane?.lookupId === lookupId && lookupReturn && sourceOwner(lookupReturn.source) && currentSource(lookupReturn.source) ? pane : null;
@@ -83,53 +79,88 @@ export function createServiceCommands(state, ctx) {
     return applied({ appId: source.appId, serviceId: 'lookup', sourceId: source.sourceId, lookupId: pane.lookupId, found: pane.entry !== null });
   }
   async function deliver(source, service) {
+    const sourceGuard = () => sourceOwner(source) && currentSource(source);
+    if (!sourceGuard()) return fail('stale_target');
     if (service.id === 'lookup') return openLookup(source);
     if (service.id === 'copy-paths' || service.id === 'show-info') {
-      if (await native(() => ctx.prepareSource(source)) !== true || !sourceOwner(source) || !currentSource(source)) return fail('stale_target');
+      if (typeof ctx.prepareSource !== 'function' || !sourceGuard()) return fail('unavailable');
+      if (await native(() => ctx.prepareSource(source, { guard: sourceGuard, windowId: source.windowId })) !== true || !sourceGuard()) return fail('stale_target');
       if (service.id === 'copy-paths') {
         const text = source.files.map(file => file.path).join('\n');
         if (text.length > 1024 * 1024) return rejected('limit_exceeded', 'Selected virtual file paths exceed the scene clipboard limit.');
-        Object.assign(ctx.clipboard, { kind: 'text', text, fileIds: [] });
-        ctx.changed();
-        return applied({ appId: source.appId, serviceId: service.id, sourceId: source.sourceId, fileIds: source.files.map(file => file.fileId) });
+        if (typeof ctx.setClipboard !== 'function' || !sourceGuard()) return fail('unavailable');
+        const result = await native(() => ctx.setClipboard({ kind: 'text', text, fileIds: [] }, { guard: sourceGuard, windowId: source.windowId }));
+        return result?.status === 'applied' ? applied({ appId: source.appId, serviceId: service.id, sourceId: source.sourceId,
+          fileIds: source.files.map(file => file.fileId) }) : result?.status === 'rejected' ? result : fail('unavailable');
       }
-      const result = await ctx.showFileInfo(source);
-      return result.status === 'applied' ? applied({ appId: source.appId, serviceId: service.id, sourceId: source.sourceId,
-        fileIds: source.files.map(file => file.fileId), windowIds: result.target.windowIds }) : result;
+      if (typeof ctx.showFileInfo !== 'function' || !sourceGuard()) return fail('unavailable');
+      const result = await native(() => ctx.showFileInfo(source, { guard: sourceGuard, windowId: source.windowId }));
+      return result?.status === 'applied' ? applied({ appId: source.appId, serviceId: service.id, sourceId: source.sourceId,
+        fileIds: source.files.map(file => file.fileId), windowIds: result.target?.windowIds }) : result?.status === 'rejected' ? result : fail('unavailable');
     }
-    let preview = null;
-    const sceneTime = ctx.getSceneTime?.();
-    if (service.id !== 'create-note') {
-      const kind = service.provider === 'contacts' ? 'contact' : service.provider === 'messages' ? 'message' : 'mail';
-      const values = kind === 'contact' ? contactDraftFields(source.text)
-        : kind === 'message' ? { to: service.id === 'message-contact' ? source.contact.fields.phone || source.contact.fields.email : '',
-          body: source.kind === 'text' ? source.text : '' }
-          : { to: service.id === 'email-contact' ? source.contact.fields.email : '', subject: '', body: source.kind === 'text' ? source.text : '' };
-      const attachments = source.kind === 'files' ? source.files.map(file => ({ fileId: file.fileId, name: file.name, revision: file.revision, content: file.content })) : [];
-      preview = draftPreview(state, kind, values, attachments, sceneTime);
-      if (!preview) return rejected('limit_exceeded', 'Local service draft allocation or content capacity is exhausted.');
-      if (!ctx.canCommitDraft(preview)) return rejected('limit_exceeded', 'The complete scene text capacity would be exceeded.');
-    } else if (nextNoteTimestamp(ctx.notes, sceneTime) === null || !ctx.canCreateNote(source.text, sceneTime))
-      return rejected('limit_exceeded', 'The complete scene note, clock, identity or text capacity is exhausted.');
-    const preparation = await native(() => ctx.prepareDestination(service.provider, preview, source));
-    if (!preparation || !ctx.destinationCurrent(preparation) || !currentSource(source) || guard()) {
+    const isNote = service.id === 'create-note';
+    if (typeof ctx.prepareServiceDestination !== 'function' || typeof ctx.serviceDestinationCurrent !== 'function'
+      || typeof ctx.rollbackServiceDestination !== 'function' || typeof ctx.commitServiceTransition !== 'function'
+      || isNote && (typeof ctx.getNotesState !== 'function' || typeof ctx.getSceneTime !== 'function')) return fail('unavailable');
+    const spec = isNote ? { kind: 'note', text: source.text }
+      : service.provider === 'contacts' ? { kind: 'contact', fields: contactServiceFields(source.text) }
+        : service.provider === 'messages' ? { kind: 'message', recipient: source.kind === 'contact' ? {
+          name: source.contact.name, address: source.contact.phone || source.contact.email } : null, text: source.kind === 'text' ? source.text : '' }
+          : { kind: 'mail', to: source.kind === 'contact' ? [{ name: source.contact.name, email: source.contact.email }] : [],
+            subject: '', body: source.kind === 'text' ? source.text : '',
+            attachments: source.kind === 'files' ? source.files.map(file => ({ fileId: file.fileId, revision: file.revision })) : [] };
+    const originalNotes = isNote ? ctx.getNotesState() : null;
+    if (isNote && !originalNotes) return fail('unavailable');
+    const preparationGuard = () => sourceGuard() && (!isNote || ctx.getNotesState() === originalNotes);
+    if (!preparationGuard()) return fail('stale_target');
+    const preparation = await native(() => ctx.prepareServiceDestination(service.provider, spec,
+      { guard: preparationGuard, windowId: source.windowId }));
+    if (preparation?.status === 'rejected') return preparationGuard() ? preparation : fail('stale_target');
+    const destinationGuard = () => preparationGuard() && preparation?.appId === service.provider
+      && id(preparation.windowId) && ctx.serviceDestinationCurrent(preparation) === true;
+    if (!destinationGuard()) {
       await rollback(preparation, source);
-      return fail(preparation && (preparation.stale || !currentSource(source)) ? 'stale_target' : 'unavailable');
+      return fail(preparation && !preparationGuard() ? 'stale_target' : 'unavailable');
     }
-    if (service.id === 'create-note') {
-      const sceneTime = ctx.getSceneTime?.(), time = nextNoteTimestamp(ctx.notes, sceneTime);
-      if (time === null || !ctx.canCreateNote(source.text, sceneTime)) { await rollback(preparation, source); return rejected('limit_exceeded', 'The scene note capacity changed during preparation.'); }
-      const noteId = createNote(ctx.notes, source.text, sceneTime);
-      ctx.onTimeChanged?.(time);
-      ctx.noteCreated(); ctx.finishDestination(preparation);
-      return applied({ appId: source.appId, serviceId: service.id, sourceId: source.sourceId, noteId, windowId: preparation.windowId });
+    let transition;
+    if (isNote) {
+      const sceneTime = ctx.getSceneTime();
+      transition = prepareNotesWorkspaceCreation(originalNotes, ctx.profile, source.text, sceneTime, { windowId: preparation.windowId });
+      if (transition.status !== 'prepared') { await rollback(preparation, source); return transition; }
+      const baseline = JSON.stringify(originalNotes);
+      let committed = false, committing = false;
+      const commitGuard = () => !committed && destinationGuard() && ctx.getSceneTime() === sceneTime
+        && JSON.stringify(originalNotes) === baseline;
+      const onCommit = () => {
+        if (!committing || !commitGuard()) return false;
+        applyNotesWorkspaceCandidate(originalNotes, transition.candidate);
+        committed = true;
+        return true;
+      };
+      if (!commitGuard()) { await rollback(preparation, source); return fail('stale_target'); }
+      committing = true;
+      const result = sharedCommit(() => ctx.commitServiceTransition({
+        provider: 'notes', preparation, deltaTextUnits: transition.deltaTextUnits, timestamp: transition.timestamp, onCommit,
+      }, { guard: commitGuard, windowId: source.windowId }));
+      committing = false;
+      if (committed) return applied({ appId: source.appId, serviceId: service.id, sourceId: source.sourceId,
+        noteId: transition.noteId, windowId: preparation.windowId });
+      await rollback(preparation, source);
+      return result?.status === 'rejected' ? result : fail('unavailable');
     }
-    const result = createCommunicationDraft(state, preview, ctx.canCommitCommunications, ctx.getSceneTime?.());
-    if (result.status !== 'applied') { await rollback(preparation, source); return result; }
-    ctx.onTimeChanged?.(state.timeBase);
-    ctx.finishDestination(preparation); ctx.changed();
-    return applied({ appId: source.appId, serviceId: service.id, sourceId: source.sourceId, draftId: preview.id,
-      kind: preview.kind, windowId: preparation.windowId });
+    if (preparation.transition?.status !== 'prepared') { await rollback(preparation, source); return fail('unavailable'); }
+    if (!destinationGuard()) { await rollback(preparation, source); return fail('stale_target'); }
+    let committing = true;
+    const commitGuard = () => committing && destinationGuard();
+    const result = sharedCommit(() => ctx.commitServiceTransition({
+      provider: service.provider, preparation, transition: preparation.transition,
+    }, { guard: commitGuard, windowId: source.windowId }));
+    committing = false;
+    if (result?.status === 'applied' && id(result.target?.recordId)) return applied({
+      appId: source.appId, serviceId: service.id, sourceId: source.sourceId, ...result.target, windowId: preparation.windowId,
+    });
+    await rollback(preparation, source);
+    return result?.status === 'rejected' ? result : fail('unavailable');
   }
 
   const handlers = {
@@ -143,83 +174,33 @@ export function createServiceCommands(state, ctx) {
       if (!service) return rejected('disabled', 'The local service does not accept the current selection or contact endpoint.');
       return deliver(source, service);
     },
-    'services.draft.set': async (target, payload) => {
-      const error = guard(); if (error) return error;
-      if (!providerTarget(target, ['draftId', 'field']) || !id(target.draftId) || !id(target.field)
-        || !fields(payload, ['value']) || typeof payload.value !== 'string') return fail('invalid_arguments');
-      const owner = provider(target), draft = state.drafts.find(entry => entry.id === target.draftId);
-      if (!owner || owner.entry?.id !== target.draftId || !draft || draftApp(draft.kind) !== target.appId) return fail('stale_target');
-      if (!validCommunicationField(draft.kind, target.field, payload.value)) return fail('invalid_arguments');
-      const lease = await prepareProvider(owner, target.field);
-      if (!lease || !lease() || owner.view.fieldNode(target.field)?.dataset.serviceEntryId !== draft.id) return fail('unavailable');
-      const beforeTime = state.timeBase;
-      const result = changeCommunicationDraft(state, draft.id, target.field, payload.value, ctx.canCommitCommunications, ctx.getSceneTime?.());
-      if (result.status === 'applied') {
-        if (state.timeBase !== beforeTime) ctx.onTimeChanged?.(state.timeBase);
-        ctx.changed();
-      }
-      return result.status === 'applied' ? applied({ appId: target.appId, windowId: target.windowId, draftId: draft.id,
-        field: target.field, revision: state.drafts.find(entry => entry.id === draft.id).revision }) : result;
-    },
-    'services.draft.submit': async (target, payload) => {
-      const error = guard(); if (error) return error;
-      if (!providerTarget(target, ['draftId']) || !id(target.draftId) || !fields(payload, [])) return fail('invalid_arguments');
-      const owner = provider(target), draft = state.drafts.find(entry => entry.id === target.draftId);
-      if (!owner || owner.entry?.id !== target.draftId || !draft || draftApp(draft.kind) !== target.appId) return fail('stale_target');
-      const lease = await prepareProvider(owner, 'panel');
-      if (!lease || !lease() || !ctx.providerValuesCurrent(owner)) return fail('stale_target');
-      const result = submitCommunicationDraft(state, draft.id, ctx.canCommitCommunications, ctx.getSceneTime?.());
-      if (result.status === 'applied') { ctx.onTimeChanged?.(state.timeBase); ctx.changed(); }
-      return result.status === 'applied' ? applied({ appId: target.appId, windowId: target.windowId, ...result.target }) : result;
-    },
-    'services.draft.discard': async (target, payload) => {
-      const error = guard(); if (error) return error;
-      if (!providerTarget(target, ['draftId']) || !id(target.draftId) || !fields(payload, [])) return fail('invalid_arguments');
-      const owner = provider(target);
-      if (!owner || owner.entry?.id !== target.draftId || !state.drafts.some(entry => entry.id === target.draftId)) return fail('stale_target');
-      if (!await prepareProvider(owner, 'panel')) return fail('unavailable');
-      const result = discardCommunicationDraft(state, target.draftId);
-      if (result.status === 'applied') ctx.changed();
-      return result.status === 'applied' ? applied({ appId: target.appId, windowId: target.windowId, draftId: target.draftId }) : result;
-    },
-    'services.provider.select': async (target, payload) => {
-      const error = guard(); if (error) return error;
-      if (!providerTarget(target) || !fields(payload, ['entryId']) || payload.entryId !== null && !id(payload.entryId)) return fail('invalid_arguments');
-      const owner = provider(target); if (!owner) return fail('stale_target');
-      if (!await prepareProvider(owner, 'panel')) return fail('unavailable');
-      const result = selectCommunicationEntry(state, target.appId, payload.entryId);
-      if (result.status === 'applied') ctx.changed();
-      return result.status === 'applied' ? applied({ appId: target.appId, windowId: target.windowId, entryId: payload.entryId }) : result;
-    },
     'services.panel.focus': async (target, payload) => {
       const error = guard(); if (error) return error;
       if (!providerTarget(target, ['control']) || !id(target.control) || !fields(payload, [], ['start', 'end', 'direction'])
         || Object.keys(payload).length && (!offset(payload.start) || !offset(payload.end) || payload.start > payload.end
           || payload.direction !== undefined && !['forward', 'backward', 'none'].includes(payload.direction))) return fail('invalid_arguments');
+      if (Object.keys(payload).length && typeof ctx.setProviderSelection !== 'function') return fail('unavailable');
       const owner = provider(target); if (!owner) return fail('stale_target');
-      const node = owner.view.fieldNode(target.control);
-      if (Object.keys(payload).length && (!node || payload.end > node.value.length)) return fail('invalid_arguments');
       if (!owner.view.describe().controlIds.includes(target.control)) return fail('invalid_arguments');
       const lease = providerLease(owner);
-      if (await native(() => owner.view.focus(target.control, Object.keys(payload).length ? payload : undefined)) !== true || !lease()) return fail('unavailable');
+      if (!lease() || await native(() => owner.view.focus(target.control, lease)) !== true || !lease()) return fail('unavailable');
+      if (Object.keys(payload).length) {
+        if (!lease() || await native(() => ctx.setProviderSelection(owner, target.control, payload,
+          { guard: lease, windowId: target.windowId })) !== true || !lease()) return fail('stale_target');
+      }
       return applied({ appId: target.appId, windowId: target.windowId, control: target.control });
     },
     'services.panel.scroll': async (target, payload) => {
       const error = guard(); if (error) return error;
-      if (!providerTarget(target) || !fields(payload, ['top'], ['left', 'observe']) || !position(payload.top)
-        || payload.left !== undefined && !position(payload.left) || payload.observe !== undefined && typeof payload.observe !== 'boolean') return fail('invalid_arguments');
+      if (!providerTarget(target, ['area']) || !id(target.area) || !fields(payload, ['top'], ['left']) || !position(payload.top)
+        || payload.left !== undefined && !position(payload.left)) return fail('invalid_arguments');
       const owner = provider(target); if (!owner) return fail('stale_target');
-      const lease = providerLease(owner), result = await native(() => owner.view.scroll({ top: payload.top, left: payload.left ?? 0, observe: payload.observe ?? false }));
+      if (!Object.hasOwn(owner.view.describe().scrolls ?? {}, target.area)) return fail('invalid_arguments');
+      const lease = providerLease(owner);
+      if (!lease()) return fail('stale_target');
+      const result = await native(() => owner.view.scroll(target.area, { top: payload.top, left: payload.left ?? 0 }, lease));
       if (!lease() || !result || !position(result.top) || !position(result.left)) return fail('unavailable');
       return applied({ appId: target.appId, windowId: target.windowId, ...result });
-    },
-    'services.message.select': async (target, payload) => {
-      const error = guard(); if (error) return error;
-      if (!fields(target, ['windowId', 'itemIndex']) || !id(target.windowId) || !offset(target.itemIndex)
-        || !fields(payload, ['start', 'end'], ['direction']) || !offset(payload.start) || !offset(payload.end)
-        || payload.start > payload.end || payload.direction !== undefined && !['forward', 'backward', 'none'].includes(payload.direction)) return fail('invalid_arguments');
-      const result = await ctx.selectSampleMessage(target, payload);
-      return result;
     },
     'services.lookup.search': async (target, payload) => {
       const error = guard(); if (error) return error;
@@ -310,7 +291,7 @@ export function createServiceCommands(state, ctx) {
     const source = ctx.getSource();
     return { source: source ? ctx.describeSource(source) : null,
       items: source ? serviceMenuItems(source, ctx.profile) : [],
-      providers: ctx.describeProviders(), sampleTextSources: ctx.describeSampleMessages(),
+      providers: ctx.describeProviders?.() ?? [],
       lookup: ctx.ui.lookup ? { ...clone(ctx.ui.lookup), ...ctx.getLookupView()?.describe() } : null,
       context: ctx.ui.context ? { ...clone(ctx.ui.context), items: contextReturn ? serviceMenuItems(contextReturn.source, ctx.profile) : [],
         ...ctx.getContextView()?.describe() } : null };

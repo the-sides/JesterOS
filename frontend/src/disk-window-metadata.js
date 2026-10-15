@@ -1,0 +1,3 @@
+import { diskAvailability } from './disk-family-state.js';
+const geometry={disk:{width:820,height:560,minWidth:650,minHeight:440,icon:'diskutility'},migration:{width:680,height:550,minWidth:580,minHeight:460,icon:'migration'},bootcamp:{width:640,height:540,minWidth:560,minHeight:450,icon:'bootcamp'},backup:{width:980,height:650,minWidth:760,minHeight:520,icon:'timemachine'}};
+export function diskWindowMetadata(profile,{family='disk'}={}){const availability=diskAvailability(profile,family),size=geometry[family];if(!size)throw new Error('Unknown disk-family window.');return {appId:availability.appId,title:availability.label,...size,utilityKind:family==='backup'?'time-machine':family==='bootcamp'?'boot-camp':family};}

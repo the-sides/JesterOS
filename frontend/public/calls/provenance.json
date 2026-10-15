@@ -1,0 +1,27 @@
+{
+  "profile": "all-five calls FACE-01..03",
+  "runtime": "Offline locally authored SVG scenes rendered inside the mounted native call view; no photo, camera frame, remote network image or screenshot is a runtime surface.",
+  "assets": [
+    {
+      "paths": ["studio.svg"],
+      "creator": "JesterOS contributors, authored for FACE-01..02",
+      "method": "Entirely new flat vector room geometry (wall, window, plant, desk, stool) composed for a fictional video-call studio backdrop. No traced Apple/Microsoft screenshot, stock photograph, or external raster source.",
+      "reference": "First-party FaceTime/Teams era guides for general call-window chrome only; see local://calls-native-evidence.md for exact observed URLs."
+    }
+  ],
+  "rights": "All path data newly authored; CC0-1.0 spirit consistent with existing sonoma icons. FaceTime/Microsoft Teams names and call-control motifs remain Apple/Microsoft trademarks/designs; no such artwork license or endorsement is asserted, and no Apple Memoji/captured imagery is embedded.",
+  "fonts": "UI requests installed -apple-system/BlinkMacSystemFont/Helvetica Neue stacks for Mac and Segoe UI for Windows, with local generic fallbacks. No proprietary font binaries are bundled by Calls assets; Linux fallback metrics are not certified native Mac/Windows font geometry.",
+  "researchLimits": "Exact colors/radii and native binary geometry remain unverified. Golden Gate 27.0.1 binary and full Teams Free 23H2 package pixels were not observed. Modern Mac group capacity is conservatively local 32 total; initial Apple wording says 32 participants while selected living Sonoma guide says 32 other people. Base Mojave 10.14 is not backported to Group FaceTime: introduction 10.14.1 differs from security-restored supported 10.14.3 Supplemental minimum. Mac blocked callers can still receive outgoing/group calls; only incoming calls are suppressed. Windows blocking is an explicitly fictional shared communications equivalent. No camera, microphone, telephone, network or generated hardware audio is used; mute/camera/ringtone controls change actual authored local presentation only.",
+  "face03PrimarySources": [
+    "https://support.apple.com/en-us/106408",
+    "https://web.archive.org/web/20181031052327/https://support.apple.com/en-us/HT209149",
+    "https://web.archive.org/web/20190917072352/https://support.apple.com/guide/facetime/make-a-group-call-fctm69d26908/5.0/mac/10.14",
+    "https://web.archive.org/web/20200120174238/https://support.apple.com/en-us/HT209521",
+    "https://support.apple.com/guide/facetime/make-and-receive-group-facetime-calls-fctm11106e38/14.0/mac",
+    "https://web.archive.org/web/20190923000558/https://support.apple.com/guide/facetime/change-preferences-fctm35545/5.0/mac/10.14",
+    "https://support.apple.com/guide/facetime/change-general-settings-fctm35545/14.0/mac",
+    "https://support.apple.com/guide/facetime/block-callers-fctmc801c779/14.0/mac",
+    "https://support.apple.com/en-my/guide/personal-safety/ipsac1e87c54/web",
+    "https://web.archive.org/web/20231025221201/https://support.microsoft.com/en-us/office/make-a-call-in-microsoft-teams-free-6ea0bc65-f6bd-46ab-bd35-7ee5e2104e3a"
+  ]
+}

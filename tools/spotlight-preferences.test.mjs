@@ -1,13 +1,14 @@
 import { test, expect } from 'bun:test';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
 import { createDefaultSceneSeed, validateSceneSeed } from '../frontend/src/scene-seed.js';
+import { createDefaultApplicationFiles } from '../frontend/src/default-application-files.js';
 import { createMacApplicationFiles } from '../frontend/src/mac-application-files.js';
 import { spotlightPreferencesDefaults, validateSpotlightPreferences, spotlightPreferencesSummary, spotlightFileExcluded } from '../frontend/src/spotlight-preferences.js';
 import { createSpotlightPreferencesCommands } from '../frontend/src/spotlight-preferences-commands.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
 function root() {
-  const seed = createDefaultSceneSeed(profile);
+  const seed = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles });
   let state = seed.system.spotlight, foreground = true, budget = Infinity, changed = 0;
   const deltas = [];
   const context = { profile, getState: () => state, available: () => foreground,
@@ -21,7 +22,7 @@ function root() {
 }
 
 test('privacy follows exact identity and actual ancestors through retained and readonly folders, with cycles bounded', () => {
-  const seed = createDefaultSceneSeed(profile);
+  const seed = createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles });
   const files = [...seed.files.files, ...createMacApplicationFiles(profile, seed.files.sceneTime)];
   const document = files.find(file => file.kind === 'document' && file.parentId === 'desktop');
   expect(spotlightFileExcluded(document.id, files, ['desktop'])).toBe(true);

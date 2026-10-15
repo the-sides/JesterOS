@@ -35,12 +35,12 @@ function containingPath(profile, appId) {
   if (appId === 'finder') return 'System/Library/CoreServices';
   if (profile.renderer === 'golden-gate') {
     // Explicit simulated installation policy; the help roster is not a disk manifest.
-    if (appId === 'dvdplayer') return 'System/Library/CoreServices/Applications';
+    if (appId === 'dvd-player') return 'System/Library/CoreServices/Applications';
     if (utilityAppIds.has(appId) || appId === 'directoryutility') return 'System/Applications/Utilities';
     return appId === 'safari' ? 'Applications' : 'System/Applications';
   }
   if (profile.renderer === 'sonoma') {
-    if (appId === 'dvdplayer') return 'System/Library/CoreServices/Applications';
+    if (appId === 'dvd-player') return 'System/Library/CoreServices/Applications';
     if (utilityAppIds.has(appId)) return 'System/Applications/Utilities';
     if (sonomaSystemAppIds.has(appId)) return 'System/Applications';
   } else if (utilityAppIds.has(appId)) {

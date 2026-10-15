@@ -1,7 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import { widgetCatalog, widgetPresentation } from './notification-widget-model.js';
-  let { state: widgetState, clock, centerId, ui, foreground = true, execute, onerror = () => {} } = $props();
+  let { state: widgetState, reminderWidgetProjection, calendarWidgetProjection, clock, centerId, ui, foreground = true, execute, onerror = () => {} } = $props();
+  const projections = $derived({ ...calendarWidgetProjection, ...reminderWidgetProjection });
   let root = $state(null), option = $state(false), drag = null, cityDrag = null, bodyGesture = null;
   const id = (widget, suffix) => `widget:${widget.id}:${suffix}`;
   function owned(widget, node, owner = centerId) { return foreground && owner === centerId && root?.isConnected && node?.isConnected && root.contains(node) && widgetState.instances.includes(widget); }
@@ -45,11 +46,11 @@
   function selection(event) { return Array.from(event.currentTarget.selectedOptions, option => option.value); }
   async function toggleReminder(event, widget, reminder) {
     const owner = centerId, node = event.currentTarget;
-    const original = widgetState.sources.reminders.find(row => row.id === reminder.id);
+    const original = reminderWidgetProjection.reminders.find(row => row.id === reminder.id);
     if (!original || !owned(widget, node, owner)) return;
     const result = await request('reminder.setCompleted', widget, { completed: node.checked }, { reminderId: original.id }, node);
-    if (result?.status !== 'applied' && owner === centerId && root?.contains(node) && widgetState.instances.includes(widget)
-      && widgetState.sources.reminders.includes(original)) node.checked = original.completed;
+    if (result?.status !== 'applied' && owned(widget, node, owner))
+      node.checked = reminderWidgetProjection.reminders.find(row => row.id === original.id)?.completed ?? original.completed;
   }
   function scrolled(widget, node) {
     if (!owned(widget, node)) return;
@@ -110,7 +111,7 @@
 <svelte:window onkeydown={event => { if (foreground) option = event.altKey; }} onkeyup={event => { if (foreground) option = event.altKey; }} onblur={() => { option = false; drag = null; cityDrag = null; bodyGesture = null; }} onpointerup={event => { dragEnd(event); cityDragEnd(event); bodyGesture = null; }} onpointercancel={() => { drag = null; cityDrag = null; bodyGesture = null; }} />
 <section class="widgets" aria-label="Widgets" bind:this={root}>
   {#each widgetState.instances as widget, index (widget.id)}
-    {@const view = widgetPresentation(widgetState, widget, clock)}
+    {@const view = widgetPresentation(widgetState, widget, clock, projections)}
     {@const catalog = widgetCatalog.find(item => item.kind === widget.kind)}
     {@const editing = ui.editingWidgetId === widget.id}
     <article class="widget {widget.size} {widget.kind}" class:editing tabindex="-1" data-widget-id={widget.id} data-notification-control={id(widget, 'card')} aria-label={`${view.title}, ${widget.size} widget`}
@@ -140,9 +141,9 @@
       {#if widget.kind.startsWith('clock-')}<div class="clocks">{#each view.clocks ?? [] as city (city.id)}<button class="clock" data-notification-control={id(widget, `open:${city.id}`)} onclick={() => request('open', widget, {}, { recordId: city.id })}><svg viewBox="0 0 100 100" aria-label={`${city.name}, ${city.time}`}><circle cx="50" cy="50" r="47" fill={city.dayNight === 'night' ? '#24252a' : '#faf8f3'} stroke="#aaa" />{#each Array(12) as _, hour}<line x1="50" y1="7" x2="50" y2="12" stroke="#888" transform={`rotate(${hour * 30} 50 50)`} />{/each}<line x1="50" y1="50" x2="50" y2="27" stroke={city.dayNight === 'night' ? '#fff' : '#222'} stroke-width="4" stroke-linecap="round" transform={`rotate(${city.hour * 30 + city.minute / 2} 50 50)`} /><line x1="50" y1="50" x2="50" y2="15" stroke={city.dayNight === 'night' ? '#fff' : '#222'} stroke-width="2.5" stroke-linecap="round" transform={`rotate(${city.minute * 6} 50 50)`} /><circle cx="50" cy="50" r="3" fill="#f18b35" /></svg><strong>{city.name}</strong><small>{city.time}</small></button>{:else}<p class="empty">No cities selected.</p>{/each}</div>{/if}
       {#if ui.contextWidgetId === widget.id}<div class="context" role="group" aria-label="Widget options">{#if widget.kind !== 'date'}<button data-notification-control={id(widget, 'edit')} onclick={() => request('edit.open', widget)}>Edit Widget</button>{/if}{#each catalog.sizes as size}<button data-notification-control={id(widget, `size:${size}`)} aria-pressed={widget.size === size} onclick={() => request('resize', widget, { size })}>{size}</button>{/each}<button data-notification-control={id(widget, 'remove')} onclick={() => request('remove', widget)}>Remove Widget</button><button data-notification-control={id(widget, 'menu-close')} onclick={() => request('context.close', widget)}>Close Options</button></div>{/if}
       {#if editing}<div class="configuration">
-        {#if widget.kind === 'calendar'}<label>Calendars<select multiple data-notification-control={id(widget, 'config:calendarIds')} onchange={event => configure(widget, 'calendarIds', selection(event), event.currentTarget)}>{#each widgetState.sources.calendars as item}<option value={item.id} selected={widget.configuration.calendarIds.includes(item.id)}>{item.name}</option>{/each}</select></label>{/if}
+        {#if widget.kind === 'calendar'}<label>Calendars<select multiple data-notification-control={id(widget, 'config:calendarIds')} onchange={event => configure(widget, 'calendarIds', selection(event), event.currentTarget)}>{#each calendarWidgetProjection.calendars as item}<option value={item.id} selected={widget.configuration.calendarIds.includes(item.id)}>{item.name}</option>{/each}</select></label>{/if}
         {#if widget.kind === 'weather'}<label>Location<select value={widget.configuration.locationId ?? ''} data-notification-control={id(widget, 'config:locationId')} onchange={event => configure(widget, 'locationId', event.currentTarget.value || null, event.currentTarget)}><option value="">No location</option>{#each widgetState.sources.weather as item}<option value={item.id}>{item.name}</option>{/each}</select></label><label>Units<select value={widget.configuration.unit} data-notification-control={id(widget, 'config:unit')} onchange={event => configure(widget, 'unit', event.currentTarget.value, event.currentTarget)}><option value="celsius">Celsius</option><option value="fahrenheit">Fahrenheit</option></select></label>{/if}
-        {#if widget.kind === 'reminders' || widget.kind === 'stock-symbol' || widget.kind === 'clock-city'}{@const field = widget.kind === 'reminders' ? 'listId' : widget.kind === 'stock-symbol' ? 'symbolId' : 'cityId'}{@const rows = widget.kind === 'reminders' ? widgetState.sources.reminderLists : widget.kind === 'stock-symbol' ? widgetState.sources.stocks : widgetState.sources.clockCities}<label>{view.title}<select value={widget.configuration[field] ?? ''} data-notification-control={id(widget, `config:${field}`)} onchange={event => configure(widget, field, event.currentTarget.value || null, event.currentTarget)}><option value="">None selected</option>{#each rows as item}<option value={item.id}>{item.name}</option>{/each}</select></label>{/if}
+        {#if widget.kind === 'reminders' || widget.kind === 'stock-symbol' || widget.kind === 'clock-city'}{@const field = widget.kind === 'reminders' ? 'listId' : widget.kind === 'stock-symbol' ? 'symbolId' : 'cityId'}{@const rows = widget.kind === 'reminders' ? reminderWidgetProjection.reminderLists : widget.kind === 'stock-symbol' ? widgetState.sources.stocks : widgetState.sources.clockCities}<label>{view.title}<select value={widget.configuration[field] ?? ''} data-notification-control={id(widget, `config:${field}`)} onchange={event => configure(widget, field, event.currentTarget.value || null, event.currentTarget)}><option value="">None selected</option>{#each rows as item}<option value={item.id}>{item.name}</option>{/each}</select></label>{/if}
         {#if widget.kind === 'stock-watchlist' || widget.kind === 'clock-world'}{@const field = widget.kind === 'clock-world' ? 'cityIds' : 'symbolIds'}{@const rows = widget.kind === 'clock-world' ? widgetState.sources.clockCities : widgetState.sources.stocks}<label>{widget.kind === 'clock-world' ? 'Cities (up to four)' : 'Symbols'}<select multiple data-notification-control={id(widget, `config:${field}`)} onchange={event => configure(widget, field, selection(event), event.currentTarget)}>{#each rows as item}<option value={item.id} selected={widget.configuration[field].includes(item.id)}>{item.name}</option>{/each}</select></label>{#if widget.kind === 'clock-world'}{#each widget.configuration.cityIds as cityId, cityIndex}<div class="city-order" data-widget-city-id={cityId}>
           <span class="city-move" role="slider" tabindex="0" data-notification-control={id(widget, `config:cityIds:drag:${cityId}`)} aria-label={`Position of ${rows.find(city => city.id === cityId)?.name}`}
             aria-valuemin="0" aria-valuemax={widget.configuration.cityIds.length - 1} aria-valuenow={cityIndex} aria-orientation="vertical"

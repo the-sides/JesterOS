@@ -1,7 +1,8 @@
 import { identity, choice, object, empty } from './command-schema.js';
 import { applied, invalid, stale, uiState, liveFile, isTrashed } from './windows11-app-helpers.js';
 
-export const images = apps => apps.files.filter(file => file.kind === 'image' && !isTrashed(apps, file));
+const svgImage = file => file?.kind === 'image' && typeof file.content === 'string' && /^\s*<svg[\s>]/.test(file.content);
+export const images = apps => apps.files.filter(file => svgImage(file) && !isTrashed(apps, file));
 export const createState = () => ({ ui: uiState(), selectedId: 'studio-photo', transforms: {}, mode: 'viewer' });
 export const menus = ['photo'];
 export const specs = {
@@ -19,14 +20,25 @@ for (const [name, spec] of Object.entries(specs)) {
   spec[2] = [`Render the validated ${name} transition in the local gallery, viewer, or confirmation dialog.`];
   spec[3] = ['Retain selected image, gallery mode, per-image zoom and rotation, and deletion dialog state in native.apps.photos.'];
 }
-specs['win11.photos.open'][2].push('Invoke app.open for Photos and display the live shared SVG virtual image.');
+specs['win11.photos.open'][2].push('Focus the exact registered SVG Photos window and display the complete live shared SVG virtual image.');
 specs['win11.photos.delete.confirm'][3].push('Move the confirmed live image to the shared virtual Recycle Bin and increment its revision.');
 export function createCommands(apps, context) {
   const s = apps.photos;
-  const image = id => { const file = liveFile(apps, id); return file?.kind === 'image' && typeof file.content === 'string' && /^\s*<svg[\s>]/.test(file.content) ? file : null; };
+  const image = id => { const file = liveFile(apps, id); return svgImage(file) ? file : null; };
   const select = id => { s.selectedId = id; s.transforms[id] ||= { zoom: 1, rotation: 0 }; s.mode = 'viewer'; s.ui.menu = null; };
   return {
-    'win11.photos.open': async t => { if (!image(t.fileId)) return stale('This SVG image is unavailable.'); const result = await context.invoke('app.open', { appId: 'photos' }, {}); if (result.status !== 'applied') return result; select(t.fileId); s.ui.dialog = null; return applied(t); },
+    'win11.photos.open': async t => {
+      const file = image(t.fileId), window = context.getWindow();
+      if (!file || !window || context.guard && !context.guard()) return stale('This SVG image or its original native window is unavailable.');
+      const signature = JSON.stringify(file);
+      const result = await context.invoke('window.focus', { windowId: window.id }, {});
+      if (result.status !== 'applied') return result;
+      if (context.getWindow() !== window || image(t.fileId) !== file || JSON.stringify(file) !== signature
+        || context.guard && !context.guard()) return stale('The original SVG file, source actor or Photos destination changed before opening.');
+      select(t.fileId);
+      s.ui.dialog = null;
+      return applied(t);
+    },
     'win11.photos.select': t => { if (s.ui.dialog) return invalid('Close the dialog first.'); if (!image(t.fileId)) return stale('This SVG image is unavailable.'); select(t.fileId); return applied(t); },
     'win11.photos.browse': (_, p) => { if (s.ui.dialog) return invalid('Close the dialog first.'); const files = images(apps); const index = files.findIndex(file => file.id === s.selectedId); const next = index + (p.direction === 'next' ? 1 : -1); if (index < 0 || next < 0 || next >= files.length || !image(files[next].id)) return stale('There is no image in that direction.'); select(files[next].id); return applied({ fileId: s.selectedId }); },
     'win11.photos.mode': (_, p) => { if (s.ui.dialog) return invalid('Close the dialog first.'); s.mode = p.mode; s.ui.menu = null; return applied(); },

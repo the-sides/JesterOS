@@ -1,10 +1,22 @@
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
   import GoldenGateIcon from './GoldenGateIcon.svelte';
+  import HighSierraAppIcon from './HighSierraAppIcon.svelte';
+  import AppIcon from './AppIcon.svelte';
+  import SonomaIcon from './SonomaIcon.svelte';
+  import Windows11Icon from './Windows11Icon.svelte';
 
-  let { profile, window, preferences, selectedAppId = '', execute, registerView } = $props();
+  let { profile, window, preferences, selectedAppId = '', execute, registerView,
+    embedded = false, hostSession = null, ownership = null } = $props();
+  const renderer = $derived(profile.renderer);
+  const windows = $derived(renderer === 'windows11');
+  const classic = $derived(renderer === 'high-sierra' || renderer === 'mojave');
+  const noneStyle = $derived(classic || renderer === 'sonoma');
+  const golden = $derived(renderer === 'golden-gate');
+  const Icon = $derived(windows ? Windows11Icon : renderer === 'high-sierra' ? HighSierraAppIcon : classic ? AppIcon : golden ? GoldenGateIcon : SonomaIcon);
   let panel = $state(null);
   let ownerWindow = null, ownerRoot = null, ownerFrame = null, disposed = false, writtenScroll = null;
+  let ownerSession = null, ownerOwnership = null, ownerEmbedded = false;
   let lastError = $state(null);
   const temporary = 'temporary', persistent = 'persistent';
   const previews = ['default', 'always', 'when-unlocked', 'never'];
@@ -13,7 +25,7 @@
       ? preferences?.applications?.find?.(application => application?.appId === selectedAppId) ?? null : null;
     return { row, app: row?.appId ?? (pointerSafe(selectedAppId) ? selectedAppId : ''),
       allow: row?.allow ?? true, desktop: row?.desktop ?? true,
-      center: row?.center ?? true, style: row?.style ?? temporary,
+      center: row?.center ?? true, badges: row?.badges ?? true, sound: row?.sound ?? true, style: row?.style ?? temporary,
       previews: row?.previews ?? 'default', rowExists: Boolean(row) };
   });
   function pointerSafe(value) {
@@ -21,8 +33,15 @@
       && !Object.getOwnPropertyNames(Object.prototype).includes(value);
   }
   function current() {
-    return Boolean(!disposed && panel?.isConnected && window === ownerWindow && window.appId === 'settings'
-      && !window.utilityKind && window.settingsPane === 'notifications' && panel.dataset.windowId === window.id
+    if (disposed || window !== ownerWindow || embedded !== ownerEmbedded) return false;
+    let hostCurrent = false;
+    try {
+      hostCurrent = embedded
+        ? hostSession !== null && hostSession === ownerSession && ownership === ownerOwnership
+          && typeof ownership === 'function' && ownership() === true
+        : window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'notifications';
+    } catch { return false; }
+    return Boolean(hostCurrent && panel?.isConnected && panel.dataset.windowId === window.id
       && panel.closest('[data-session-scene]') === ownerRoot && ownerRoot?.isConnected
       && panel.closest('.managed-window[data-window-id]') === ownerFrame && ownerFrame?.isConnected
       && ownerFrame.dataset.windowId === window.id);
@@ -112,6 +131,7 @@
   let retire = null;
   onMount(() => {
     ownerWindow = window; ownerRoot = panel.closest('[data-session-scene]'); ownerFrame = panel.closest('.managed-window[data-window-id]');
+    ownerSession = hostSession; ownerOwnership = ownership; ownerEmbedded = embedded;
     const returned = registerView?.(window.id, facade);
     if (typeof returned === 'function') retire = returned;
   });
@@ -123,8 +143,9 @@
       for (const node of panel.querySelectorAll('[data-application-settings-control]')) {
         const id = node.dataset.applicationSettingsControl;
         if (id.startsWith('notifications-app:')) node.checked = node.value === selectedAppId;
-        else if (['notifications-allow', 'notifications-desktop', 'notifications-center'].includes(id)) node.checked = resolve[id.slice(14)];
-        else if (id === 'notifications-style') node.checked = node.value === resolve.style;
+        else if (id === 'notifications-desktop' && node.type === 'radio') node.checked = !resolve.allow || !resolve.desktop;
+        else if (['notifications-allow', 'notifications-desktop', 'notifications-center', 'notifications-badges', 'notifications-sound'].includes(id)) node.checked = resolve[id.slice(14)];
+        else if (id === 'notifications-style') node.checked = node.value === resolve.style && (!noneStyle || resolve.allow && resolve.desktop);
         else if (id === 'notifications-previews') node.value = resolve.previews;
         else if (id === 'notifications-global-previews') node.value = preferences.showPreviews;
         else if (id === 'notifications-dnd') node.checked = preferences.doNotDisturb;
@@ -137,14 +158,21 @@
     try {
       if (owned(node)) {
         const result = await execute({ command, target, payload });
+        if (!current()) return;
         if (result?.status === 'rejected') lastError = result.error?.message ?? 'Notification settings could not apply that change.';
         else lastError = null;
       }
-    } catch (cause) { lastError = cause?.message ?? 'Notification settings could not apply that change.'; }
+    } catch (cause) { if (current()) lastError = cause?.message ?? 'Notification settings could not apply that change.'; }
     finally { await reconcile(); }
   }
   function chooseApp(event) { return request(event, 'notifications.settings.select', { windowId: window.id, appId: pointerSafe(event.currentTarget.value) ? event.currentTarget.value : String(event.currentTarget.value) }); }
   function setApp(event, field) { return request(event, 'notifications.settings.configure', { windowId: window.id, appId: resolve.app }, { configuration: { [field]: event.currentTarget.type === 'checkbox' ? Boolean(event.currentTarget.checked) : event.currentTarget.value } }); }
+  function setStyle(event) {
+    if (!noneStyle) return setApp(event, 'style');
+    const configuration = event.currentTarget.value === 'none' ? { desktop: false }
+      : { allow: true, desktop: true, style: event.currentTarget.value };
+    return request(event, 'notifications.settings.configure', { windowId: window.id, appId: resolve.app }, { configuration });
+  }
   function setPreviews(event) { return request(event, 'notifications.settings.global.configure', { windowId: window.id }, { showPreviews: event.currentTarget.value }); }
   function setDnd(event) { return request(event, 'notifications.dnd.set', {}, { enabled: Boolean(event.currentTarget.checked) }); }
   function observeScroll() {
@@ -155,18 +183,20 @@
   }
 </script>
 
-<section class="notification-settings" bind:this={panel} data-notification-settings data-window-id={window.id} data-application-settings="notifications"
+<section class="notification-settings" class:classic class:windows class:golden data-notification-profile={renderer} bind:this={panel} data-notification-settings data-window-id={window.id} data-application-settings="notifications"
   data-system-panel="settings-notifications" data-application-settings-control="panel" data-application-panel-scroll data-notification-settings-scroll
   aria-label="Notification settings" tabindex="-1" onscroll={observeScroll}>
   <div class="page">
-    <header><p class="crumb">System Settings</p><h1>Notifications</h1></header>
+    <header><p class="crumb">{windows ? 'System' : classic ? 'System Preferences' : 'System Settings'}</p><h1>Notifications</h1></header>
     {#if lastError}<p class="error" role="alert">{lastError}</p>{/if}
+    <div class="settings-layout">
+    <aside class="application-sidebar" aria-label="Applications">
     <h2>Application list</h2>
     <article class="card apps">
       {#if !profile.applications || Object.keys(profile.applications).length === 0}<p class="description">No registered applications expose notification preferences.</p>{:else}
         {#each Object.entries(profile.applications) as [appId, application], index (appId)}
           <label class="app-row{index === 0 ? ' first' : ''}">
-            <span class="app-icon"><GoldenGateIcon name={application.icon} /></span>
+            <span class="app-icon"><Icon name={application.icon} assets={profile.assets} /></span>
             <span class="app-name">{application.name}</span>
             <input type="radio" name={`notification-app-${window.id}`} value={appId} data-application-settings-control={`notifications-app:${appId}`}
               checked={ selectedAppId === appId } onchange={chooseApp} />
@@ -174,31 +204,45 @@
         {/each}
       {/if}
     </article>
+    </aside>
+    <div class="settings-detail">
 
     <h2>Selected app</h2>
     {#if resolve.app}
       <article class="card app-settings">
         <strong class="app-title">{profile.applications?.[resolve.app]?.name ?? resolve.app}</strong>
+        {#if !classic}
         <label class="setting-row" for={`notify-allow-${window.id}`}><span><strong>Allow notifications</strong><small>Permitted apps appear in Notification Center and may show temporary or persistent banners.</small></span>
           <input id={`notify-allow-${window.id}`} type="checkbox" role="switch" data-application-settings-control="notifications-allow" checked={resolve.allow}
             onchange={event => setApp(event, 'allow')} /></label>
-        <label class="setting-row" for={`notify-desktop-${window.id}`}><span><strong>Show on desktop</strong><small>Permit banner or alert presentation on the desktop itself.</small></span>
+        {#if !noneStyle}
+        <label class="setting-row" for={`notify-desktop-${window.id}`}><span><strong>{windows ? 'Show notification banners' : 'Show on desktop'}</strong><small>Permit banner or alert presentation on the desktop itself.</small></span>
           <input id={`notify-desktop-${window.id}`} type="checkbox" role="switch" data-application-settings-control="notifications-desktop" checked={resolve.desktop}
             disabled={!resolve.allow} onchange={event => setApp(event, 'desktop')} /></label>
+        {/if}
+        {/if}
         <label class="setting-row" for={`notify-center-${window.id}`}><span><strong>Show in Notification Center</strong><small>Keep delivered notifications in this local center list.</small></span>
           <input id={`notify-center-${window.id}`} type="checkbox" role="switch" data-application-settings-control="notifications-center" checked={resolve.center}
             disabled={!resolve.allow} onchange={event => setApp(event, 'center')} /></label>
+        <label class="setting-row" for={`notify-badges-${window.id}`}><span><strong>{windows ? 'Local per-app taskbar badge policy' : classic ? 'Badge app icon' : 'Badge application icon'}</strong><small>{windows ? 'This scene policy gates the app’s actual unread taskbar badge. Windows’ native taskbar badge setting is global, not this per-app control.' : 'Show the app’s actual unread count on its Dock icon.'}</small></span>
+          <input id={`notify-badges-${window.id}`} type="checkbox" role={classic ? undefined : 'switch'} data-application-settings-control="notifications-badges" checked={resolve.badges}
+            disabled={!resolve.allow} onchange={event => setApp(event, 'badges')} /></label>
+        <label class="setting-row" for={`notify-sound-${window.id}`}><span><strong>{windows ? 'Play a sound when a notification arrives' : classic ? 'Play sound for notifications' : 'Play sound for notification'}</strong><small>Scene audio also requires the app’s sound intent and the master audio controls. Browser playback may be unavailable.</small></span>
+          <input id={`notify-sound-${window.id}`} type="checkbox" role={classic ? undefined : 'switch'} data-application-settings-control="notifications-sound" checked={resolve.sound}
+            disabled={!resolve.allow} onchange={event => setApp(event, 'sound')} /></label>
         <div class="setting-row style-row" id={`notify-style-${window.id}`}>
           <span><strong>Notification style</strong><small>Temporary banners clear on their own; persistent alerts remain until dismissed.</small></span>
           <div class="segmented" role="radiogroup" aria-label="Notification style">
-            <label><input type="radio" value={temporary} checked={resolve.style === temporary} disabled={!resolve.allow}
-              data-application-settings-control="notifications-style" name={`notify-style-${window.id}`} onchange={event => setApp(event, 'style')} />Temporary</label>
-            <label><input type="radio" value={persistent} checked={resolve.style === persistent} disabled={!resolve.allow}
-              data-application-settings-control="notifications-style" name={`notify-style-${window.id}`} onchange={event => setApp(event, 'style')} />Persistent</label>
+            {#if noneStyle}<label><input type="radio" value="none" checked={!resolve.allow || !resolve.desktop} disabled={!classic && !resolve.allow}
+              data-application-settings-control="notifications-desktop" name={`notify-style-${window.id}`} onchange={setStyle} /><span class="style-thumbnail none" aria-hidden="true"></span>None</label>{/if}
+            <label><input type="radio" value={temporary} checked={resolve.style === temporary && (!noneStyle || resolve.allow && resolve.desktop)} disabled={!classic && !resolve.allow}
+              data-application-settings-control="notifications-style" name={`notify-style-${window.id}`} onchange={setStyle} /><span class="style-thumbnail temporary" aria-hidden="true"><i></i><i></i><i></i></span>{windows || golden ? 'Temporary' : 'Banners'}</label>
+            <label><input type="radio" value={persistent} checked={resolve.style === persistent && (!noneStyle || resolve.allow && resolve.desktop)} disabled={!classic && !resolve.allow}
+              data-application-settings-control="notifications-style" name={`notify-style-${window.id}`} onchange={setStyle} /><span class="style-thumbnail persistent" aria-hidden="true"><i></i><i></i><i></i></span>{windows || golden ? 'Persistent' : 'Alerts'}</label>
           </div>
         </div>
         <div class="setting-row previews-row" id={`notify-previews-${window.id}`}>
-          <span><strong>Show previews</strong><small>Defaults to the global setting below.</small></span>
+          <span><strong>{windows ? 'Local simulation preview policy' : 'Show previews'}</strong><small>{windows ? 'These shared preview choices are not Windows’ native lock-screen-content checkbox. Default uses the local global policy below.' : 'Defaults to the global setting below.'}</small></span>
           <select disabled={!resolve.allow} data-application-settings-control="notifications-previews" value={resolve.previews}
             onchange={event => setApp(event, 'previews')}>
             {#each previews as option}<option value={option}>{option === 'default' ? 'Default' : option === 'when-unlocked' ? 'When Unlocked' : option === 'always' ? 'Always' : 'Never'}</option>{/each}
@@ -209,10 +253,10 @@
       <p class="description">Choose an application above to adjust whether it may notify, where its notifications appear, and whether previews are shown.</p>
     {/if}
 
-    <h2>Global</h2>
+    <h2>{classic || windows ? 'Do Not Disturb & local privacy policy' : 'Global'}</h2>
     <article class="card globals">
       <div class="setting-row" id={`notify-global-previews-${window.id}`}>
-        <span><strong>Show previews</strong><small>When Unlocked hides notification content until this scene session is unlocked; Never hides titles and bodies everywhere.</small></span>
+        <span><strong>{classic || windows ? 'Local simulation privacy: show previews' : 'Show previews'}</strong><small>{classic ? 'This shared simulation policy is not a native global preview control in classic System Preferences. ' : windows ? 'This shared simulation policy is not a native Windows global preview selector. ' : ''}When Unlocked hides notification content until this scene session is unlocked; Never hides titles and bodies everywhere.</small></span>
         <select data-application-settings-control="notifications-global-previews" value={preferences.showPreviews}
           onchange={event => setPreviews(event)}>
           {#each previews.slice(1) as option}<option value={option}>{option === 'always' ? 'Always' : option === 'when-unlocked' ? 'When Unlocked' : 'Never'}</option>{/each}
@@ -225,8 +269,11 @@
             onchange={event => setDnd(event)} /></div>
       </div>
     </article>
-    <p class="description">Option-click the menu-bar date/time to toggle this scene’s Do Not Disturb. This native shortcut does not change host Focus settings.</p>
-    <p class="boundary">These preferences belong to this local simulated desktop. No host notifications, sounds, badges, critical alerts, time-sensitive delivery, mirroring, or background services are modeled here, and notification events are logged for the operator, not delivered system-wide.</p>
+    <p class="description">{windows ? 'Do Not Disturb silences desktop toasts in this scene. Use the moon control in Notification Center or the switch above.' : 'Option-click the menu-bar date/time to toggle this scene’s Do Not Disturb. This native shortcut does not change host Focus settings.'}</p>
+    {#if windows}<p class="description">Temporary/persistent timing and preview controls are local simulation preferences; Windows does not expose the same per-app Banners/Alerts selector as macOS.</p>{/if}
+    <p class="boundary">These preferences belong to this local simulated desktop. Badges use real local unread records, and permitted sounds use scene audio, not host-system notification delivery. No host badges, critical alerts, time-sensitive delivery, mirroring, or background services are modeled here.</p>
+    </div>
+    </div>
   </div>
 </section>
 
@@ -261,5 +308,46 @@
   .description { margin:12px 4px; font-size:12px; opacity:.8; } .boundary { margin:16px 4px; font-size:11px; opacity:.65; } p { overflow-wrap:anywhere; }
   input:focus-visible,select:focus-visible { outline:2px solid var(--appearance-focus,#4f98e8); outline-offset:2px; }
   .notification-settings:focus-visible { outline:2px solid var(--appearance-focus,#4f98e8); outline-offset:-3px; }
+  .app-icon :global(img),.app-icon :global(.app-icon) { display:block; width:100%; height:100%; object-fit:contain; }
+  .style-thumbnail { display:none; }
+  .classic { background:var(--appearance-panel,#e8e8e8); font:12px/1.4 -apple-system,BlinkMacSystemFont,sans-serif; }
+  .classic .page { max-width:800px; padding:18px; }
+  .classic h1 { font-size:20px; font-weight:400; text-align:center; margin-bottom:18px; }
+  .classic .crumb { text-align:center; }
+  .classic .settings-layout { display:grid; grid-template-columns:170px minmax(0,1fr); gap:18px; align-items:start; }
+  .classic .application-sidebar { border:1px solid var(--appearance-soft-border,#b7b7b7); background:var(--appearance-surface,#fff); }
+  .classic .application-sidebar > h2 { margin:0; padding:8px; border-bottom:1px solid var(--appearance-soft-border,#ccc); font-size:11px; }
+  .classic .apps { margin:0; padding:0; border:0; border-radius:0; }
+  .classic .app-row { position:relative; padding:7px 8px; gap:7px; }
+  .classic .app-row:has(input:checked) { color:var(--appearance-selection-ink,#fff); background:var(--appearance-selection,#3779d0); }
+  .classic .app-row + .app-row { border:0; }
+  .classic .app-row input { position:absolute; inset:0; width:100%; height:100%; appearance:none; border:0; background:transparent; border-radius:0; }
+  .classic .app-row:has(input:focus-visible) { outline:2px solid var(--appearance-focus,#0878ef); outline-offset:-2px; }
+  .classic .settings-detail > h2 { margin-top:0; }
+  .classic .card { border:0; border-radius:0; padding:0; background:transparent; }
+  .classic .app-title { font-size:15px; }
+  .classic input[type='checkbox'] { appearance:auto; width:14px; height:14px; border-radius:3px; accent-color:var(--appearance-accent,#0878ef); }
+  .classic input[type='checkbox']::after { content:none; }
+  .classic .setting-row { padding:8px 0; }
+  .classic .segmented { border:0; gap:8px; overflow:visible; }
+  .classic .segmented label { display:flex; flex-direction:column; align-items:center; gap:5px; padding:5px 8px; border:1px solid transparent; border-radius:4px; }
+  .classic .segmented label:has(input:checked) { border-color:var(--appearance-accent,#0878ef); background:var(--appearance-hover,#ddd); }
+  .classic .style-thumbnail { display:flex; flex-direction:column; gap:3px; width:62px; height:40px; padding:4px; box-sizing:border-box; border:1px solid #999; background:linear-gradient(140deg,#628fa5,#ccdbe0); }
+  .style-thumbnail i { display:block; width:26px; height:5px; background:#fff; margin-left:auto; box-shadow:0 1px 2px #0004; }
+  .style-thumbnail.persistent i { height:8px; }
+  .windows { background:var(--appearance-panel,#f3f3f3); font:14px/1.45 'Segoe UI',sans-serif; }
+  .windows .page { max-width:850px; padding:28px 32px; }
+  .windows .crumb { font-size:14px; }
+  .windows h1 { font-size:28px; font-weight:600; letter-spacing:0; }
+  .windows h2 { font-size:14px; }
+  .windows .card { border-radius:4px; padding:8px 16px; margin-bottom:5px; }
+  .windows .app-row { min-height:38px; }
+  .windows .app-icon { width:26px; flex-basis:26px; }
+  .windows .segmented,.windows select { border-radius:4px; }
+  .windows input[type='checkbox'] { width:40px; height:20px; border:1px solid var(--appearance-soft-border,#888); background:transparent; }
+  .windows input[type='checkbox']::after { background:var(--appearance-ink,#333); top:3px; width:12px; height:12px; box-shadow:none; }
+  .windows input[type='checkbox']:checked { background:var(--appearance-accent,#0067c0); border-color:transparent; }
+  .windows input[type='checkbox']:checked::after { left:23px; background:#fff; }
+  @media (max-width:540px) { .classic .settings-layout { grid-template-columns:minmax(0,1fr); }.windows .page { padding:18px; } }
   @media (max-width:500px) { .page { padding:16px; } .setting-row { flex-wrap:wrap; } .card { padding:6px 10px; } }
 </style>

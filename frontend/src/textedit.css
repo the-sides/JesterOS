@@ -1,0 +1,296 @@
+/* Native-era TextEdit / Notepad / WordPad surfaces. Colors and chrome follow each
+ * profile: classic Mac gray (High Sierra/Mojave), flat Sonoma light, Golden Gate
+ * glassy light, Windows 11 Notepad and WordPad ribbon chrome. */
+.textedit-app {
+  --textedit-accent: #007aff;
+  --textedit-editor-background: #ffffff;
+  --textedit-editor-text: #1d1d1f;
+  --textedit-chrome: #ececec;
+  --textedit-chrome-text: #1d1d1f;
+  --textedit-chrome-border: #d1d1d6;
+  --textedit-chip: #ffffff;
+  --textedit-popup: #ffffff;
+  --textedit-popup-text: #1d1d1f;
+  --textedit-popup-border: rgba(0, 0, 0, .16);
+  --textedit-selection: rgba(0, 122, 255, .3);
+  --textedit-font: 'Mojave UI', -apple-system, 'Liberation Sans', sans-serif;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--textedit-editor-background);
+  color: var(--textedit-editor-text);
+  font: 13px/1.45 var(--textedit-font);
+}
+.textedit-app.era-sonoma { --textedit-chrome: #f5f5f7; }
+.textedit-app.era-golden-gate {
+  --textedit-chrome: rgba(246, 246, 248, .86);
+  --textedit-editor-background: #ffffff;
+  --textedit-accent: #0071e3;
+}
+.textedit-app.era-high-sierra, .textedit-app.era-mojave {
+  --textedit-chrome: #d6d6d6;
+  --textedit-accent: #538dfa;
+  --textedit-font: 'Liberation Sans', 'Helvetica Neue', sans-serif;
+}
+.textedit-app.era-23h2 {
+  --textedit-accent: #0067c0;
+  --textedit-font: 'Segoe UI', 'Liberation Sans', sans-serif;
+}
+.textedit-app.textedit-notepad {
+  --textedit-chrome: var(--w11-theme-chrome, #f3f3f3);
+  --textedit-chrome-text: var(--w11-theme-text, #222222);
+  --textedit-popup: var(--w11-theme-card, #ffffff);
+  --textedit-editor-background: var(--w11-theme-card, #ffffff);
+}
+.textedit-app.textedit-wordpad {
+  --textedit-chrome: #eef3fa;
+  --textedit-chrome-text: #1b2838;
+  --textedit-popup: #ffffff;
+  --textedit-editor-background: #ffffff;
+}
+.textedit-app.inactive { opacity: .96; }
+.textedit-app :is(button, input, select, textarea) { font: inherit; color: inherit; }
+.textedit-app button { cursor: pointer; }
+
+/* Caption */
+.textedit-caption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  background: var(--textedit-chrome);
+  border-bottom: 1px solid var(--textedit-chrome-border);
+  -webkit-app-region: drag;
+}
+.textedit-caption button, .textedit-menu-access { -webkit-app-region: no-drag; }
+.textedit-caption > .window-traffic-lights { position: static; flex: 0 0 auto; }
+.textedit-document-title { display: inline-flex; flex: 1; min-width: 0; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.textedit-document-icon { font-size: 14px; opacity: .75; }
+.textedit-edited { color: gray; font-weight: 400; }
+.textedit-menu-access { flex: 0 0 auto; background: none; border: 0; border-radius: 5px; padding: 2px 8px; font-size: 12px; }
+.textedit-menu-access:hover { background: rgba(0, 0, 0, .08); }
+
+/* Menu strips and popups */
+.textedit-menu-strip { display: flex; align-items: center; gap: 2px; padding: 1px 8px; flex: 0 0 auto; background: var(--textedit-chrome); border-bottom: 1px solid var(--textedit-chrome-border); }
+.textedit-notepad-menubar { display: flex; align-items: center; gap: 2px; }
+.textedit-menu-strip button, .textedit-notepad-menubar button { background: none; border: 0; border-radius: 4px; padding: 4px 10px; color: var(--textedit-chrome-text); }
+.textedit-menu-strip button:hover, .textedit-menu-strip button.open { background: rgba(0, 0, 0, .1); }
+.textedit-menu-popup {
+  position: absolute;
+  z-index: 40;
+  top: 26px;
+  left: 8px;
+  min-width: 230px;
+  max-height: 78%;
+  overflow: auto;
+  padding: 5px;
+  background: var(--textedit-popup);
+  color: var(--textedit-popup-text);
+  border: 1px solid var(--textedit-popup-border);
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .22);
+}
+.textedit-menu-popup button { display: flex; justify-content: space-between; gap: 18px; width: 100%; background: none; border: 0; border-radius: 5px; padding: 5px 10px; text-align: left; }
+.textedit-menu-popup button:hover:not(:disabled) { background: var(--textedit-accent); color: #fff; }
+.textedit-menu-popup button:disabled { opacity: .42; cursor: default; }
+.textedit-menu-popup kbd { opacity: .55; font: inherit; font-size: 12px; }
+.textedit-menu-popup hr { margin: 5px 4px; border: 0; border-top: 1px solid rgba(0, 0, 0, .12); }
+.textedit-menu-note { margin: 6px 10px; opacity: .6; }
+
+/* Mac format bar */
+.textedit-formatbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 7px 10px 9px; flex: 0 0 auto; background: var(--textedit-chrome); border-bottom: 1px solid var(--textedit-chrome-border); }
+.textedit-paragraph-panel { background: none; border: 0; border-radius: 5px; padding: 4px 7px; }
+.textedit-paragraph-panel:hover { background: rgba(0, 0, 0, .08); }
+.textedit-formatbar select { background: var(--textedit-chip); border: 1px solid var(--textedit-chrome-border); border-radius: 5px; padding: 3px 6px; max-width: 150px; }
+.textedit-font-size select { max-width: 68px; }
+.textedit-font-face select { max-width: 90px; }
+.textedit-segment { display: inline-flex; border: 1px solid var(--textedit-chrome-border); border-radius: 6px; overflow: hidden; background: var(--textedit-chip); }
+.textedit-segment button { border: 0; padding: 3px 9px; background: var(--textedit-chip); font-size: 13px; }
+.textedit-segment button + button { border-left: 1px solid var(--textedit-chrome-border); }
+.textedit-segment button[aria-pressed='true'] { background: var(--textedit-accent); color: #fff; }
+.textedit-segment .mark-bold { font-weight: 700; }
+.textedit-segment .mark-italic { font-style: italic; }
+.textedit-segment .mark-underline { text-decoration: underline; }
+.textedit-segment .mark-strike { text-decoration: line-through; }
+.textedit-color-swatch, .textedit-clear-color { width: 28px; height: 26px; border: 1px solid var(--textedit-chrome-border); border-radius: 6px; background: var(--textedit-chip); padding: 3px; position: relative; }
+.textedit-color-swatch span { display: block; width: 100%; height: 100%; border-radius: 3px; }
+.textedit-clear-color span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; }
+.textedit-clear-color i { position: absolute; left: 4px; right: 4px; top: 50%; height: 1.5px; background: #e40046; transform: rotate(-32deg); }
+.textedit-alignments button { letter-spacing: 0; }
+
+/* Ruler */
+.textedit-ruler { position: relative; height: 26px; flex: 0 0 auto; background: var(--textedit-chrome); border-bottom: 1px solid var(--textedit-chrome-border); overflow: hidden; }
+.textedit-ruler:focus-within, .textedit-ruler:hover { outline: 1px dashed rgba(0, 122, 255, .5); outline-offset: -2px; }
+.ruler-indent { position: absolute; top: 2px; font-size: 11px; color: var(--textedit-accent); }
+.ruler-inch { position: absolute; bottom: 2px; font-size: 9px; opacity: .55; }
+.ruler-tab { position: absolute; top: 4px; background: none; border: 0; padding: 0 3px; font-size: 12px; color: var(--textedit-accent); }
+
+/* Rich editor (contenteditable) and plain textarea */
+.textedit-editor-viewport { position: relative; flex: 1; overflow: auto; min-height: 0; }
+.textedit-rich-editor {
+  min-height: 100%;
+  padding: 26px 34px 60px;
+  box-sizing: border-box;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  caret-color: var(--textedit-editor-text);
+  background: var(--textedit-editor-background);
+}
+.textedit-rich-editor:focus { outline: none; box-shadow: inset 0 0 0 2px rgba(0, 122, 255, .35); }
+.textedit-rich-editor.nowrap { white-space: pre; }
+.textedit-app.textedit-wordpad .textedit-editor-viewport { background: #a6b8c9; padding: 18px 0; }
+.textedit-app.textedit-wordpad .textedit-rich-editor {
+  width: 540pt;
+  max-width: none;
+  min-height: 720pt;
+  margin: 0 auto;
+  padding: 40px 54pt;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, .28);
+  background: #ffffff;
+}
+.textedit-paragraph { position: relative; min-height: 1em; }
+.textedit-paragraph[data-list] { padding-left: 1.6em; }
+.textedit-paragraph[data-list]::before { content: var(--textedit-list-marker); position: absolute; left: .2em; }
+.textedit-tab { display: inline-block; }
+.textedit-misspelling { text-decoration: underline wavy rgba(228, 0, 70, .8) 1px; text-underline-offset: 2px; }
+.textedit-rich-editor span[data-textedit-link] { text-decoration: underline; color: #0066cc; cursor: alias; }
+.textedit-rich-editor table { border-collapse: collapse; margin: 8px 0; }
+.textedit-rich-editor table td { border: 1px solid var(--textedit-editor-text); min-width: 64px; padding: 2px 6px; vertical-align: top; }
+.textedit-attachment { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0; padding: 3px 9px; background: #eef3fa; border: 1px solid #b7c8dd; border-radius: 10px; user-select: none; }
+.textedit-attachment button { background: none; border: 0; padding: 0 2px; }
+.textedit-attachment button[data-textedit-attachment-open] { text-decoration: underline; }
+.textedit-editor-wrap { position: relative; height: 100%; min-height: 0; }
+.textedit-plain-editor {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 22px 28px 40px;
+  border: 0;
+  outline: none;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  line-height: 1.55;
+  color: var(--textedit-editor-text);
+  background: var(--textedit-editor-background);
+}
+.textedit-plain-editor:focus { outline: none; }
+.textedit-spelling-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.textedit-spelling-rect { position: absolute; border-bottom: 1.6px dotted rgba(228, 0, 70, .85); }
+
+/* Windows Notepad chrome */
+.textedit-notepad-tabs { display: flex; align-items: center; gap: 3px; padding: 5px 8px 0; background: var(--textedit-chrome); font-size: 12px; }
+.textedit-notepad-tabs button { background: none; border: 0; border-radius: 7px 7px 0 0; padding: 8px 12px; }
+.textedit-notepad-tabs .selected-tab { background: var(--textedit-editor-background); }
+.textedit-notepad-tabs .notepad-new { font-size: 17px; padding: 5px 12px; }
+.textedit-notepad-tabs .notepad-close { padding: 5px 9px; }
+.textedit-app.textedit-notepad .textedit-menu-strip button { padding: 4px 10px; }
+.notepad-settings, .notepad-extensions { background: none; border: 0; padding: 4px 10px; margin-left: auto; }
+.notepad-settings:first-of-type { margin-left: 8px; }
+
+/* Windows WordPad ribbon */
+.textedit-quick-access { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--textedit-chrome); color: var(--textedit-chrome-text); font-size: 12px; border-bottom: 1px solid var(--textedit-chrome-border); }
+.textedit-quick-access button { background: none; border: 0; border-radius: 4px; padding: 3px 7px; color: inherit; }
+.textedit-quick-access button:disabled { opacity: .4; cursor: default; }
+.textedit-quick-access span { margin-left: 4px; opacity: .8; }
+.textedit-ribbon-tabs { display: flex; align-items: center; flex: 0 0 auto; gap: 2px; padding: 2px 8px 0; background: var(--textedit-chrome); border-bottom: 1px solid var(--textedit-chrome-border); }
+.textedit-ribbon-tabs button { background: none; border: 0; border-radius: 6px 6px 0 0; padding: 6px 13px; color: var(--textedit-chrome-text); }
+.textedit-ribbon-tabs button.chosen { background: var(--textedit-editor-background); font-weight: 600; box-shadow: inset 0 -2px 0 var(--textedit-accent); }
+.textedit-ribbon-tabs .wordpad-file { color: #fff; background: var(--textedit-accent); border-radius: 0; margin-right: 4px; padding: 6px 16px; }
+.textedit-ribbon { display: flex; align-items: stretch; gap: 8px; padding: 6px 10px; background: var(--textedit-editor-background); border-bottom: 1px solid var(--textedit-chrome-border); overflow-x: auto; }
+.ribbon-group { display: flex; flex-direction: column; min-width: max-content; border: 1px solid var(--textedit-chrome-border); border-radius: 6px; padding: 6px 8px 4px; background: var(--textedit-chip); }
+.ribbon-group-body { display: flex; align-items: center; gap: 5px; flex: 1; }
+.ribbon-group small { margin-top: 4px; opacity: .6; font-size: 10.5px; text-align: center; }
+.ribbon-large { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; min-width: 62px; background: none; border: 0; border-radius: 5px; padding: 4px 8px; font-size: 12px; }
+.ribbon-large:hover { background: rgba(0, 103, 192, .09); }
+.ribbon-stack { display: flex; flex-direction: column; gap: 2px; }
+.ribbon-stack button { background: none; border: 0; border-radius: 4px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
+.ribbon-stack button:hover, .ribbon-group-body > button:hover { background: rgba(0, 103, 192, .09); border-radius: 4px; }
+.ribbon-font-row { display: flex; align-items: center; gap: 5px; }
+.extensions-group button { background: none; border: 0; border-radius: 4px; padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+
+/* Status bar */
+.textedit-status { display: flex; align-items: center; gap: 18px; padding: 4px 14px; font-size: 12px; background: var(--textedit-chrome); color: var(--textedit-chrome-text); border-top: 1px solid var(--textedit-chrome-border); }
+.textedit-status input[type='range'] { width: 120px; accent-color: var(--textedit-accent); }
+
+/* Transient message */
+.textedit-message { position: absolute; right: 16px; bottom: 16px; z-index: 60; display: flex; gap: 10px; align-items: flex-start; max-width: 70%; padding: 10px 14px; background: var(--textedit-popup); color: var(--textedit-popup-text); border: 1px solid var(--textedit-popup-border); border-radius: 9px; box-shadow: 0 8px 22px rgba(0, 0, 0, .25); font-size: 12.5px; }
+.textedit-message button { background: none; border: 0; padding: 0 2px; }
+
+/* Attachment preview panel */
+.textedit-preview { position: absolute; z-index: 70; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; max-width: min(560px, 82%); max-height: 78%; padding: 12px; overflow: auto; background: var(--textedit-popup); color: var(--textedit-popup-text); border: 1px solid var(--textedit-popup-border); border-radius: 12px; box-shadow: 0 18px 42px rgba(0, 0, 0, .3); }
+.textedit-preview header { display: flex; align-items: center; gap: 12px; }
+.textedit-preview header strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.textedit-preview header button, .textedit-preview nav button { background: none; border: 1px solid var(--textedit-popup-border); border-radius: 6px; padding: 2px 9px; }
+.textedit-preview img { max-width: 100%; max-height: 420px; }
+.textedit-preview canvas { max-width: 100%; }
+.textedit-preview nav { display: flex; align-items: center; gap: 10px; justify-content: center; font-size: 12px; }
+.textedit-preview canvas { touch-action: pan-y; }
+
+/* Sheets and panels */
+.textedit-sheet-backdrop { position: absolute; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(0, 0, 0, .28); padding: 18px; }
+.textedit-sheet-backdrop.nonmodal { background: none; pointer-events: none; align-items: end; justify-items: end; padding: 16px; }
+.textedit-sheet-backdrop.nonmodal .textedit-sheet { pointer-events: auto; }
+.textedit-sheet { display: flex; flex-direction: column; gap: 10px; width: min(430px, 100%); max-height: 100%; overflow: auto; box-sizing: border-box; padding: 16px 18px; background: var(--textedit-popup); color: var(--textedit-popup-text); border: 1px solid var(--textedit-popup-border); border-radius: 11px; box-shadow: 0 20px 44px rgba(0, 0, 0, .3); }
+.textedit-sheet-backdrop.nonmodal .textedit-sheet { width: min(460px, 92%); }
+.textedit-preferences-sheet, .textedit-sheet.preferences-sheet { width: min(560px, 100%); }
+.textedit-find-sheet { width: min(430px, 100%); }
+.textedit-sheet h2 { margin: 0; font-size: 15px; }
+.textedit-sheet label { display: flex; align-items: center; gap: 8px; margin: 2px 0; font-size: 12.5px; }
+.textedit-sheet check, .textedit-sheet .check { justify-content: flex-start; }
+.textedit-sheet input, .textedit-sheet select { flex: 1; min-width: 0; padding: 4px 8px; background: var(--textedit-chip); border: 1px solid var(--textedit-chrome-border); border-radius: 6px; }
+.textedit-sheet input[type='color'] { flex: 0 0 46px; padding: 1px; height: 30px; }
+.textedit-sheet input[type='checkbox'], .textedit-sheet input[type='radio'] { flex: none; }
+.textedit-sheet fieldset { border: 1px solid var(--textedit-chrome-border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.textedit-sheet legend { font-size: 11.5px; opacity: .7; padding: 0 4px; }
+.textedit-sheet-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--textedit-chrome-border); padding-top: 10px; }
+.textedit-sheet-actions span { flex: 1; }
+.textedit-sheet-actions button { border: 1px solid var(--textedit-chrome-border); background: var(--textedit-chip); border-radius: 6px; padding: 5px 14px; }
+.textedit-sheet-actions button.primary { background: var(--textedit-accent); border-color: var(--textedit-accent); color: #fff; }
+.textedit-sheet-actions button:disabled { opacity: .45; cursor: default; }
+.textedit-panel-heading { display: flex; align-items: center; gap: 10px; }
+.textedit-panel-heading h2 { flex: 1; }
+.textedit-panel-heading button { background: none; border: 1px solid var(--textedit-popup-border); border-radius: 6px; padding: 2px 9px; }
+.textedit-sheet-message { margin: 0; min-height: 1.4em; font-size: 12px; opacity: .8; }
+.textedit-local-note { margin: 2px 0; font-size: 11px; opacity: .72; }
+.textedit-preference-tabs { display: flex; gap: 4px; }
+.textedit-preference-tabs button { background: none; border: 1px solid var(--textedit-chrome-border); border-radius: 6px; padding: 4px 12px; }
+.textedit-preference-tabs button.selected { background: var(--textedit-accent); border-color: var(--textedit-accent); color: #fff; }
+.textedit-replacement-rule { display: grid; grid-template-columns: 1fr minmax(24px, auto) 26px; gap: 6px; align-items: center; }
+.textedit-replacement-rule button { background: none; border: 0; padding: 0 2px; }
+.textedit-spelling-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+.textedit-spelling-suggestions button { background: var(--textedit-chip); border: 1px solid var(--textedit-chrome-border); border-radius: 6px; padding: 3px 9px; }
+.textedit-spelling-suggestions button.selected { background: var(--textedit-accent); border-color: var(--textedit-accent); color: #fff; }
+.textedit-find-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.textedit-find-actions button { border: 1px solid var(--textedit-chrome-border); background: var(--textedit-chip); border-radius: 6px; padding: 5px 12px; }
+.textedit-find-actions button.primary { background: var(--textedit-accent); border-color: var(--textedit-accent); color: #fff; }
+.textedit-table-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.textedit-table-actions button { border: 1px solid var(--textedit-chrome-border); background: var(--textedit-chip); border-radius: 6px; padding: 4px 10px; }
+.textedit-sheet-heading { display: flex; gap: 12px; align-items: flex-start; }
+.textedit-sheet-heading h2 { margin: 0; font-size: 14px; }
+.textedit-sheet-heading p { margin: 3px 0 0; font-size: 12.5px; opacity: .8; }
+.textedit-sheet-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 9px; background: var(--textedit-chip); border: 1px solid var(--textedit-chrome-border); }
+.textedit-color-palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+.textedit-color-palette button { width: 100%; aspect-ratio: 1; border: 1px solid var(--textedit-popup-border); border-radius: 5px; }
+.textedit-about { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.textedit-about h2 { margin: 0; }
+.textedit-about p { margin: 0; font-size: 12.5px; opacity: .85; }
+.textedit-form-fields { display: flex; flex-direction: column; gap: 6px; }
+.textedit-form-fields label { justify-content: space-between; }
+.textedit-sr-only, .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.textedit-menu-popup { display: block; }
+.sr-only { position: absolute; width: 1px; height: 1px; }
+.textedit-menu-strip [aria-expanded='true'] { background: rgba(0, 0, 0, .1); }
+.textedit-sheet .textedit-consent { font-size: 11px; opacity: .7; }
+.textedit-app.textedit-wordpad .textedit-fontbar, .textedit-app.textedit-wordpad .textedit-fontbar { display: none; }
+.textedit-bottom-mac { padding: 2px; }
+.textedit-note-caption { font-size: 12px; opacity: .7; }
+.textedit-app.textedit-wordpad .textedit-ribbon select { background: var(--textedit-chip); border: 1px solid var(--textedit-chrome-border); border-radius: 4px; max-width: 140px; }

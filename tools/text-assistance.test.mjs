@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { createTextAssistance, applyTextSubstitutions } from '../frontend/src/text-assistance.js';
+import { createTextAssistance, applyTextSubstitutions, textSubstitutionPlan } from '../frontend/src/text-assistance.js';
 
 async function loadDictionary() {
   const [aff, dic] = await Promise.all([
@@ -214,4 +214,30 @@ test('a huge token never invokes dictionary correction and retains its full sour
   const checker = createTextAssistance({ loadDictionary: async () => { throw new Error('must not load for a long input token'); } });
   expect(await checker.correctInput(text, 100004, { correctSpellingAutomatically: true }))
     .toEqual({ text, cursor: 100004, changed: false });
+});
+
+test('substitution provenance stages reproduce the unchanged shared engine with exact UTF-16 ranges', () => {
+  const source = '😀 cat "cat" -- a+b';
+  const preferences = { textReplacement: true, smartDashes: true, smartQuotes: true };
+  const replacements = [{ from: 'cat', to: '"dog" --' }, { from: 'a+b', to: '$&' }];
+  const plan = textSubstitutionPlan(source, preferences, replacements);
+  let actual = source;
+  for (const stage of plan.stages) {
+    let previousEnd = 0;
+    for (const edit of stage) {
+      expect(edit.start).toBeGreaterThanOrEqual(previousEnd); expect(edit.end).toBeGreaterThanOrEqual(edit.start);
+      previousEnd = edit.end;
+    }
+    for (const edit of [...stage].reverse()) actual = actual.slice(0, edit.start) + edit.text + actual.slice(edit.end);
+  }
+  expect(actual).toBe(plan.text);
+  expect(plan.text).toBe(applyTextSubstitutions(source, preferences, replacements));
+  expect(plan.stages[0][0]).toEqual({ start: 3, end: 6, text: '"dog" --' });
+});
+
+test('substitution provenance retains original selection context and omits unchanged tokens', () => {
+  const context = { before: 'She said “hello', after: ' next' };
+  const plan = textSubstitutionPlan('" --', { smartQuotes: true, smartDashes: true }, [], context);
+  expect(plan.text).toBe(applyTextSubstitutions('" --', { smartQuotes: true, smartDashes: true }, [], context));
+  expect(textSubstitutionPlan('cat', { textReplacement: true }, [{ from: 'cat', to: 'cat' }]).stages).toEqual([]);
 });

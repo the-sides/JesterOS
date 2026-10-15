@@ -9,11 +9,11 @@ const definitions = [
   { id: 'copy-paths', label: 'Copy File Paths', provider: 'finder', kind: 'files' },
   { id: 'show-info', label: 'Get Info', provider: 'finder', kind: 'files' },
   { id: 'new-mail-with-attachments', label: 'New Email with Attachments', provider: 'mail', kind: 'files',
-    accepts: source => source.files.length <= 128 && source.files.every(file => file.kind === 'document'
-      && typeof file.content === 'string' && file.content.length <= MAX_TEXT) },
-  { id: 'email-contact', label: 'Email Contact', provider: 'mail', kind: 'contact', accepts: source => Boolean(source.contact.fields.email.trim()) },
+    accepts: source => source.files.length <= 16 && source.files.every(file => file.kind === 'document'
+      && typeof file.fileId === 'string' && file.fileId.length > 0 && Number.isSafeInteger(file.revision) && file.revision >= 0) },
+  { id: 'email-contact', label: 'Email Contact', provider: 'mail', kind: 'contact', accepts: source => Boolean(source.contact.email.trim()) },
   { id: 'message-contact', label: 'Message Contact', provider: 'messages', kind: 'contact',
-    accepts: source => Boolean(source.contact.fields.phone.trim() || source.contact.fields.email.trim()) },
+    accepts: source => Boolean(source.contact.phone.trim() || source.contact.email.trim()) },
 ];
 
 /** Original registered local services, not a claimed factory Services inventory.
@@ -22,7 +22,9 @@ export function applicableServices(source, profile) {
   if (!profile.capabilities.includes('shell.services-workflows') || !source?.sourceId
     || !Object.hasOwn(profile.applications, source.appId)) return [];
   if (source.kind === 'text' && (typeof source.text !== 'string' || !source.text.trim() || source.text.length > MAX_TEXT)
-    || source.kind === 'files' && (!Array.isArray(source.files) || !source.files.length)) return [];
+    || source.kind === 'files' && (!Array.isArray(source.files) || !source.files.length)
+    || source.kind === 'contact' && (!source.contact || typeof source.contact.id !== 'string'
+      || !['name', 'email', 'phone'].every(field => typeof source.contact[field] === 'string'))) return [];
   return definitions.filter(service => service.kind === source.kind && Object.hasOwn(profile.applications, service.provider)
     && (!service.accepts || service.accepts(source)));
 }
@@ -34,7 +36,7 @@ export function serviceMenuItems(source, profile) {
   }));
 }
 
-export function contactDraftFields(text) {
+export function contactServiceFields(text) {
   const value = text.trim();
   const email = /^[^\s@]+@[^\s@]+$/.test(value);
   const phone = /^[+()\d .-]+$/.test(value) && /\d/.test(value);

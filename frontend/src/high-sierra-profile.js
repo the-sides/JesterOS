@@ -1,7 +1,9 @@
+import { composeNativeProfile } from './native-profile-composition.js';
+
 // macOS 10.13 inventory and implemented coverage are researched separately in
 // docs/high-sierra-profile.md. Native stock membership is not interior coverage.
 // Minimum sizes protect the represented layouts, not factory macOS measurements.
-export const highSierraProfile = {
+export const highSierraProfile = composeNativeProfile({
   id: 'macos-high-sierra-10.13',
   name: 'macOS High Sierra',
   family: 'macos',
@@ -13,8 +15,10 @@ export const highSierraProfile = {
     'shell.window-create', 'app.lifecycle', 'shell.switcher', 'app.visibility',
     'shell.full-screen', 'shell.split-view', 'shell.mission-control', 'shell.launchpad', 'shell.dashboard',
     'shell.desktop', 'shell.dock-context', 'shell.dock-management', 'shell.dock-stacks', 'shell.window-menu',
-    'shell.appearance', 'scene.profile-selection',
-    'notes.plain-text', 'notes.presentation', 'messages.sample',
+    'shell.help-workflows', 'shell.appearance', 'scene.profile-selection',
+    'notes.workspace', 'messages.sample', 'messages.conversations',
+    'browser.local', 'mail.local', 'contacts.cards', 'calendar.events',
+    'calls.local', 'apps.reminders',
   ],
   applications: {
     finder: { id: 'finder', name: 'Finder', icon: 'finder', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: true, quitAllowed: false, dock: 'main', coverage: 'desktop-locations' },
@@ -23,9 +27,9 @@ export const highSierraProfile = {
     mail: { id: 'mail', name: 'Mail', icon: 'mail', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'launch-only' },
     contacts: { id: 'contacts', name: 'Contacts', icon: 'contacts', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'launch-only' },
     calendar: { id: 'calendar', name: 'Calendar', icon: 'calendar', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'launch-only' },
-    notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 660, minimumSize: { width: 1060, height: 420 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
+    notes: { id: 'notes', name: 'Notes', icon: 'notes', width: 1120, height: 660, minimumSize: { width: 1060, height: 420 }, multipleWindows: true, quitAllowed: true, dock: 'main', coverage: 'plain-text' },
     photos: { id: 'photos', name: 'Photos', icon: 'photos', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'launch-only' },
-    messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 928, height: 710, minimumSize: { width: 928, height: 710 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'sample' },
+    messages: { id: 'messages', name: 'Messages', icon: 'messages', width: 928, height: 710, minimumSize: { width: 928, height: 710 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'conversations' },
     settings: { id: 'settings', name: 'System Preferences', icon: 'settings', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: false, quitAllowed: true, dock: 'main', coverage: 'dock-preferences' },
     preview: { id: 'preview', name: 'Preview', icon: 'preview', width: 720, height: 480, minimumSize: { width: 720, height: 480 }, multipleWindows: true, quitAllowed: true, coverage: 'launch-only' },
     dashboard: { id: 'dashboard', name: 'Dashboard', icon: 'dashboard', presentation: 'dashboard', multipleWindows: false, quitAllowed: false, coverage: 'shell-widgets' },
@@ -41,5 +45,5 @@ export const highSierraProfile = {
     messages: '/high-sierra/messages',
     fonts: ['/fonts/InterVariable.woff2', '/fonts/LiberationSans-Regular.ttf'],
   },
-  defaults: { startupAppId: 'messages', desktopAppId: 'finder', clockLabel: 'Mon 9:41 AM', batteryPercent: 87 },
-};
+  defaults: { startupAppId: 'messages', desktopAppId: 'finder', sceneTime: '2017-09-25T09:41:00Z', clockLabel: 'Mon 9:41 AM', batteryPercent: 87 },
+});

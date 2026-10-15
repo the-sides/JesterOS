@@ -360,11 +360,23 @@
       if (target?.closest('[data-menu-bar], [data-menu-popup]')) return;
       request('close', openMenu.menuId, { restoreFocus: false });
     }
+    function pendingEscape(event) {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing
+        || event.metaKey || event.ctrlKey || event.altKey || !openMenu || !available(openMenu.menuId)) return;
+      const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+      if (target?.closest('[data-menu-bar], [data-menu-popup]')) return;
+      // Popup focus settles asynchronously. A visible menu still owns Escape
+      // while its original editor holds DOM focus; queue behind its open.
+      event.preventDefault(); event.stopImmediatePropagation();
+      request('navigate', openMenu.menuId, { key: 'Escape' });
+    }
     document.addEventListener('pointerdown', outside);
     document.addEventListener('focusin', outside);
+    window.addEventListener('keydown', pendingEscape, true);
     return () => {
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('focusin', outside);
+      window.removeEventListener('keydown', pendingEscape, true);
     };
   });
 </script>

@@ -1,0 +1,17 @@
+import { renderImagePlayground } from './image-playground-engine.js';
+import { createImagePlaygroundRecipe } from './image-playground-state.js';
+import { photoGeometry } from './photos-geometry.js';
+const assert=(condition,message)=>{if(!condition)throw Error(message);};
+// Main can import this module in the final mounted browser verification. All
+// encoding/decoding below uses actual browser canvas/Image, never fake bytes.
+export async function runImagePlaygroundCanvasTests(){
+ const recipe={...createImagePlaygroundRecipe(),prompt:'blue robot forest stars',seed:17},first=await renderImagePlayground(recipe),same=await renderImagePlayground(recipe);
+ assert(first.png===same.png,'Identical inputs must encode identical actual pixels.');assert(first.png.startsWith('data:image/png;base64,'),'Output must be genuine PNG.');const geometry=photoGeometry(first.png,'image/png');assert(geometry.width===512&&geometry.height===512,'Actual PNG dimensions must be 512 × 512.');
+ const variants=[];for(const patch of [{seed:18},{prompt:'red robot forest stars'},{concepts:['hat']},{style:'animation'},{style:'sketch'}]){const rendered=await renderImagePlayground({...recipe,...patch});assert(rendered.png!==first.png,'Each actual seed/prompt/token/style change must change pixels.');variants.push(rendered.png.length);}
+ const decoded=new Image();decoded.src=first.png;await decoded.decode();const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;const ctx=canvas.getContext('2d');assert(Boolean(ctx),'Browser actual 2D canvas required.');ctx.drawImage(decoded,0,0);const pixels=ctx.getImageData(0,0,512,512).data;assert(pixels.some((v,i)=>i%4!==3&&v!==pixels[i%4]),'Actual geometry must produce nonuniform color pixels.');
+ const sourceCanvas=document.createElement('canvas');sourceCanvas.width=80;sourceCanvas.height=60;const source=sourceCanvas.getContext('2d');source.fillStyle='#ff0066';source.fillRect(0,0,80,60);source.fillStyle='#00dd99';source.fillRect(0,0,40,60);const photo={id:'browser-source-photo',revision:4,people:['Test Person'],mime:'image/png',content:sourceCanvas.toDataURL('image/png'),editedContent:null,inLibrary:true,hidden:false,deletedAt:null};
+ const collage=await renderImagePlayground({...recipe,prompt:'forest',person:{photoId:photo.id,photoRevision:4,name:'Test Person'}},{photo});const collageImage=new Image();collageImage.src=collage.png;await collageImage.decode();ctx.clearRect(0,0,512,512);ctx.drawImage(collageImage,0,0);const actual=ctx.getImageData(280,260,1,1).data;assert(actual[0]===255&&actual[1]===0&&actual[2]===102,'Collage must retain exact canonical source pixels, not a generated likeness.');
+ let current=true,stale=false;try{await renderImagePlayground({...recipe,prompt:'forest',person:{photoId:photo.id,photoRevision:4,name:'Test Person'}},{photo,guard:()=>current,loadImage:async content=>{const i=new Image();i.src=content;await i.decode();current=false;return i;}});}catch(error){stale=error.code==='stale_target';}assert(stale,'Changing original ownership across real image.decode must reject.');
+ let unsupported=false;try{await renderImagePlayground({...recipe,prompt:'photorealistic elephant'});}catch(error){unsupported=error.code==='unsupported_prompt';}assert(unsupported,'Unsupported descriptions must reject without canned success.');
+ return {dimensions:geometry,pngCharacters:first.png.length,variantCharacters:variants,collageSourcePixel:[...actual]};
+}

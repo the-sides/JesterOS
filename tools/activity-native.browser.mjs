@@ -1,0 +1,27 @@
+import {activitySession} from '../frontend/src/activity-state.js';
+import {activityProcess,activityRows} from '../frontend/src/activity-projections.js';
+const assert=(condition,message)=>{if(!condition)throw new Error(message);};
+// Consumer regression against integrated original Root state, actual native DOM,
+// actual lifecycle rows and actual Files. This function never replaces sources.
+export async function runActivityNativeBrowserRegression({root,facade,controller,state,windowId,getInventory,getSceneTime,getWindow,getFile,flush}){
+ assert(root?.isConnected&&facade?.available?.()===true,'Original monitor must be mounted.');
+ assert(typeof flush==='function'&&typeof getInventory==='function'&&typeof getFile==='function','Actual Root inventory/Files/flush required.');
+ const session=activitySession(state,windowId),sessions=state.sessions,samples=session.samples,inventory=getInventory(),processes=inventory.processes;
+ assert(session&&controller?.handlers&&processes.length,'Original window and at least one actually running app required.');
+ const invoke=async(name,payload={})=>{const result=await controller.handlers['activity.'+name]({windowId},payload);assert(result?.status==='applied',name+': '+JSON.stringify(result));await flush();return result;};
+ const control=id=>Array.from(root.querySelectorAll('[data-control]')).find(el=>el.dataset.control===id);
+ for(const tab of ['cpu','memory','energy','disk','network']){const button=control('tab-'+tab);assert(button,'Actual resource tab required.');button.click();await flush();assert(session.tab===tab&&button.getAttribute('aria-selected')==='true','Native resource tab must change original state and selection.');assert(root.querySelector('table thead')?.textContent,'Native table columns required.');}
+ if(state.profileId.startsWith('windows11')){const page=control('page-performance');assert(page,'Actual Windows Performance navigation required.');page.click();await flush();assert(session.page==='performance'&&root.querySelector('.activity-performance-chart svg'),'Native navigation must show actual performance graph, not an acknowledgment.');const resource=control('resource-memory');assert(resource,'Actual memory resource card required.');resource.click();await flush();assert(session.tab==='memory'&&root.querySelector('.activity-performance-chart h1')?.textContent==='Memory','Native resource selection must change real graph and canonical tab.');control('page-processes').click();await flush();assert(session.page==='processes'&&root.querySelector('table'),'Native Processes navigation must restore original process table.');}
+ const originalProcess=processes.find(p=>p.appId!==getWindow(windowId)?.appId)??processes[0];
+ await invoke('search',{query:String(originalProcess.pid)});assert(activityRows(inventory,session,state.preferences,getSceneTime()).some(p=>p===originalProcess),'Native search must project original PID.');
+ const search=control('search');assert(search?.value===String(originalProcess.pid),'Canonical query must appear in actual search control.');
+ search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));await flush();assert(session.query==='','Native input must clear original query.');
+ const rowControl=control('process-'+originalProcess.id);assert(rowControl,'Original process row must be mounted.');rowControl.click();await flush();assert(session.selectedId===originalProcess.id&&rowControl.closest('tr').classList.contains('selected'),'Native row click must select original lifecycle.');
+ const diagnostic=await invoke('inspect',{mode:'sample'});assert(getWindow(diagnostic.diagnosticWindowId)&&activitySession(state,diagnostic.diagnosticWindowId)?.selectedId===originalProcess.id,'Diagnostic must be an actual Root window pinned to original lifecycle.');
+ await invoke('requestQuit',{force:true});assert(root.querySelector('[role="dialog"]')?.textContent.includes('Force quit'),'Actual force-quit confirmation required.');await invoke('confirmQuit',{confirm:false});assert(activityProcess(inventory,originalProcess.id)===originalProcess,'Cancel must preserve original running process.');
+ await invoke('panel',{panel:'preferences'});const frequency=control('frequency');assert(frequency,'Actual native frequency control required.');frequency.value='2';frequency.dispatchEvent(new Event('change',{bubbles:true}));await flush();assert(state.preferences.updateSeconds===2,'Native preferences must apply authored clock sampling frequency.');await invoke('panel',{panel:'none'});
+ const result=await invoke('saveSample',{name:'Browser Actual Process Sample.txt'}),file=getFile(result.fileId);assert(file?.mime==='text/plain'&&(file.content??file.text).includes('Lifecycle: '+originalProcess.id),'Actual Files must contain locally rendered original process diagnostic.');
+ await invoke('focus',{controlId:'search'});assert(document.activeElement===control('search'),'Native facade must focus actual search input.');
+ assert(activitySession(state,windowId)===session&&state.sessions===sessions&&session.samples===samples&&getInventory()===inventory&&inventory.processes===processes,'Commands must preserve original canonical and inventory identities.');
+ return {status:'applied',windowId,profileId:state.profileId,fileId:file.id,diagnosticWindowId:diagnostic.diagnosticWindowId,behaviors:['all-resource-tabs','canonical-search-row-selection','actual-diagnostic-window','force-quit-cancel','native-preferences','actual-files-diagnostic','native-focus','original-source-identities']};
+}

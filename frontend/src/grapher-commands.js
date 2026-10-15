@@ -1,0 +1,40 @@
+import {copyCanonicalData} from './canonical-data.js';
+import {encodePreviewData} from './preview-codec.js';
+import {grapherCommandSpecs,grapherTargetSchema} from './grapher-catalog.js';
+import {grapherWindow,createGrapherWindow,createGrapherDocument,validateGrapherState,grapherSchemaValid,grapherIdSchema,grapherCapabilities,grapherWindowMetadata,parseGrapherDocument,serializeGrapherDocument} from './grapher-state.js';
+import {grapherPDF,grapherSVG,grapherParameter,compileGrapherExpression} from './grapher-engine.js';
+import {createColorGraphControllerCore,familyRejected,familyApplied} from './colorsync-controller-core.js';
+export function createGrapherCommands(state,ctx){
+ const core=createColorGraphControllerCore(state,ctx,{appId:'grapher',validate:validateGrapherState,session:grapherWindow,createWindow:createGrapherWindow,idSchema:grapherIdSchema,metadata:grapherWindowMetadata,capabilities:grapherCapabilities});
+ const fail=(code,message)=>{const error=new Error(message);error.code=code;throw error;};
+ function equation(w,id){const row=w.document.equations.find(e=>e.id===id);if(!row)fail('stale_target','Actual equation is unavailable.');return row;}
+ async function open(owner,payload){let fileId=payload.fileId;if(!fileId){const choice=await core.choose(owner,{title:'Open local graph',mimes:['application/x-jesteros-grapher']});if(choice.error)return choice.error;fileId=choice.fileId;}const source=await core.read(owner,fileId);if(source.error)return source.error;if(source.mime!=='application/x-jesteros-grapher')return familyRejected('unsupported_content','Open requires genuine JesterOS.Grapher format, not Apple .gcx.');const document=parseGrapherDocument(source.text);return core.commit(source,(_,w)=>{w.document=copyCanonicalData(document);w.document.animation.playing=false;w.selectedId=document.equations[0]?.id??null;w.inspector='none';w.fileId=fileId;w.fileRevision=source.file.revision;w.dirty=false;w.status='Opened original local graph bytes.';});}
+ async function save(owner,payload){const row=owner.session,existingFileId=payload.saveAs?null:row.fileId;if(existingFileId){const source=await core.read(owner,existingFileId,row.fileRevision);if(source.error)return source.error;owner=source;}const name=payload.name??`${row.document.title||'Untitled'}.jgrapher`,text=serializeGrapherDocument(row.document);return core.write(owner,{name,mime:'application/x-jesteros-grapher',text,onFile:(_,w,id,planned)=>{w.fileId=id;w.fileRevision=planned.revision;w.dirty=false;}},(_,w)=>{w.status='Saved actual local graph document.';},{existingFileId,expectedRevision:row.fileRevision});}
+ async function output(owner,payload,print=false){let text,mime,format=print?'pdf':payload.format;if(format==='svg'){text=grapherSVG(owner.session.document,{time:owner.time});mime='image/svg+xml';}else if(format==='pdf'){text=encodePreviewData(await grapherPDF(owner.session.document,{guard:owner.guard,time:owner.time}),'application/pdf');mime='application/pdf';}else {if(!owner.view?.exportPNG||owner.view.available()!==true)return core.unavailable('PNG export requires the actual original mounted graph canvas.');const result=await owner.view.exportPNG(owner.guard,owner.time);if(!owner.guard())return core.stale();if(!result||result.mime!=='image/png'||typeof result.text!=='string')return core.unavailable('Canvas did not encode genuine PNG bytes.');text=result.text;mime=result.mime;}
+  if(!owner.guard())return core.stale();const name=payload.name??`${owner.session.document.title||'Graph'}.${format}`;
+  if(print){if(typeof ctx.printDocument!=='function')return core.unavailable('Actual native print destination is unavailable.');const result=await ctx.printDocument({title:owner.session.document.title,mime,text,content:text,source:{appId:'grapher',windowId:owner.windowId}},{guard:owner.guard,windowId:owner.windowId});if(result?.status==='applied')return familyApplied(owner.windowId,{destination:result,printed:result.printed===true,presentationAvailable:owner.guard()});return owner.guard()?result?.status==='rejected'?result:core.unavailable('The native print destination did not open.'):core.stale();}
+  return core.write(owner,{name,mime,text},(_,w)=>{w.status=`Exported genuine ${format.toUpperCase()} graph.`;});
+ }
+ const handlers={};for(const [suffix,[schema]] of Object.entries(grapherCommandSpecs))handlers[`grapher.${suffix}`]=async(target,payload={})=>{
+  if(!grapherSchemaValid(target,grapherTargetSchema)||!grapherSchemaValid(payload,schema))return familyRejected('invalid_arguments','Use the closed Grapher command schema.');const owner=core.lease(target.windowId,suffix==='focus'||suffix==='export'&&payload.format==='png');if(!owner)return core.unavailable('The original Grapher graph/window or required native view is unavailable.');
+  try{if(['window.new','window.close','focus'].includes(suffix))return await core.shell(owner,suffix,payload);if(suffix==='open')return await open(owner,payload);if(suffix==='save')return await save(owner,payload);if(suffix==='export'||suffix==='print')return await output(owner,payload,suffix==='print');
+   return core.commit(owner,(candidate,w)=>{const d=w.document;
+    if(suffix==='template'){w.document=createGrapherDocument(payload.template,owner.time);w.selectedId=w.document.equations[0].id;w.fileId=null;w.fileRevision=null;w.dirty=false;w.status='Created actual template.';return;}
+    if(suffix==='equation.add'){if(d.equations.length>=24)fail('limit_exceeded','At most 24 equations per graph.');const expression=payload.expression??(d.dimension===2?'y = 0':'z = 0');compileGrapherExpression(expression,d.dimension);let id;do{if(candidate.nextId>=Number.MAX_SAFE_INTEGER-1)fail('limit_exceeded','Equation IDs exhausted.');id=`equation-${candidate.nextId++}`;}while(d.equations.some(e=>e.id===id));d.equations.push({id,expression,visible:true,color:'#ba493c',width:1.5});w.selectedId=id;}
+    else if(suffix==='equation.edit'){compileGrapherExpression(payload.expression,d.dimension);equation(w,payload.equationId).expression=payload.expression;}
+    else if(suffix==='equation.delete'){const row=equation(w,payload.equationId);d.equations.splice(d.equations.indexOf(row),1);if(w.selectedId===row.id)w.selectedId=d.equations[0]?.id??null;if(!w.selectedId&&w.inspector==='equation')w.inspector='none';}
+    else if(suffix==='equation.select'){equation(w,payload.equationId);w.selectedId=payload.equationId;return;}
+    else if(suffix==='equation.style'){const row=equation(w,payload.equationId);for(const key of ['visible','color','width'])if(Object.hasOwn(payload,key))row[key]=payload[key];}
+    else if(suffix==='range')d.range=copyCanonicalData(payload);
+    else if(suffix==='zoom'){for(const axis of ['x','y','z']){const center=(d.range[axis+'Min']+d.range[axis+'Max'])/2,half=(d.range[axis+'Max']-d.range[axis+'Min'])/2/payload.factor;d.range[axis+'Min']=center-half;d.range[axis+'Max']=center+half;}}
+    else if(suffix==='pan'){for(const axis of ['x','y']){d.range[axis+'Min']+=payload[axis];d.range[axis+'Max']+=payload[axis];}}
+    else if(suffix==='settings'){for(const key of ['axes','grid','rotation','title'])if(Object.hasOwn(payload,key))d[key]=payload[key];}
+    else if(suffix==='inspector'){if(payload.panel==='equation'&&!w.selectedId)fail('disabled','Select an actual equation before opening its inspector.');w.inspector=payload.panel;return;}
+    else if(suffix==='menu'){w.menu=payload.menu;return;}
+    else if(suffix==='animation'){const value=grapherParameter(d,owner.time);for(const key of ['playing','value','min','max','speed'])if(Object.hasOwn(payload,key))d.animation[key]=payload[key];if(payload.playing===false&&payload.value===undefined)d.animation.value=value;if(payload.playing===true||payload.speed!==undefined)d.animation.started=owner.time;if(payload.playing===true)d.animation.value=d.animation.min;}
+    w.dirty=true;w.status='';
+   });
+  }catch(error){return familyRejected(error.code??'unsupported_content',String(error.message).slice(0,512));}
+ };
+ return {handlers,...core.lifecycle};
+}

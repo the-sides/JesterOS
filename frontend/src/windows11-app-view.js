@@ -14,7 +14,7 @@ export function createWindows11AppView(getRoot,getSurface) {
     scroll:(id,top,left) => { const element = area(id); if(!element) return null; element.scrollTop = top; element.scrollLeft = left; return {top:element.scrollTop,left:element.scrollLeft}; },
     readSelection:id => { const element = control(id); return editable(element) ? {start:element.selectionStart,end:element.selectionEnd} : null; },
     select:(id,start,end,focus = true) => { const element = control(id); if(!editable(element) || element.disabled) return false; if(focus) element.focus({preventScroll:true}); element.setSelectionRange(start,end); return element.selectionStart === start && element.selectionEnd === end; },
-    hasCaptureSurface:() => Boolean(root() && !root().closest('[hidden],[inert]') && typeof getSurface() === 'function'),
-    captureSurface:() => root() && !root().closest('[hidden],[inert]') ? getSurface()?.() || null : null,
+    hasCaptureSurface:() => Boolean(root() && !root().closest('[hidden],[inert]') && typeof getSurface === 'function' && typeof getSurface() === 'function'),
+    captureSurface:() => root() && !root().closest('[hidden],[inert]') && typeof getSurface === 'function' ? getSurface()?.() || null : null,
   };
 }

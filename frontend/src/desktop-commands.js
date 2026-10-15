@@ -32,7 +32,7 @@ export function createDesktopCommands(viewState, {
   getWindows,
   getActiveWindowId,
   focusDesktop,
-  openApp,
+  openFile,
   windowAction,
 }) {
   function enabledMenuItemIds() {
@@ -91,7 +91,7 @@ export function createDesktopCommands(viewState, {
       if (!getView()) return rejected('unavailable', 'The desktop is not mounted.');
       const preparation = prepareOpen(file);
       if (preparation?.status === 'rejected') return preparation;
-      const result = await openApp({ appId: file.appId }, file.kind === 'application' ? {} : { title: file.name });
+      const result = await openFile(file);
       if (result.status === 'applied') openedFile(result.target.windowId, file);
       return result.status === 'applied' ? applied({ ...result.target, fileId: file.id }) : result;
     },

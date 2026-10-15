@@ -1,0 +1,10 @@
+import {object,choice,empty,flag,defineCommand} from './command-schema.js';
+import {GAMES_TIPS_PROFILES,gamesTipsIdSchema} from './games-tips-state.js';
+import {TIPS_COLLECTIONS,TIPS_TOPICS} from './tips-content.js';
+const text=maxLength=>({type:'string',maxLength}),target=object({windowId:gamesTipsIdSchema});
+export const gamesTipsTargetSchema=target;
+const common={search:object({query:text(256)}),sheet:object({sheet:choice('none','help'),menu:{anyOf:[{type:'null'},choice('application','view','window','help')]}},[]),focus:object({controlId:{type:'string',minLength:1,maxLength:128}}),'window.close':empty};
+export const gamesCommandSpecs={...common,navigate:object({section:choice('home','library','recents','profile')}),profile:object({name:{type:'string',minLength:1,maxLength:80}}),launch:object({appId:gamesTipsIdSchema}),resume:object({chessWindowId:gamesTipsIdSchema}),chess:object({chessWindowId:gamesTipsIdSchema,action:choice('undo','flip','resign','draw','save')})};
+export const tipsCommandSpecs={...common,collection:object({collection:choice('all',...TIPS_COLLECTIONS)}),open:object({topicId:choice(...TIPS_TOPICS.map(row=>row.id))}),history:object({direction:choice('back','forward')}),step:object({direction:choice('previous','next')}),read:object({read:flag}),accessibility:object({textSize:choice('standard','large'),reduceMotion:flag},[]),try:object({topicId:choice(...TIPS_TOPICS.map(row=>row.id))})};
+const catalog=(kind,specs)=>Object.fromEntries(Object.entries(specs).map(([suffix,payload])=>defineCommand(GAMES_TIPS_PROFILES,`${kind}.${suffix}`,kind+'.local',target,payload,['Original canonical actor/window/mounted native facade and authored scene time.','Games reads only actual canonical Store installations and Chess games; Tips has authored offline topics.'],['Operate the genuine native counterpart; all external-app actions use the actual owned Root command endpoint.'],[kind],[],target)));
+export const gamesCatalog=catalog('games',gamesCommandSpecs),tipsCatalog=catalog('tips',tipsCommandSpecs);

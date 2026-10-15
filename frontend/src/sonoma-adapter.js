@@ -1,8 +1,10 @@
 import Desktop from './SonomaDesktop.svelte';
 import Window from './SonomaWindow.svelte';
 import MessagesWindow from './SonomaMessagesWindow.svelte';
-import NotesWindow from './SonomaNotesWindow.svelte';
-import { createNotesState } from './notes-state.js';
+import NotesWindow from './NotesApp.svelte';
+import { createDefaultApplicationFiles } from './default-application-files.js';
+import { createDefaultSceneSeed } from './scene-seed.js';
+import { sonomaProfile } from './sonoma-profile.js';
 import { fitNormalBounds as fitBounds } from './window-state.js';
 
 function windowScale(app, area) {
@@ -27,9 +29,8 @@ function prepareDocument() {
   document.documentElement.classList.toggle('native-apple-font', /Mac|iPhone|iPad|iPod/.test(navigator.platform));
 }
 
-function createSceneData() {
-  // Fixture offsets place the latest note at the menu's fictional 5:42 PM.
-  return { notes: createNotesState(Date.UTC(2023, 8, 26, 17, 0)) };
+function createSceneData(seed, profile = sonomaProfile) {
+  return seed ? structuredClone(seed) : createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles });
 }
 
 export const sonomaAdapter = Object.freeze({

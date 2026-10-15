@@ -81,13 +81,17 @@ function snapshotReplacements(replacements) {
   });
 }
 
-function quoteSubstitutions(text, before, after) {
+function quoteSubstitutions(text, before, after, edits) {
   let doubleOpen = false;
   for (const character of before) {
     if (character === '"') doubleOpen = !doubleOpen;
     else if (character === '“') doubleOpen = true;
     else if (character === '”') doubleOpen = false;
   }
+  const changed = (quote, index, replacement) => {
+    if (edits && quote !== replacement) edits.push({ start: index, end: index + quote.length, text: replacement });
+    return replacement;
+  };
   return text.replace(/['"“”]/g, (quote, index) => {
     if (quote === '“' || quote === '”') {
       doubleOpen = quote === '“';
@@ -95,21 +99,21 @@ function quoteSubstitutions(text, before, after) {
     }
     const previous = index ? characterBefore(text, index) : lastCharacter(before);
     const following = index + 1 < text.length ? characterAt(text, index + 1) : characterAt(after, 0);
-    if (quote === "'" && letter.test(previous)) return '’';
+    if (quote === "'" && letter.test(previous)) return changed(quote, index, '’');
     const startsContent = !!following && !/[\s\p{Pe}\p{Pf},.!?:;]/u.test(following);
     if (quote === '"') {
       const opening = !doubleOpen && (startsContent || (!following && (!previous || /\s|\p{Ps}/u.test(previous))));
       doubleOpen = opening;
-      return opening ? '“' : '”';
+      return changed(quote, index, opening ? '“' : '”');
     }
     const opening = !previous || /[\s\p{Ps}\p{Pi}—–]/u.test(previous);
-    return opening && (startsContent || !following) ? '‘' : '’';
+    return changed(quote, index, opening && (startsContent || !following) ? '‘' : '’');
   });
 }
 
 const escapeRegex = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-function replaceTokens(text, replacements, before, after) {
+function replaceTokens(text, replacements, before, after, edits) {
   if (!replacements.length) return text;
   // Longest literal wins; equal/duplicate entries retain caller order. One pass, no cascades.
   const ordered = replacements.map((entry, index) => ({ ...entry, index }))
@@ -120,7 +124,9 @@ function replaceTokens(text, replacements, before, after) {
     const end = index + match.length;
     const following = end < text.length ? characterAt(text, end) : characterAt(after, 0);
     if (tokenCharacter.test(previous) || tokenCharacter.test(following)) return match;
-    return ordered.find(entry => entry.from === match).to;
+    const replacement = ordered.find(entry => entry.from === match).to;
+    if (edits && match !== replacement) edits.push({ start: index, end, text: replacement });
+    return replacement;
   });
 }
 
@@ -135,6 +141,31 @@ export function applyTextSubstitutions(text, { smartQuotes, smartDashes, textRep
   if (smartDashes) result = result.replace(/--/g, '—');
   if (smartQuotes) result = quoteSubstitutions(result, before, after);
   return result;
+}
+
+/** Ordered transformation stages retain exact UTF-16 edit provenance. Each
+ * stage's nonoverlapping ranges address its input text; apply edits backwards
+ * within that stage before advancing to the next. Rich consumers preserve
+ * original runs instead of reconstructing a document from the final text. */
+export function textSubstitutionPlan(text, { smartQuotes, smartDashes, textReplacement } = {}, replacements = [], { before = '', after = '' } = {}) {
+  const stages = [];
+  let result = text;
+  if (textReplacement) {
+    const edits = [];
+    result = replaceTokens(result, snapshotReplacements(replacements), before, after, edits);
+    if (edits.length) stages.push(edits);
+  }
+  if (smartDashes) {
+    const edits = [];
+    result = result.replace(/--/g, (match, start) => { edits.push({ start, end: start + match.length, text: '—' }); return '—'; });
+    if (edits.length) stages.push(edits);
+  }
+  if (smartQuotes) {
+    const edits = [];
+    result = quoteSubstitutions(result, before, after, edits);
+    if (edits.length) stages.push(edits);
+  }
+  return { text: result, stages };
 }
 
 function preserveCase(word, suggestion) {

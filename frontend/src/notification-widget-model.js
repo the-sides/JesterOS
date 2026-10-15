@@ -25,7 +25,6 @@ const conditionSchema = choice(...conditions);
 const temperatureSchema = { type: 'number', minimum: -273.15, maximum: 200 };
 const priceSchema = { type: 'number', minimum: 0, maximum: 1_000_000_000 };
 const amountSchema = { type: 'number', minimum: -1_000_000_000, maximum: 1_000_000_000 };
-const timestampSchema = { type: 'integer', minimum: 0, maximum: MAX_TIME };
 const offsetHoursSchema = { type: 'integer', minimum: 0, maximum: 24 * 30 };
 const offsetDaysSchema = { type: 'integer', minimum: 0, maximum: 365 };
 
@@ -41,12 +40,6 @@ const configurationSchemas = {
 };
 export const widgetConfigurationSchema = { anyOf: Object.values(configurationSchemas) };
 
-const calendarRow = object({ id: idSchema, name: stringSchema(1024, 1), color: stringSchema(64, 1) });
-const eventRow = object({ id: idSchema, calendarId: idSchema, title: stringSchema(1024, 1),
-  start: timestampSchema, end: timestampSchema, allDay: flag, location: stringSchema(1024) });
-const reminderListRow = object({ id: idSchema, name: stringSchema(1024, 1), color: stringSchema(64, 1) });
-const reminderRow = object({ id: idSchema, listId: idSchema, title: stringSchema(1024, 1),
-  completed: flag, dueAt: { anyOf: [{ type: 'null' }, timestampSchema] } });
 const weatherRow = object({ id: idSchema, name: stringSchema(1024, 1), timeZone: timeZoneSchema,
   temperature: temperatureSchema, condition: conditionSchema, high: temperatureSchema,
   low: temperatureSchema, hourly: { type: 'array', maxItems: 24, items: object({
@@ -67,19 +60,14 @@ export const widgetsSchema = object({
     configuration: widgetConfigurationSchema,
   }) },
   sources: object({
-    calendars: { type: 'array', maxItems: 64, items: calendarRow },
-    events: { type: 'array', maxItems: 256, items: eventRow },
-    reminderLists: { type: 'array', maxItems: 64, items: reminderListRow },
-    reminders: { type: 'array', maxItems: 256, items: reminderRow },
     weather: { type: 'array', maxItems: 64, items: weatherRow },
     stocks: { type: 'array', maxItems: 64, items: stockRow },
     clockCities: { type: 'array', maxItems: 64, items: clockCityRow },
   }),
-  selected: object({ calendarEventId: nullableId, reminderListId: nullableId,
-    weatherLocationId: nullableId, stockSymbolId: nullableId, clockCityIds: idArray(4) }),
+  selected: object({ weatherLocationId: nullableId, stockSymbolId: nullableId, clockCityIds: idArray(4) }),
 });
 
-const hour = 3_600_000, minute = 60_000, day = 24 * hour;
+const hour = 3_600_000, day = 24 * hour;
 
 const catalogRow = (kind, category, label, appId, sizes, description) =>
   ({ kind, category, label, appId, sizes, description });
@@ -142,16 +130,10 @@ function inspect(state) {
   const fields = record(state, ['nextId', 'instances', 'sources', 'selected']);
   if (!fields || !bounded(fields.nextId.value, 1, MAX_COUNTER)) return null;
   const instances = fields.instances.value, list = dense(instances, MAX_INSTANCES);
-  const sourceFields = record(fields.sources.value,
-    ['calendars', 'events', 'reminderLists', 'reminders', 'weather', 'stocks', 'clockCities']);
-  const selection = record(fields.selected.value,
-    ['calendarEventId', 'reminderListId', 'weatherLocationId', 'stockSymbolId', 'clockCityIds']);
+  const sourceFields = record(fields.sources.value, ['weather', 'stocks', 'clockCities']);
+  const selection = record(fields.selected.value, ['weatherLocationId', 'stockSymbolId', 'clockCityIds']);
   if (!list || !sourceFields || !selection) return null;
   const definitions = [
-    ['calendars', sourceFields.calendars.value, 64, calendarRow],
-    ['events', sourceFields.events.value, 256, eventRow],
-    ['reminderLists', sourceFields.reminderLists.value, 64, reminderListRow],
-    ['reminders', sourceFields.reminders.value, 256, reminderRow],
     ['weather', sourceFields.weather.value, 64, weatherRow],
     ['stocks', sourceFields.stocks.value, 64, stockRow],
     ['clockCities', sourceFields.clockCities.value, 64, clockCityRow],
@@ -216,9 +198,8 @@ function inspect(state) {
   // Every array, record and nested row is now a validated dense data property;
   // ordinary reads below can no longer reach an actor accessor or sparse slot.
   let units = 'nextId'.length + 'instances'.length + 'sources'.length + 'selected'.length
-    + 'calendars'.length + 'events'.length + 'reminderLists'.length + 'reminders'.length
     + 'weather'.length + 'stocks'.length + 'clockCities'.length
-    + 'calendarEventId'.length + 'reminderListId'.length + 'weatherLocationId'.length
+    + 'weatherLocationId'.length
     + 'stockSymbolId'.length + 'clockCityIds'.length;
   for (const value of Object.values(selection)) {
     if (typeof value.value === 'string') units += value.value.length;
@@ -286,20 +267,6 @@ function validRowValues(entry, data, sourceIds) {
       case 'symbol':
         if (!(typeof raw === 'string' && raw.length > 0 && raw.length <= 16 && /\S/u.test(raw))) return false;
         break;
-      case 'calendarId':
-        if (!sourceIds.calendars.has(raw)) return false;
-        break;
-      case 'listId':
-        if (!sourceIds.reminderLists.has(raw)) return false;
-        break;
-      case 'start': case 'end': case 'dueAt':
-        if (field === 'dueAt' && raw === null) break;
-        if (!bounded(raw, 0, MAX_TIME)) return false;
-        if (field === 'end' && raw < data.start.value) return false;
-        break;
-      case 'allDay': case 'completed':
-        if (typeof raw !== 'boolean') return false;
-        break;
       case 'timeZone':
         if (!zone(raw)) return false;
         break;
@@ -344,7 +311,7 @@ function validRowValues(entry, data, sourceIds) {
       default: return false;
     }
   }
-  return entry.key === 'events' ? data.end.value >= data.start.value : true;
+  return true;
 }
 
 function validConfiguration(kind, configuration, sourceIds) {
@@ -353,13 +320,13 @@ function validConfiguration(kind, configuration, sourceIds) {
       if (!Array.isArray(value) || new Set(value).size !== value.length
         || value.length > (key === 'cityIds' ? 4 : 64)) return false;
       const table = key === 'calendarIds' ? 'calendars' : key === 'symbolIds' ? 'stocks' : 'clockCities';
-      for (const id of value) if (!sourceIds[table].has(id)) return false;
+      for (const id of value) if (!validId(id) || sourceIds[table] && !sourceIds[table].has(id)) return false;
     } else if (key === 'unit') {
       if (!unitValue(value)) return false;
     } else if (value !== null) {
       const table = key === 'locationId' ? 'weather' : key === 'listId' ? 'reminderLists'
         : key === 'symbolId' ? 'stocks' : 'clockCities';
-      if (!sourceIds[table].has(value)) return false;
+      if (!validId(value) || sourceIds[table] && !sourceIds[table].has(value)) return false;
     }
   }
   return true;
@@ -371,8 +338,13 @@ export function validateWidgetsState(state, profile) {
     if (!original) return invalid();
     const isGolden = profile === undefined || profile?.id === 'macos-golden-gate-27.0.1'
       && profile?.capabilities?.includes('shell.notification-widgets') === true;
+    // Historical profiles have no editable Notification Center widget instances.
+    // Their native/local Weather and Clock apps nevertheless own these SAME sources/selections.
+    const nativeSourceProfile = ['macos-high-sierra-10.13', 'macos-mojave-10.14',
+      'macos-sonoma-14.0', 'windows11-23h2-22631.2428'].includes(profile?.id);
     if (!isGolden && (original.instances.length || original.nextId !== 1
-      || original.definitions.some(entry => entry.values.length))) return invalid();
+      || original.definitions.some(entry => entry.values.length
+        && (!nativeSourceProfile || entry.key === 'stocks')))) return invalid();
     for (const sweep of original.sweeps) {
       const configuration = Object.fromEntries(Object.entries(sweep.configuration)
         .map(([key, value]) => [key, value.value]));
@@ -383,8 +355,6 @@ export function validateWidgetsState(state, profile) {
         if (!validRowValues(entry, entry.values[index], original.sourceIds)) return invalid();
     }
     const selected = original.selection;
-    if (selected.calendarEventId.value !== null && !original.sourceIds.events.has(selected.calendarEventId.value)) return invalid();
-    if (selected.reminderListId.value !== null && !original.sourceIds.reminderLists.has(selected.reminderListId.value)) return invalid();
     if (selected.weatherLocationId.value !== null && !original.sourceIds.weather.has(selected.weatherLocationId.value)) return invalid();
     if (selected.stockSymbolId.value !== null && !original.sourceIds.stocks.has(selected.stockSymbolId.value)) return invalid();
     if (selected.clockCityIds.value.length > 4
@@ -397,36 +367,15 @@ export function validateWidgetsState(state, profile) {
 }
 
 const emptyLeaf = () => ({ nextId: 1, instances: [],
-  sources: { calendars: [], events: [], reminderLists: [], reminders: [], weather: [], stocks: [], clockCities: [] },
-  selected: { calendarEventId: null, reminderListId: null, weatherLocationId: null, stockSymbolId: null, clockCityIds: [] } });
+  sources: { weather: [], stocks: [], clockCities: [] },
+  selected: { weatherLocationId: null, stockSymbolId: null, clockCityIds: [] } });
 export function widgetsDefaults(profile) {
+  // Native registry initialization seeds shared Weather sources on the historical
+  // empty leaf; defaulting must not synthesize unsupported widget instances.
   if (profile?.id !== 'macos-golden-gate-27.0.1' || !profile.capabilities?.includes('shell.notification-widgets'))
     return emptyLeaf();
   const raw = profile.defaults.sceneTime, sceneTime = typeof raw === 'number' ? raw : Date.parse(raw);
   if (!Number.isSafeInteger(sceneTime) || sceneTime < 0 || sceneTime > MAX_TIME) return emptyLeaf();
-  const calendars = [
-    { id: 'trail-crew', name: 'Trail Crew', color: '#c47f17' },
-    { id: 'volunteers', name: 'Volunteers', color: '#3b7bbf' },
-  ];
-  const events = [
-    { id: 'event-1', calendarId: 'trail-crew', title: 'Trail map review',
-      start: sceneTime + 19 * hour, end: sceneTime + 20 * hour + 30 * minute, allDay: false, location: 'Ranger station' },
-    { id: 'event-2', calendarId: 'volunteers', title: 'Bridge inspection',
-      start: sceneTime + 29 * hour + 49 * minute, end: sceneTime + 30 * hour + 34 * minute, allDay: false, location: 'Cedar Creek' },
-    { id: 'event-3', calendarId: 'trail-crew', title: 'Volunteer signup closes',
-      start: sceneTime + 55 * hour + 19 * minute, end: sceneTime + 62 * hour + 19 * minute, allDay: false, location: 'Trailhead kiosk' },
-  ];
-  const reminderLists = [
-    { id: 'packing', name: 'Packing', color: '#c47f17' },
-    { id: 'maintenance', name: 'Maintenance', color: '#3b7bbf' },
-  ];
-  const reminders = [
-    { id: 'reminder-1', listId: 'packing', title: 'Bring map pouch', completed: false, dueAt: sceneTime + 31 * hour + 19 * minute },
-    { id: 'reminder-2', listId: 'packing', title: 'Fill water bottles', completed: false, dueAt: null },
-    { id: 'reminder-3', listId: 'packing', title: 'Return borrowed trekking poles', completed: true, dueAt: sceneTime + 7 * hour + 19 * minute },
-    { id: 'reminder-4', listId: 'maintenance', title: 'Check bridge planks', completed: false, dueAt: sceneTime + 23 * hour + 19 * minute },
-    { id: 'reminder-5', listId: 'maintenance', title: 'Restock first-aid kit', completed: false, dueAt: null },
-  ];
   const weather = [
     { id: 'pine-valley', name: 'Pine Valley', timeZone: 'America/Los_Angeles', temperature: 22, condition: 'sunny', high: 26, low: 14,
       hourly: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(offset => ({
@@ -460,8 +409,8 @@ export function widgetsDefaults(profile) {
     { id: 'widget-6', kind: 'clock-world', size: 'medium', configuration: { cityIds: ['los-angeles', 'new-york', 'london', 'tokyo'] } },
   ];
   return { nextId: 7, instances,
-    sources: { calendars, events, reminderLists, reminders, weather, stocks, clockCities },
-    selected: { calendarEventId: 'event-1', reminderListId: 'packing', weatherLocationId: 'pine-valley',
+    sources: { weather, stocks, clockCities },
+    selected: { weatherLocationId: 'pine-valley',
       stockSymbolId: 'acme', clockCityIds: ['los-angeles', 'new-york', 'london', 'tokyo'] } };
 }
 
@@ -470,9 +419,9 @@ function kindSizes(kind) {
 }
 function configurationFor(kind, sourceRows) {
   switch (kind) {
-    case 'calendar': return { calendarIds: sourceRows.calendars.map(row => row.id) };
+    case 'calendar': return { calendarIds: (sourceRows.calendars ?? []).map(row => row.id) };
     case 'weather': return { locationId: sourceRows.weather[0]?.id ?? null, unit: 'celsius' };
-    case 'reminders': return { listId: sourceRows.reminderLists[0]?.id ?? null };
+    case 'reminders': return { listId: sourceRows.reminderLists?.[0]?.id ?? null };
     case 'stock-symbol': return { symbolId: sourceRows.stocks[0]?.id ?? null };
     case 'stock-watchlist': return { symbolIds: sourceRows.stocks.map(row => row.id) };
     case 'clock-city': return { cityId: sourceRows.clockCities[0]?.id ?? null };
@@ -519,7 +468,7 @@ function guardSnapshot(original) {
   return null;
 }
 
-export function addWidget(state, kind, size, canCommit = () => true) {
+export function addWidget(state, kind, size, canCommit = () => true, projections = {}) {
   try {
     if (!widgetKinds.includes(kind) || !kindSizes(kind).includes(size) || typeof canCommit !== 'function')
       return fail('invalid_arguments', 'Add a supported canonical widget kind and size.');
@@ -529,7 +478,7 @@ export function addWidget(state, kind, size, canCommit = () => true) {
     if (!current(original.snapshots)) return fail('stale_target', 'The original widget descriptors changed before the quota decision.');
     if (original.instances.length >= MAX_INSTANCES || original.nextId >= MAX_COUNTER)
       return fail('limit_exceeded', 'Widget capacity or the nonreusable allocation counter is exhausted.');
-    const instance = { id: `widget-${original.nextId}`, kind, size, configuration: configurationFor(kind, original.sourceRows) };
+    const instance = { id: `widget-${original.nextId}`, kind, size, configuration: configurationFor(kind, { ...original.sourceRows, ...projections }) };
     const delta = instanceUnits(instance) + String(original.instances.length).length;
     if (!(original.units + delta <= MAX_TOTAL_TEXT))
       return fail('limit_exceeded', 'The complete-scene widget text budget rejected this widget.');
@@ -599,7 +548,7 @@ export function reorderWidget(state, widgetId, index, canCommit = () => true) {
   } catch { return fail('invalid_arguments', invalid().message); }
 }
 
-export function configureWidget(state, widgetId, configuration, canCommit = () => true) {
+export function configureWidget(state, widgetId, configuration, canCommit = () => true, projections = {}) {
   try {
     if (typeof widgetId !== 'string' || !isRecord(configuration) || typeof canCommit !== 'function')
       return fail('invalid_arguments', invalid().message);
@@ -624,7 +573,9 @@ export function configureWidget(state, widgetId, configuration, canCommit = () =
         literal[key] = ids;
       } else literal[key] = value;
     }
-    if (!validConfiguration(kind, literal, original.sourceIds))
+    const sourceIds = { ...original.sourceIds, calendars: new Set(), reminderLists: new Set(),
+      ...Object.fromEntries(Object.entries(projections).map(([key, rows]) => [key, new Set(rows.map(row => row.id))])) };
+    if (!validConfiguration(kind, literal, sourceIds))
       return fail('invalid_arguments', 'Configure only real canonical source rows.');
     const delta = configurationUnits(literal) - configurationUnits(instance.configuration);
     if (!(original.units + delta <= MAX_TOTAL_TEXT))
@@ -637,24 +588,8 @@ export function configureWidget(state, widgetId, configuration, canCommit = () =
   } catch { return fail('invalid_arguments', invalid().message); }
 }
 
-export function setWidgetReminderCompleted(state, reminderId, completed, canCommit = () => true) {
-  try {
-    if (typeof reminderId !== 'string' || !validId(reminderId) || typeof completed !== 'boolean'
-      || typeof canCommit !== 'function') return fail('invalid_arguments', invalid().message);
-    const original = mutationState(state);
-    if (!original || !writable(original, ['sources']))
-      return fail('invalid_arguments', invalid().message);
-    if (!current(original.snapshots)) return fail('stale_target', 'The original widget descriptors changed before the quota decision.');
-    const rows = original.sourceRows.reminders, at = rows.findIndex(row => row.id === reminderId);
-    if (at < 0) return fail('not_found', 'The original reminder no longer exists.');
-    if (!quotaDecision(canCommit, 0)) return fail('limit_exceeded', 'The widget quota rejected this completion.');
-    if (guardSnapshot(original)) return guardSnapshot(original);
-    rows[at].completed = completed;
-    return { status: 'applied', target: { reminderId, completed } };
-  } catch { return fail('invalid_arguments', invalid().message); }
-}
 
-export function selectWidgetData(state, widgetId, recordId, canCommit = () => true) {
+export function selectWidgetData(state, widgetId, recordId, canCommit = () => true, projections = {}) {
   try {
     if (typeof widgetId !== 'string' || !/^widget-[1-9][0-9]*$/.test(widgetId)
       || recordId !== null && (typeof recordId !== 'string' || recordId.length === 0)
@@ -668,7 +603,7 @@ export function selectWidgetData(state, widgetId, recordId, canCommit = () => tr
     const instance = original.instances[index], { kind } = instance, configuration = instance.configuration;
     const appId = { date: 'calendar', calendar: 'calendar', weather: 'weather', reminders: 'reminders',
       'stock-symbol': 'stocks', 'stock-watchlist': 'stocks', 'clock-city': 'clock', 'clock-world': 'clock' }[kind];
-    const { sourceRows } = original;
+    const sourceRows = { ...original.sourceRows, ...projections };
     if (recordId !== null) {
       if (kind === 'date') return fail('invalid_arguments', 'The date widget overview has no source record.');
       if (kind === 'calendar') {
@@ -689,19 +624,16 @@ export function selectWidgetData(state, widgetId, recordId, canCommit = () => tr
         if (!configuration.cityIds.includes(recordId)) return fail('invalid_arguments', 'Select a configured world clock city.');
       }
     }
+    if (['date', 'calendar', 'reminders'].includes(kind))
+      return { status: 'applied', target: { widgetId, appId, recordId, ...(kind === 'reminders' ? { listId: configuration.listId } : {}) } };
     const target = { ...original.state.selected, clockCityIds: [...original.state.selected.clockCityIds] };
-    if (kind === 'date') target.calendarEventId = null;
-    else if (recordId === null) {
-      if (kind === 'calendar') target.calendarEventId = null;
-      else if (kind === 'reminders') target.reminderListId = configuration.listId;
-      else if (kind === 'weather') target.weatherLocationId = configuration.locationId;
+    if (recordId === null) {
+      if (kind === 'weather') target.weatherLocationId = configuration.locationId;
       else if (kind === 'stock-symbol') target.stockSymbolId = configuration.symbolId;
       else if (kind === 'stock-watchlist') target.stockSymbolId = configuration.symbolIds[0] ?? null;
       else if (kind === 'clock-city') target.clockCityIds = configuration.cityId === null ? [] : [configuration.cityId];
       else target.clockCityIds = configuration.cityIds;
-    } else if (kind === 'calendar') target.calendarEventId = recordId;
-    else if (kind === 'reminders') target.reminderListId = configuration.listId;
-    else if (kind === 'weather') target.weatherLocationId = configuration.locationId;
+    } else if (kind === 'weather') target.weatherLocationId = configuration.locationId;
     else if (kind === 'stock-symbol' || kind === 'stock-watchlist') target.stockSymbolId = recordId;
     else if (kind === 'clock-city') target.clockCityIds = [configuration.cityId];
     else target.clockCityIds = configuration.cityIds;
@@ -732,12 +664,11 @@ function zoneFormatters(timeZone, hour12) {
 const pad = value => String(value).padStart(2, '0');
 
 /** Ordinary-app detail owners share one canonical data selection scope. */
-export const widgetDataApps = ['calendar', 'weather', 'reminders', 'stocks', 'clock'];
+export const widgetDataApps = ['weather', 'stocks', 'clock'];
 export function widgetDataScope(appId, selected) {
   if (!widgetDataApps.includes(appId) || !isRecord(selected)) return null;
-  const target = appId === 'calendar' ? selected.calendarEventId : appId === 'reminders' ? selected.reminderListId
-    : appId === 'weather' ? selected.weatherLocationId : appId === 'stocks' ? selected.stockSymbolId
-      : selected.clockCityIds;
+  const target = appId === 'weather' ? selected.weatherLocationId : appId === 'stocks' ? selected.stockSymbolId
+    : selected.clockCityIds;
   return JSON.stringify([appId, target]);
 }
 
@@ -808,7 +739,7 @@ function clockPresentation(row, sceneTime, use24Hour) {
     time: display, dateLabel: zoneFormatters(row.timeZone, true).fullDate.format(sceneTime) };
 }
 
-export function widgetPresentation(state, instance, clock) {
+export function widgetPresentation(state, instance, clock, projections = {}) {
   try {
     if (!isRecord(state) || !isRecord(instance) || !isRecord(clock) || !widgetKinds.includes(instance.kind)
       || !sizeValue(instance.size) || !kindSizes(instance.kind).includes(instance.size)) return null;
@@ -817,7 +748,7 @@ export function widgetPresentation(state, instance, clock) {
     const catalog = widgetCatalog.find(entry => entry.kind === instance.kind);
     const presentation = { widgetId: instance.id, kind: instance.kind, size: instance.size,
       appId: catalog.appId, title: catalog.label };
-    const configuration = instance.configuration, { sources } = state;
+    const configuration = instance.configuration, sources = { ...state.sources, calendars: [], events: [], reminderLists: [], reminders: [], ...projections };
     if (instance.kind === 'date' || instance.kind === 'calendar') {
       const parts = clockParts(sceneTime, timeZone), formats = zoneFormatters(timeZone, !use24Hour);
       const monthDays = [], days = monthLength(parts.year, parts.month);

@@ -1,20 +1,16 @@
 import { expect, test } from 'bun:test';
 import { goldenGateProfile as profile } from '../frontend/src/golden-gate-profile.js';
-import { createNotesState, visibleNotes, groupNotes, selectFolder } from '../frontend/src/notes-state.js';
-import { createNotesCommands } from '../frontend/src/notes-commands.js';
-import { notesPreferencesDefaults } from '../frontend/src/notes-preferences.js';
 import { createMacDesktopFileStore } from '../frontend/src/desktop-file-state.js';
 import { createMacApplicationFiles } from '../frontend/src/mac-application-files.js';
 import { createFeatureCommands } from '../frontend/src/feature-commands.js';
 import { createViewWorkflowCommands, viewWorkflowCatalog, VIEW_OPTIONS_CONTROLS } from '../frontend/src/view-workflow-commands.js';
-import { viewingDefaults, finderViewDefaults, finderPresentationDefaults, notesPresentationDefaults,
-  validateViewing, validFinderPresentation, validNotesPresentation, notesViewProjection } from '../frontend/src/viewing-state.js';
+import { viewingDefaults, finderViewDefaults, finderPresentationDefaults,
+  validateViewing, validFinderPresentation } from '../frontend/src/viewing-state.js';
 
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function fixture(proxyPane = false) {
-  const notes = createNotesState(); notes.preferences = notesPreferencesDefaults();
-  const files = createMacDesktopFileStore(profile, notes.timeBase);
-  files.files.push(...createMacApplicationFiles(profile, notes.timeBase));
+  const files = createMacDesktopFileStore(profile, 1760000000000);
+  files.files.push(...createMacApplicationFiles(profile, 1760000000000));
   const viewing = viewingDefaults(), presentation = { options: null, nextOptionsId: 1, error: null };
   if (proxyPane) {
     let pane = null;
@@ -22,28 +18,20 @@ function fixture(proxyPane = false) {
       set: value => { pane = value ? new Proxy(value, {}) : null; } });
   }
   const windows = [
-    { id: 'notes-main', appId: 'notes', minimized: false, notesPresentation: notesPresentationDefaults() },
-    { id: 'notes-other', appId: 'notes', minimized: false, notesPresentation: notesPresentationDefaults() },
     { id: 'finder-main', appId: 'finder', folderId: 'desktop', minimized: false, finderBrowseMode: 'icons', finderPresentation: finderPresentationDefaults() },
     { id: 'finder-other', appId: 'finder', folderId: 'desktop', minimized: false, finderBrowseMode: 'icons', finderPresentation: finderPresentationDefaults() },
     { id: 'notes-settings', appId: 'notes', utilityKind: 'notes-settings', minimized: false },
   ];
-  let active = 'notes-main', available = true, quota = true, mutations = 0;
-  const native = { control: null, top: 0, left: 0 }, settlements = [], restores = [], selections = [], candidates = [];
+  let active = 'finder-main', available = true, quota = true, mutations = 0;
+  const native = { control: null, top: 0, left: 0 }, settlements = [], restores = [], candidates = [];
   // Any attempt by the domain to peek at a native-focus token fails immediately.
   const token = new Proxy({}, { get() { throw new Error('opaque token read'); }, ownKeys() { throw new Error('opaque token enumeration'); } });
-  const canonical = createNotesCommands(notes, {}, { getView: () => null, focusWindow: () => {}, isVisible: () => false });
   const ctx = {
     available: () => available,
     windowAvailable: windowId => available && active === windowId,
     getWindow: windowId => windows.find(window => window.id === windowId) ?? null,
-    getNotes: () => notes, getFiles: () => files,
+    getFiles: () => files,
     prepare: async windowId => ctx.windowAvailable(windowId),
-    selectNote: async (windowId, noteId) => {
-      selections.push({ windowId, noteId });
-      return canonical['notes.select']({ noteId }, {});
-    },
-    finishNotes: async (windowId, kind, noteId) => { settlements.push({ windowId, kind, noteId }); },
     finishFinder: async windowId => { settlements.push({ windowId, kind: 'finder' }); },
     captureFocus: () => token,
     restoreFocus: async (actual, guard) => { if (guard()) restores.push(actual); },
@@ -60,104 +48,24 @@ function fixture(proxyPane = false) {
     getOptionsControls: () => VIEW_OPTIONS_CONTROLS.map(control => ({ control, enabled: true })),
     validateCandidate: (candidate, windowCandidate) => {
       candidates.push({ candidate, windowCandidate });
-      return quota && validateViewing(candidate, { notes, files }, profile).ok
-        && (!windowCandidate?.notesPresentation || validNotesPresentation(windowCandidate.notesPresentation))
+      return quota && validateViewing(candidate, { files }, profile).ok
         && (!windowCandidate?.finderPresentation || validFinderPresentation(windowCandidate.finderPresentation));
     },
     changed: () => { mutations++; },
   };
   const workflows = createViewWorkflowCommands(viewing, presentation, ctx);
-  return { notes, files, viewing, presentation, windows, ctx, workflows, native, settlements, restores, selections, candidates, token,
+  return { files, viewing, presentation, windows, ctx, workflows, native, settlements, restores, candidates, token,
     activate: id => { active = id; }, gateRoot: value => { available = value; }, quota: value => { quota = value; },
     changes: () => mutations,
     window: id => windows.find(window => window.id === id),
     run: (command, target, payload = {}) => workflows.handlers[command](target, payload),
-    snapshot: () => structuredClone({ notes, files, viewing, windows }),
-    notesTarget: () => ({ windowId: 'notes-main', folder: notes.folder }),
-    noteTarget: noteId => ({ windowId: 'notes-main', noteId: noteId ?? notes.selectedId }),
+    snapshot: () => structuredClone({ files, viewing, windows }),
     finderTarget: () => ({ windowId: 'finder-main', folderId: windows.find(window => window.id === 'finder-main').folderId }),
   };
 }
 const win = windowId => ({ windowId });
 const paneTarget = model => ({ windowId: model.presentation.options.windowId, optionsId: model.presentation.options.id });
 
-test('Notes mode is last-used for new windows but existing windows own independent list/gallery detail', async () => {
-  const value = fixture(), unchanged = structuredClone(value.notes);
-  const changed = await value.run('notes.view.set', value.notesTarget(), { mode: 'gallery' });
-  expect(changed.target.presentation).toEqual({ mode: 'gallery', documentVisible: false });
-  expect(value.workflows.notesForWindow('notes-other').presentation).toEqual({ mode: 'list', documentVisible: true });
-  value.windows.push({ id: 'notes-new', appId: 'notes', minimized: false, notesPresentation: notesPresentationDefaults(value.viewing.notes.mode) });
-  expect(value.workflows.notesForWindow('notes-new').presentation.mode).toBe('gallery');
-  const opened = await value.run('notes.view.openNote', value.noteTarget('note-2'));
-  expect(opened.status).toBe('applied'); expect(opened.target.presentation.documentVisible).toBe(true);
-  expect(value.selections).toEqual([{ windowId: 'notes-main', noteId: 'note-2' }]);
-  expect(value.notes.selectedId).toBe('note-2');
-  expect(value.workflows.notesForWindow('notes-other').noteId).toBe('note-2');
-  expect(value.workflows.notesForWindow('notes-other').presentation.mode).toBe('list');
-  expect(value.notes.notes).toEqual(unchanged.notes);
-  expect(value.settlements.at(-1)).toEqual({ windowId: 'notes-main', kind: 'body', noteId: 'note-2' });
-  expect((await value.run('notes.view.return', win('notes-main'))).target.presentation.documentVisible).toBe(false);
-  expect(value.notes.selectedId).toBe('note-2');
-  expect(value.settlements.at(-1).kind).toBe('row');
-  expect((await value.run('notes.view.return', win('notes-other'))).status).toBe('rejected');
-});
-
-test('Return opens actual Notes contents from list without inventing a new document window', async () => {
-  const value = fixture(), count = value.windows.length;
-  expect((await value.run('notes.view.openNote', value.noteTarget())).target.presentation).toEqual({ mode: 'list', documentVisible: true });
-  expect(value.windows).toHaveLength(count);
-  expect(value.settlements.at(-1).kind).toBe('body');
-  await value.run('notes.view.set', value.notesTarget(), { mode: 'list' });
-  expect(value.settlements.at(-1).kind).toBe('preserve');
-  await value.run('notes.view.set', value.notesTarget(), { showNoteCount: false });
-  expect(value.settlements.at(-1).kind).toBe('preserve');
-});
-
-test('Notes folder overrides affect canonical visible/grouped consumers; Deleted follows changed global defaults', async () => {
-  const value = fixture(); value.notes.notes.forEach(note => { note.pinned = false; });
-  value.notes.notes[0].text = 'Zulu\nfirst'; value.notes.notes[1].text = 'Alpha\nsecond';
-  await value.run('notes.view.set', value.notesTarget(), { sortBy: 'title', sortDirection: 'descending', showNoteCount: false });
-  const projected = notesViewProjection(value.notes, value.viewing);
-  expect(visibleNotes(projected).map(note => note.id)).toEqual(['note-1', 'note-3', 'note-2']);
-  expect(groupNotes(projected)[0].notes.map(note => note.id)).toEqual(['note-1', 'note-3', 'note-2']);
-  expect(projected.notes).toBe(value.notes.notes); expect(projected.preferences.textSize).toBe(value.notes.preferences.textSize);
-  expect(value.notes.preferences.sortBy).toBe('date-edited');
-  expect(value.workflows.notesForWindow('notes-other').view.showNoteCount).toBe(false);
-  selectFolder(value.notes, 'deleted'); value.notes.preferences.sortBy = 'date-created';
-  const deleted = notesViewProjection(value.notes, value.viewing);
-  expect(deleted.preferences.sortBy).toBe('date-created'); expect(deleted.preferences.sortDirection).toBe('descending');
-  expect(visibleNotes(deleted).map(note => note.id)).toEqual(['note-4']);
-  const original = structuredClone(value.viewing);
-  expect((await value.run('notes.view.set', value.notesTarget(), { sortBy: 'default' })).error.code).toBe('disabled');
-  expect((await value.run('notes.view.set', value.notesTarget(), { sortDirection: 'ascending' })).error.code).toBe('disabled');
-  expect(value.viewing).toEqual(original);
-  expect(value.workflows.notesForWindow('notes-main').view).toMatchObject({ sortBy: 'default', sortDirection: 'default' });
-  selectFolder(value.notes, 'notes');
-  await value.run('notes.view.set', value.notesTarget(), { sortBy: 'default', sortDirection: 'default' });
-  expect(notesViewProjection(value.notes, value.viewing).preferences.sortBy).toBe('date-created');
-  value.notes.preferences.sortBy = 'title';
-  expect(notesViewProjection(value.notes, value.viewing).preferences.sortDirection).toBe('ascending');
-});
-
-test('Zoom is per selected note, bounded, readable for Deleted, and never changes text/timestamps/default text size', async () => {
-  const value = fixture(), records = structuredClone(value.notes.notes), preferences = structuredClone(value.notes.preferences);
-  expect((await value.run('notes.view.zoom', value.noteTarget(), { action: 'in' })).target.zoom).toBe(1.25);
-  expect(value.workflows.notesForWindow('notes-other').zoom).toBe(1.25);
-  await value.run('notes.view.openNote', value.noteTarget('note-2'));
-  expect(value.workflows.notesForWindow('notes-main').zoom).toBe(1);
-  await value.run('notes.view.zoom', value.noteTarget(), { action: 'out' });
-  expect(value.viewing.notes.zooms).toEqual({ 'note-1': 1.25, 'note-2': 0.75 });
-  for (let step = 0; step < 10; step++) await value.run('notes.view.zoom', value.noteTarget(), { action: 'out' });
-  expect(value.viewing.notes.zooms['note-2']).toBe(0.5);
-  await value.run('notes.view.zoom', value.noteTarget(), { action: 'reset' });
-  expect(Object.hasOwn(value.viewing.notes.zooms, 'note-2')).toBe(false);
-  selectFolder(value.notes, 'deleted');
-  expect((await value.run('notes.view.zoom', value.noteTarget(), { action: 'in' })).status).toBe('applied');
-  expect(value.notes.notes).toEqual(records); expect(value.notes.preferences).toEqual(preferences);
-  expect(value.settlements.at(-1).kind).toBe('preserve');
-  await value.run('notes.view.set', value.notesTarget(), { mode: 'gallery' });
-  expect((await value.run('notes.view.zoom', value.noteTarget(), { action: 'in' })).error.code).toBe('stale_target');
-});
 
 test('Finder folder preferences are shared by same-folder windows while chrome belongs to only the original window', async () => {
   const value = fixture(); value.activate('finder-main');
@@ -207,22 +115,14 @@ test('Readonly installation folders allow view/chrome changes but do not widen m
 test('Every persistent view mutation validates detached candidates before commit and quota rejection leaves all consumers untouched', async () => {
   const value = fixture(); value.quota(false);
   const before = value.snapshot();
-  expect((await value.run('notes.view.set', value.notesTarget(), { mode: 'gallery', showNoteCount: false })).error.code).toBe('limit_exceeded');
-  expect((await value.run('notes.view.zoom', value.noteTarget(), { action: 'in' })).error.code).toBe('limit_exceeded');
   value.activate('finder-main');
   expect((await value.run('finder.view.set', value.finderTarget(), { mode: 'list' })).error.code).toBe('limit_exceeded');
   expect((await value.run('finder.chrome.set', win('finder-main'), { toolbarVisible: false })).error.code).toBe('limit_exceeded');
   expect(value.snapshot()).toEqual(before); expect(value.changes()).toBe(0);
-  expect(value.candidates[0].candidate.notes).not.toBe(value.viewing.notes);
-  expect(value.candidates[1].candidate.notes.zooms).not.toBe(value.viewing.notes.zooms);
-  expect(value.candidates[2].candidate.finder.folderViews).not.toBe(value.viewing.finder.folderViews);
-  value.activate('notes-main'); value.quota(true);
-  await value.run('notes.view.set', value.notesTarget(), { mode: 'gallery' }); value.quota(false);
-  expect((await value.run('notes.view.openNote', value.noteTarget('note-2'))).error.code).toBe('limit_exceeded');
-  expect(value.selections).toHaveLength(0); expect(value.notes.selectedId).toBe('note-1');
+  expect(value.candidates[0].candidate.finder.folderViews).not.toBe(value.viewing.finder.folderViews);
 });
 
-test('Bounded dictionaries reject 1025 entries, unsafe note IDs, missing notes, nonfinite zooms and incomplete folder preferences', () => {
+test('Bounded dictionaries reject 1025 entries, nondata properties and incomplete folder preferences', () => {
   const value = fixture();
   const views = Object.fromEntries(Array.from({ length: 1024 }, (_, index) => [`retained-${index}`, finderViewDefaults()]));
   value.viewing.finder.folderViews = views;
@@ -231,17 +131,14 @@ test('Bounded dictionaries reject 1025 entries, unsafe note IDs, missing notes, 
   delete views['one-too-many']; views['retained-0'] = { mode: 'icons' };
   expect(validateViewing(value.viewing, value, profile).ok).toBe(false);
   value.viewing.finder.folderViews = {};
-  for (const zoom of [NaN, Infinity, 0, 1.1, 3, '1']) {
-    value.viewing.notes.zooms = { 'note-1': zoom }; expect(validateViewing(value.viewing, value, profile).ok).toBe(false);
-  }
-  for (const key of ['constructor', 'note:1', 'missing-note']) {
-    value.viewing.notes.zooms = { [key]: 1.25 }; expect(validateViewing(value.viewing, value, profile).ok).toBe(false);
-  }
-  value.viewing.notes.zooms = Object.fromEntries(Array.from({ length: 1025 }, (_, index) => [`note-${index}`, 1.25]));
-  expect(validateViewing(value.viewing, value, profile).ok).toBe(false);
-  value.viewing.notes.zooms = {};
   Object.defineProperty(value.viewing.finder.folderViews, 'poison', { enumerable: true, get() { throw new Error('not data'); } });
   expect(validateViewing(value.viewing, value, profile).ok).toBe(false);
+});
+
+test('shared viewing rejects a second Notes domain instead of accepting shadow session preferences', () => {
+  const value = fixture();
+  expect(validateViewing(value.viewing, value, profile).ok).toBe(true);
+  expect(validateViewing({ ...value.viewing, notes: { mode: 'gallery', zooms: {} } }, value, profile).ok).toBe(false);
 });
 
 test('At-capacity folder dictionaries reject insertion but still permit changing an existing exact folder', async () => {
@@ -257,37 +154,6 @@ test('At-capacity folder dictionaries reject insertion but still permit changing
   expect(value.viewing.finder.folderViews.desktop.mode).toBe('columns');
 });
 
-test('Pending Notes view/zoom cannot retarget a different selected note, edited source, root, presentation or preference', async () => {
-  for (const change of [
-    value => { value.notes.selectedId = 'note-2'; },
-    value => { value.notes.notes[0].text += '\nchanged'; },
-    value => { value.notes.preferences.sortBy = 'title'; },
-    value => { value.viewing.notes.zooms['note-1'] = 1.5; },
-    value => { value.window('notes-main').notesPresentation.mode = 'gallery'; },
-    value => { value.activate('notes-other'); },
-    value => { value.gateRoot(false); },
-    value => { const index = value.windows.findIndex(window => window.id === 'notes-main'); value.windows[index] = { ...value.windows[index] }; },
-  ]) {
-    const value = fixture(), gate = deferred(); value.ctx.prepare = async () => { await gate.promise; return true; };
-    const pending = value.run('notes.view.zoom', value.noteTarget(), { action: 'in' });
-    change(value); const afterExternal = value.snapshot(); gate.resolve();
-    expect((await pending).error.code).toBe('stale_target'); expect(value.snapshot()).toEqual(afterExternal); expect(value.changes()).toBe(0);
-  }
-  const value = fixture(), gate = deferred(); value.ctx.prepare = async () => { await gate.promise; return true; };
-  const pending = value.run('notes.view.set', value.notesTarget(), { showNoteCount: false });
-  selectFolder(value.notes, 'deleted'); gate.resolve();
-  expect((await pending).error.code).toBe('stale_target'); expect(value.viewing.notes.showNoteCount).toBe(true);
-});
-
-test('Gallery opening rechecks the original note and folder before calling canonical selection', async () => {
-  const value = fixture(); await value.run('notes.view.set', value.notesTarget(), { mode: 'gallery' });
-  const gate = deferred(); value.ctx.prepare = async () => { await gate.promise; return true; };
-  const pending = value.run('notes.view.openNote', value.noteTarget('note-2'));
-  value.notes.notes[1].deleted = true; gate.resolve();
-  expect((await pending).error.code).toBe('stale_target');
-  expect(value.selections).toHaveLength(0); expect(value.notes.selectedId).toBe('note-1');
-  expect(value.window('notes-main').notesPresentation.documentVisible).toBe(false);
-});
 
 test('Pending Finder preferences and chrome preserve a changed folder, original identity and in-place preference', async () => {
   for (const change of [
@@ -306,14 +172,8 @@ test('Pending Finder preferences and chrome preserve a changed folder, original 
   }
 });
 
-test('Presentation disappearance after committed preferences, zoom or canonical selection cannot report failure', async () => {
-  const value = fixture(); value.ctx.finishNotes = async () => { throw new Error('removed view'); };
-  expect((await value.run('notes.view.zoom', value.noteTarget(), { action: 'in' })).status).toBe('applied');
-  expect(value.viewing.notes.zooms['note-1']).toBe(1.25);
-  expect((await value.run('notes.view.set', value.notesTarget(), { mode: 'gallery' })).status).toBe('applied');
-  expect((await value.run('notes.view.openNote', value.noteTarget('note-2'))).status).toBe('applied');
-  expect(value.notes.selectedId).toBe('note-2'); expect(value.window('notes-main').notesPresentation.documentVisible).toBe(true);
-  value.activate('finder-main'); value.ctx.finishFinder = async () => { throw new Error('removed view'); };
+test('Presentation disappearance after committed Finder preferences cannot report failure', async () => {
+  const value = fixture(); value.ctx.finishFinder = async () => { throw new Error('removed view'); };
   expect((await value.run('finder.view.set', value.finderTarget(), { mode: 'list' })).status).toBe('applied');
   expect(value.viewing.finder.folderViews.desktop.mode).toBe('list');
 });
@@ -416,11 +276,6 @@ test('In-place pane identity replacement invalidates awaited native control resu
 test('Closed handler arguments reject unknown fields, fractional options, impossible chrome and wrong utility/window owners', async () => {
   const value = fixture();
   const original = value.snapshot();
-  for (const payload of [{}, { mode: 'columns' }, { sortDirection: 'reverse' }, { showNoteCount: true, surprise: true }])
-    expect((await value.run('notes.view.set', value.notesTarget(), payload)).error.code).toBe('invalid_arguments');
-  expect((await value.run('notes.view.openNote', { ...value.noteTarget(), folder: 'notes' })).error.code).toBe('invalid_arguments');
-  expect((await value.run('notes.view.return', win('notes-settings'))).status).toBe('rejected');
-  expect((await value.run('notes.view.zoom', value.noteTarget(), { action: 'in', reset: true })).error.code).toBe('invalid_arguments');
   value.activate('finder-main');
   for (const payload of [{}, { textSize: 12.5 }, { iconSize: 129 }, { gridSpacing: 7 }, { mode: 'icons', useAsDefaults: true }])
     expect((await value.run('finder.view.set', value.finderTarget(), payload)).error.code).toBe('invalid_arguments');
@@ -434,14 +289,14 @@ test('Historical profiles and capability cutovers reject View changes without mu
   const value = fixture(), catalog = viewWorkflowCatalog(profile); let activeProfile = profile;
   const registry = createFeatureCommands(value.workflows.handlers, () => ({ viewing: structuredClone(value.viewing) }), async () => {}, catalog,
     value.workflows.targets, () => activeProfile, catalog);
-  const applied = await registry.execute({ command: 'notes.view.set', target: value.notesTarget(), payload: { mode: 'gallery' }, requestId: 'view-1' });
+  const applied = await registry.execute({ command: 'finder.view.set', target: value.finderTarget(), payload: { mode: 'gallery' }, requestId: 'view-1' });
   expect(applied.status).toBe('applied');
-  expect(value.window('notes-main').notesPresentation).toEqual({ mode: 'gallery', documentVisible: false });
+  expect(value.window('finder-main').finderBrowseMode).toBe('gallery');
   const before = value.snapshot();
   activeProfile = { ...profile, id: 'macos-sonoma-14.8.5' };
-  expect((await registry.execute({ command: 'notes.view.set', target: value.notesTarget(), payload: { mode: 'list' } })).error.code).toBe('unsupported_profile');
+  expect((await registry.execute({ command: 'finder.view.set', target: value.finderTarget(), payload: { mode: 'list' } })).error.code).toBe('unsupported_profile');
   activeProfile = { ...profile, capabilities: profile.capabilities.filter(capability => capability !== 'shell.view-workflows') };
-  expect((await registry.execute({ command: 'notes.view.set', target: value.notesTarget(), payload: { mode: 'list' } })).error.code).toBe('unsupported_profile');
+  expect((await registry.execute({ command: 'finder.view.set', target: value.finderTarget(), payload: { mode: 'list' } })).error.code).toBe('unsupported_profile');
   expect(value.snapshot()).toEqual(before);
 });
 

@@ -10,5 +10,8 @@
     "dev:frontend": "bun run --cwd frontend dev",
     "build": "bun run --cwd frontend build && cargo build --manifest-path backend/Cargo.toml --release",
     "start": "cargo run --release --manifest-path backend/Cargo.toml --"
+  },
+  "devDependencies": {
+    "jsdom": "27.4.0"
   }
 }

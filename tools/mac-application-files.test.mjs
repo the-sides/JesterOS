@@ -53,7 +53,7 @@ test('Sonoma distinguishes system apps, utilities, Safari and the DVD helper cat
   expect(bundlePath(files, 'safari')).toBe('/Applications/Safari.app');
   expect(bundlePath(files, 'imagecapture')).toBe('/System/Applications/Image Capture.app');
   expect(bundlePath(files, 'quicktime')).toBe('/System/Applications/QuickTime Player.app');
-  expect(bundlePath(files, 'dvdplayer')).toBe('/System/Library/CoreServices/Applications/DVD Player.app');
+  expect(bundlePath(files, 'dvd-player')).toBe('/System/Library/CoreServices/Applications/DVD Player.app');
 });
 
 

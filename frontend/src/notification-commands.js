@@ -2,8 +2,9 @@ import { isRecord, rejected } from './feature-commands.js';
 import { defineCommand, object, empty, identity, flag, choice } from './command-schema.js';
 import {
   notificationsSchema, validateNotificationsState, notificationGroups, postNotification,
-  dismissNotification, clearNotifications, notificationAppSettings, notificationPreviewVisible,
+  notificationAppSettings, notificationPreviewVisible,
   notificationDesktopStyle, configureNotificationApp, configureNotificationGlobals, snoozeNotification,
+  supportsNotifications, notificationProfileIds, updateDomainNotification, removeDomainNotifications, planNotificationAllocation,
 } from './notification-model.js';
 
 const fields = (value, required, optional = []) => isRecord(value)
@@ -18,7 +19,7 @@ const offsets = value => fields(value, ['top', 'left']) && position(value.top) &
 const targetPane = (target, required = [], optional = []) => fields(target, ['centerId', ...required], optional) && id(target.centerId);
 const applied = target => ({ status: 'applied', target });
 const fail = code => rejected(code, code === 'invalid_arguments' ? 'Use the closed documented notification target and payload.'
-  : code === 'unsupported_profile' ? 'Only the current Golden Gate profile supports Notification Center.'
+  : code === 'unsupported_profile' ? 'This profile does not support native Notification Center.'
     : code === 'stale_target' ? 'The original Notification Center, application group or notification has retired.'
       : 'The original foreground Notification Center or native control is unavailable.');
 const descriptorSame = (a, b) => a && b && a.enumerable === b.enumerable && a.configurable === b.configurable
@@ -44,15 +45,149 @@ function literalInput(value, seen = new Set(), depth = 0) {
   return copy;
 }
 
+/**
+ * Root-owned paired delivery for original domain ledgers, including closed
+ * applications. No pane, mounted facade, synthetic window or host timer is used.
+ */
+export function createDomainNotificationBridges(ctx) {
+  const originalState = ctx.getState(), profile = ctx.profile;
+  let disposed = false;
+  const alive = () => {
+    try { return !disposed && supportsNotifications(profile) && ctx.alive() === true && ctx.getState() === originalState; }
+    catch { return false; }
+  };
+  const ownerGuard = ownership => typeof ownership === 'function' ? ownership
+    : fields(ownership, ['guard'], ['windowId']) && typeof ownership.guard === 'function' ? ownership.guard : null;
+  const ownershipCurrent = guard => {
+    try { return alive() && guard() === true && alive(); } catch { return false; }
+  };
+  const transactionFields = value => Number.isSafeInteger(value.reserveTextUnits ?? 0)
+    && typeof value.onCommit === 'function';
+  function notify(spec, ownership) {
+    const owner = ownerGuard(ownership);
+    if (!owner || !fields(spec, ['id', 'title', 'body', 'onCommit'],
+      ['appId', 'eventId', 'occurrenceStart', 'reminderId', 'source', 'windowId', 'reserveTextUnits', 'actions', 'sound'])
+      || !transactionFields(spec) || !id(spec.id)
+      || Object.hasOwn(spec, 'sound') && !['none', 'default'].includes(spec.sound)) return fail('invalid_arguments');
+    let appId, destination;
+    const sound = spec.sound ?? 'none';
+    if (Object.hasOwn(spec, 'eventId') && !Object.hasOwn(spec, 'source') && !Object.hasOwn(spec, 'reminderId')) {
+      if (!id(spec.eventId) || !Number.isSafeInteger(spec.occurrenceStart) || spec.occurrenceStart < 0) return fail('invalid_arguments');
+      appId = 'calendar'; destination = { kind: 'event', recordId: spec.eventId };
+    } else if (!Object.hasOwn(spec, 'eventId')) {
+      if (Object.hasOwn(spec, 'source')) {
+        if (fields(spec.source, ['kind', 'recordId', 'windowId'])
+          || fields(spec.source, ['kind', 'recordId']) && spec.source.kind === 'clock') {
+          if (!['call', 'message', 'stocks-price', 'stocks-story', 'news-story', 'clock'].includes(spec.source.kind)
+            || !id(spec.appId) || !id(spec.source.recordId)
+            || Object.hasOwn(spec.source, 'windowId') && spec.source.windowId !== null && !id(spec.source.windowId))
+            return fail('invalid_arguments');
+          appId = spec.appId; destination = { kind: spec.source.kind, recordId: spec.source.recordId };
+        } else {
+          if (!fields(spec.source, ['appId', 'reminderId', 'listId', 'windowId', 'alertId'])
+            || spec.source.appId !== 'reminders' || !id(spec.source.reminderId)) return fail('invalid_arguments');
+          appId = 'reminders'; destination = { kind: 'reminder', recordId: spec.source.reminderId };
+        }
+      } else if (id(spec.reminderId)) {
+        appId = 'reminders'; destination = { kind: 'reminder', recordId: spec.reminderId };
+      }
+    }
+    if (!destination || Object.hasOwn(spec, 'appId') && spec.appId !== appId
+      || Object.hasOwn(spec, 'windowId') && spec.windowId !== null && !id(spec.windowId)
+      || Object.hasOwn(spec, 'source') && Object.hasOwn(spec, 'reminderId')
+      || !Object.hasOwn(spec, 'eventId') && Object.hasOwn(spec, 'occurrenceStart')) return fail('invalid_arguments');
+    if (typeof ctx.reserve !== 'function' || typeof ctx.canCommit !== 'function') return fail('unavailable');
+    if (!ownershipCurrent(owner)) return fail('stale_target');
+    const sceneTime = ctx.getSceneTime();
+    const source = typeof ctx.retainDestination === 'function' ? ctx.retainDestination({ appId, destination }) : null;
+    if (typeof ctx.retainDestination === 'function' && !source?.current()) return fail('stale_target');
+    const guard = () => ownershipCurrent(owner) && ctx.getSceneTime() === sceneTime
+      && (!source || source.current()) && ownershipCurrent(owner);
+    const result = postNotification(originalState, profile, appId,
+      { title: spec.title, body: spec.body, destination }, sceneTime, delta => ctx.canCommit(delta), {
+        guard, reserve: ctx.reserve, reserveTextUnits: spec.reserveTextUnits ?? 0, onCommit: spec.onCommit,
+      });
+    if (result.status !== 'applied') return result;
+    const entry = originalState.entries.find(entry => entry.id === result.target.notificationId);
+    // Presentation withdrawal after acknowledgement does not undo delivery.
+    try { ctx.onPosted?.(entry, { sound }); } catch { /* Canonical commit is final; intent is not a claim of audio playback. */ }
+    return { ...result, notificationId: result.target.notificationId };
+  }
+  function updateNotification(notificationId, patch, ownership) {
+    const owner = ownerGuard(ownership);
+    if (!owner || !id(notificationId) || !fields(patch, ['dismissed', 'onCommit'], ['reserveTextUnits'])
+      || patch.dismissed !== true || !transactionFields(patch)) return fail('invalid_arguments');
+    if (typeof ctx.reserve !== 'function' || typeof ctx.canCommit !== 'function') return fail('unavailable');
+    if (!ownershipCurrent(owner)) return fail('stale_target');
+    const entry = originalState.entries.find(entry => entry.id === notificationId);
+    if (!entry) return fail('stale_target');
+    const sceneTime = ctx.getSceneTime(), retained = snapshot(entry), destination = entry.destination && snapshot(entry.destination);
+    const guard = () => ownershipCurrent(owner) && ctx.getSceneTime() === sceneTime
+      && originalState.entries.includes(entry) && unchanged(retained) && (!destination || unchanged(destination))
+      && ownershipCurrent(owner);
+    const result = updateDomainNotification(originalState, profile, entry, { dismissed: true },
+      delta => ctx.canCommit(delta), { guard, reserve: ctx.reserve,
+        reserveTextUnits: patch.reserveTextUnits ?? 0, onCommit: patch.onCommit });
+    if (result.status !== 'applied') return result;
+    try { ctx.onRemoved?.([entry]); } catch { /* Canonical dismissal is final. */ }
+    return { ...result, notificationId: result.target.notificationId };
+  }
+  function updateNotifications(notificationIds, patch, ownership) {
+    const owner = ownerGuard(ownership);
+    if (!owner || !Array.isArray(notificationIds) || Object.getPrototypeOf(notificationIds) !== Array.prototype
+      || !fields(patch, ['dismissed', 'onCommit'], ['reserveTextUnits'])
+      || patch.dismissed !== true || !transactionFields(patch)) return fail('invalid_arguments');
+    const descriptors = Object.getOwnPropertyDescriptors(notificationIds), count = descriptors.length?.value;
+    if (!Number.isSafeInteger(count) || count < 0 || count > 256
+      || Reflect.ownKeys(descriptors).length !== count + 1) return fail('invalid_arguments');
+    const ids = [];
+    for (let index = 0; index < count; index++) {
+      const descriptor = descriptors[index];
+      if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value') || !id(descriptor.value)) return fail('invalid_arguments');
+      ids.push(descriptor.value);
+    }
+    if (new Set(ids).size !== ids.length) return fail('invalid_arguments');
+    if (typeof ctx.reserve !== 'function' || typeof ctx.canCommit !== 'function') return fail('unavailable');
+    if (!ownershipCurrent(owner)) return fail('stale_target');
+    const entries = ids.map(value => originalState.entries.find(entry => entry.id === value));
+    if (entries.some(entry => !entry)) return fail('stale_target');
+    const sceneTime = ctx.getSceneTime(), retained = entries.map(snapshot);
+    const destinations = entries.filter(entry => entry.destination).map(entry => snapshot(entry.destination));
+    const guard = () => ownershipCurrent(owner) && ctx.getSceneTime() === sceneTime
+      && entries.every(entry => originalState.entries.includes(entry))
+      && retained.every(unchanged) && destinations.every(unchanged) && ownershipCurrent(owner);
+    const result = removeDomainNotifications(originalState, profile, entries, delta => ctx.canCommit(delta), {
+      guard, reserve: ctx.reserve, reserveTextUnits: patch.reserveTextUnits ?? 0, onCommit: patch.onCommit,
+    });
+    if (result.status !== 'applied') return result;
+    try { ctx.onRemoved?.(entries); } catch { /* All canonical removals are final. */ }
+    return { ...result, notificationIds: result.target.removedIds };
+  }
+  function planNotification(ownership) {
+    const owner = ownerGuard(ownership);
+    if (!owner) return fail('invalid_arguments');
+    if (!ownershipCurrent(owner)) return fail('stale_target');
+    const sceneTime = ctx.getSceneTime();
+    return planNotificationAllocation(originalState, profile,
+      () => ownershipCurrent(owner) && ctx.getSceneTime() === sceneTime);
+  }
+  return { notify, updateNotification, updateNotifications, planNotification, dispose() { disposed = true; } };
+}
+
 /** Canonical arrivals are independent of this Root-local, unsaved native pane. */
 export function createNotificationCommands(ctx) {
   const namespace = ctx.namespace ?? globalThis.crypto.randomUUID(), originalState = ctx.getState(), ui = ctx.getUi();
   let sequence = 0, epoch = 0, revision = 0, disposed = false, wasAvailable = false;
   let ownerPane = null, returnToken;
   const snoozeSeen = new Map(originalState.entries.map(entry => [entry.id, entry.snoozedUntil]));
+  const observedEntries = new Map(originalState.entries.map(entry => [entry.id, entry]));
+  const bannerEntries = new Map(ui.banners.map(banner => [banner, originalState.entries.find(entry => entry.id === banner.notificationId)]));
+  const bannerSources = new Map();
+  let lastDeliveryTime = ctx.getSceneTime();
+  const classic = ['macos-high-sierra-10.13', 'macos-mojave-10.14'].includes(ctx.profile.id);
+  const flat = classic;
   const defaultItemUi = Object.freeze({ expanded: false, optionsOpen: false, replyBody: null });
-  const supported = () => ctx.profile.id === 'macos-golden-gate-27.0.1'
-    && ctx.profile.capabilities?.includes('shell.notification-center') === true;
+  const supported = () => supportsNotifications(ctx.profile);
   function alive() {
     try { return !disposed && supported() && ctx.alive() === true && ctx.getState() === originalState && ctx.getUi() === ui; }
     catch { return false; }
@@ -85,9 +220,9 @@ export function createNotificationCommands(ctx) {
   }
   const structural = (pane, generation) => alive() && epoch === generation && owned() === pane;
   function lease(pane) {
-    const generation = epoch, version = ++revision;
+    const generation = epoch, version = ++revision, sceneTime = ctx.getSceneTime();
     return () => structural(pane, generation) && version === revision && available()
-      && structural(pane, generation) && version === revision;
+      && structural(pane, generation) && version === revision && ctx.getSceneTime() === sceneTime;
   }
   const failure = pane => fail(alive() && owned() === pane ? 'unavailable' : 'stale_target');
   async function native(call) { try { return await call(); } catch { return null; } }
@@ -96,10 +231,12 @@ export function createNotificationCommands(ctx) {
     && guard() && ctx.getView() === view;
   function describe(view) { try { return view.describe(); } catch { return null; } }
   function allowedControls(pane, values = groups(), expanded = pane.expandedGroupIds) {
-    const controls = ['center', 'close'];
+    const controls = ['center', 'close', 'dnd', 'settings'];
+    if (classic) controls.push('tab:today', 'tab:notifications');
+    if (classic && pane.tab === 'today') return controls;
     if (values.length) controls.push('clear-all');
     for (const group of values) {
-      const open = expanded.includes(group.groupId);
+      const open = flat || expanded.includes(group.groupId);
       controls.push(...(open ? [`collapse:${group.groupId}`, `clear:${group.groupId}`] : [`group:${group.groupId}`]));
       for (const entry of open ? group.entries : group.entries.slice(0, 1)) controls.push(`dismiss:${entry.id}`);
       for (const entry of open || group.entries.length === 1 ? group.entries : []) controls.push(...itemControls(entry));
@@ -160,7 +297,7 @@ export function createNotificationCommands(ctx) {
     if (itemId) return retainedEntry(itemId);
     for (const prefix of ['group:', 'collapse:', 'clear:']) if (controlId.startsWith(prefix)) return retainedGroup(controlId.slice(prefix.length));
     if (controlId === 'clear-all') return groups().length ? retainedAll() : null;
-    return ['center', 'close'].includes(controlId) ? () => true : null;
+    return ['center', 'close', 'dnd', 'settings', 'tab:today', 'tab:notifications'].includes(controlId) ? () => true : null;
   }
   function get(target) { reconcile(); const pane = owned(); return pane?.centerId === target.centerId ? pane : null; }
   function afterRemoval(values, removed) {
@@ -188,14 +325,24 @@ export function createNotificationCommands(ctx) {
     return applied({ centerId: pane.centerId, ...result.target });
   }
   function itemControlId(controlId) {
-    const match = /^(?:open|details|options|complete|reply|reply-body|reply-send|reply-cancel|settings):(notification-[1-9][0-9]*)$/.exec(controlId)
-      ?? /^snooze:(notification-[1-9][0-9]*):(?:5|15|60|1440)$/.exec(controlId);
+    const match = /^(?:open|accept|decline|details|options|complete|reply|reply-body|reply-send|reply-cancel|settings):(notification-[1-9][0-9]*)$/.exec(controlId)
+      ?? /^snooze:(notification-[1-9][0-9]*):(?:[1-9]|[1-5][0-9]|60)$/.exec(controlId);
     return match?.[1] ?? null;
   }
   function actions(entry) {
     if (entry.destination === null) return ['open'];
-    try { return ctx.actions(entry).filter(value => ['open', 'reply', 'snooze', 'complete'].includes(value)); }
+    try { return ctx.actions(entry).filter(value => ['open', 'reply', 'snooze', 'complete', 'accept', 'decline'].includes(value)); }
     catch { return []; }
+  }
+  function snoozeChoices(entry) {
+    try {
+      const supplied = typeof ctx.snoozeChoices === 'function' ? ctx.snoozeChoices(entry)
+        : entry.destination?.kind === 'clock' ? [] : [5, 15, 60];
+      return Array.isArray(supplied) && supplied.length <= 60
+        && Reflect.ownKeys(supplied).length === supplied.length + 1 && new Set(supplied).size === supplied.length
+        && supplied.every(minutes => Number.isSafeInteger(minutes) && minutes >= 1 && minutes <= 60)
+        ? [...supplied] : [];
+    } catch { return []; }
   }
   function itemUi(entry) { return ui.items[entry.id] ?? defaultItemUi; }
   function mutableItem(entry) {
@@ -205,10 +352,11 @@ export function createNotificationCommands(ctx) {
   function itemControls(entry) {
     const values = [`details:${entry.id}`, `options:${entry.id}`], offered = actions(entry), presentation = itemUi(entry);
     if (offered.includes('open')) values.push(`open:${entry.id}`);
+    for (const action of ['accept', 'decline']) if (offered.includes(action)) values.push(`${action}:${entry.id}`);
     if (offered.includes('reply') && presentation.replyBody === null) values.push(`reply:${entry.id}`);
     if (presentation.optionsOpen) {
       values.push(`settings:${entry.id}`);
-      if (offered.includes('snooze')) values.push(...[5, 15, 60].map(minutes => `snooze:${entry.id}:${minutes}`));
+      if (offered.includes('snooze')) values.push(...snoozeChoices(entry).map(minutes => `snooze:${entry.id}:${minutes}`));
       if (offered.includes('complete')) values.push(`complete:${entry.id}`);
     }
     if (presentation.replyBody !== null && offered.includes('reply')) {
@@ -224,14 +372,50 @@ export function createNotificationCommands(ctx) {
     const allowed = new Set(['banner', 'dismiss', ...itemControls(entry)]);
     return (describe(view)?.controlIds ?? []).filter(id => allowed.has(id));
   }
+  function removeEntries(entries, guard = () => alive() && entries.every(entry => originalState.entries.includes(entry))) {
+    if (!guard()) return fail('stale_target');
+    if (typeof ctx.prepareNotificationDismissals === 'function') {
+      if (typeof ctx.reserve !== 'function' || typeof ctx.canCommit !== 'function') return fail('unavailable');
+      const ids = entries.map(entry => entry.id);
+      let prepared;
+      try { prepared = ctx.prepareNotificationDismissals(ids, { guard }); }
+      catch { return fail('unavailable'); }
+      if (prepared?.status === 'rejected') return prepared;
+      if (!prepared || !Number.isSafeInteger(prepared.delta) || typeof prepared.current !== 'function'
+        || typeof prepared.commit !== 'function') return fail('unavailable');
+      let acknowledged = false;
+      return removeDomainNotifications(originalState, ctx.profile, entries, ctx.canCommit, {
+        guard: () => guard() === true && prepared.current() === true,
+        reserve: ctx.reserve, reserveTextUnits: prepared.delta,
+        onCommit(actualIds) {
+          if (acknowledged || actualIds.length !== ids.length || actualIds.some((id, index) => id !== ids[index])
+            || guard() !== true || prepared.current() !== true) return false;
+          acknowledged = true;
+          return prepared.commit() === true;
+        },
+      });
+    }
+    // Ledger-backed entries must never be removed independently of their domain.
+    if (entries.some(entry => ['event', 'reminder', 'call', 'stocks-price', 'stocks-story', 'news-story', 'clock'].includes(entry.destination?.kind))) return fail('unavailable');
+    return removeDomainNotifications(originalState, ctx.profile, entries, ctx.canCommit ?? (() => true), { guard });
+  }
   function announce(entry) {
+    if (!entry || !alive() || !originalState.entries.includes(entry)) return;
+    observedEntries.set(entry.id, entry);
     snoozeSeen.set(entry.id, entry.snoozedUntil);
     const style = notificationDesktopStyle(originalState, entry.appId);
     if (!style || entry.snoozedUntil !== null && entry.snoozedUntil > ctx.getSceneTime()
       || ui.banners.some(value => value.notificationId === entry.id)) return;
-    ui.banners = [...ui.banners, { bannerId: `${namespace}-notification-banner-${++sequence}`,
+    const banner = { bannerId: `${namespace}-notification-banner-${++sequence}`,
       notificationId: entry.id, style, remainingMs: style === 'temporary' ? 6000 : null,
-      paused: false, focusedControl: null, scroll: { top: 0, left: 0 } }];
+      paused: false, focusedControl: null, scroll: { top: 0, left: 0 } };
+    ui.banners = [...ui.banners, banner];
+    bannerEntries.set(ui.banners[ui.banners.length - 1], entry);
+    const actualBanner = ui.banners[ui.banners.length - 1];
+    if (entry.destination && typeof ctx.retainDestination === 'function') {
+      try { bannerSources.set(actualBanner, ctx.retainDestination(entry)); }
+      catch { bannerSources.set(actualBanner, null); }
+    }
   }
   function reconcileDelivery() {
     if (!validateNotificationsState(originalState, ctx.profile).ok) {
@@ -242,14 +426,27 @@ export function createNotificationCommands(ctx) {
     const extant = new Set(originalState.entries.map(entry => entry.id));
     for (const id of Object.keys(ui.items)) if (!extant.has(id)) delete ui.items[id];
     for (const id of snoozeSeen.keys()) if (!extant.has(id)) snoozeSeen.delete(id);
+    for (const [id, entry] of observedEntries) if (!originalState.entries.includes(entry)) {
+      observedEntries.delete(id); snoozeSeen.delete(id); delete ui.items[id];
+    }
     const time = ctx.getSceneTime();
+    const elapsed = Number.isSafeInteger(time) && Number.isSafeInteger(lastDeliveryTime) ? Math.max(0, time - lastDeliveryTime) : 0;
+    lastDeliveryTime = time;
     const remaining = ui.banners.filter(banner => {
-      const entry = originalState.entries.find(value => value.id === banner.notificationId);
-      return entry && notificationDesktopStyle(originalState, entry.appId) !== null
-        && (entry.snoozedUntil === null || entry.snoozedUntil <= time);
+      const entry = bannerEntries.get(banner);
+      if (!entry || !originalState.entries.includes(entry) || notificationDesktopStyle(originalState, entry.appId) === null
+        || entry.snoozedUntil !== null && entry.snoozedUntil > time
+        || bannerSources.has(banner) && bannerSources.get(banner)?.current() !== true) return false;
+      if (banner.style === 'temporary' && !banner.paused && itemUi(entry).replyBody === null
+        && bannerView(banner)?.available() === true) banner.remainingMs = Math.max(0, banner.remainingMs - elapsed);
+      return banner.remainingMs !== 0;
     });
+    for (const banner of bannerEntries.keys()) if (!remaining.includes(banner)) {
+      bannerEntries.delete(banner); bannerSources.delete(banner);
+    }
     if (remaining.length !== ui.banners.length) ui.banners = remaining;
     for (const entry of originalState.entries) {
+      if (observedEntries.get(entry.id) !== entry) { announce(entry); continue; }
       const observed = snoozeSeen.get(entry.id);
       if (entry.snoozedUntil !== null && entry.snoozedUntil > time) {
         if (observed?.dueAt !== entry.snoozedUntil) snoozeSeen.set(entry.id, { dueAt: entry.snoozedUntil });
@@ -273,9 +470,9 @@ export function createNotificationCommands(ctx) {
       if (!banner) return null;
       view = bannerView(banner);
     }
-    const generation = epoch, version = ++revision;
+    const generation = epoch, version = ++revision, sceneTime = ctx.getSceneTime();
     const guard = () => alive() && epoch === generation && revision === version && available()
-      && epoch === generation && revision === version && recordCurrent()
+      && epoch === generation && revision === version && recordCurrent() && ctx.getSceneTime() === sceneTime
       && (pane ? owned() === pane && ctx.getView() === view : ui.banners.includes(banner) && bannerView(banner) === view)
       && view?.available() === true;
     const controlIds = () => pane ? controls(pane, view) : bannerControls(banner, view);
@@ -301,12 +498,12 @@ export function createNotificationCommands(ctx) {
     }
   }
   function finishItem(entry) {
-    ui.banners = ui.banners.filter(value => value.notificationId !== entry.id);
-    delete ui.items[entry.id];
+    ui.banners = ui.banners.filter(value => bannerEntries.get(value) !== entry);
+    if (observedEntries.get(entry.id) === entry) delete ui.items[entry.id];
   }
   async function presentationChange(target, controlId, commit, nextFocus) {
     const owner = itemOwner(target, controlId);
-    if (!await prepareItem(owner)) return fail('unavailable');
+    if (!await prepareItem(owner) || !owner.guard()) return fail('unavailable');
     commit(mutableItem(owner.entry), owner.entry);
     if (await settle() && owner.guard()) {
       if (nextFocus) await focusItem(owner, nextFocus(owner.entry));
@@ -315,57 +512,91 @@ export function createNotificationCommands(ctx) {
     return applied({ notificationId: owner.entry.id, ...(owner.pane ? { centerId: owner.pane.centerId } : { bannerId: owner.banner.bannerId }) });
   }
   async function performItem(target, action, payload = {}) {
-    const control = action === 'open' ? `open:${target.notificationId}` : action === 'complete' ? `complete:${target.notificationId}`
+    const control = ['open', 'complete', 'accept', 'decline'].includes(action) ? `${action}:${target.notificationId}`
       : action === 'snooze' ? `snooze:${target.notificationId}:${payload.minutes}` : `reply-send:${target.notificationId}`;
     const owner = itemOwner(target, control);
     if (!await prepareItem(owner) || !actions(owner.entry).includes(action)) return fail('unavailable');
+    if (action === 'snooze' && !snoozeChoices(owner.entry).includes(payload.minutes)) return fail('unavailable');
     const source = ctx.retainDestination(owner.entry);
     if (!source?.current() || !owner.guard()) return fail('stale_target');
-    const current = () => owner.guard() && source.current();
+    const current = () => owner.guard() && source.current()
+      && (action !== 'snooze' || snoozeChoices(owner.entry).includes(payload.minutes));
     if (owner.banner) owner.banner.paused = true;
     let result;
     try {
       if (action === 'open') result = await ctx.openDestination(source, current);
       else if (action === 'snooze') {
-        result = snoozeNotification(originalState, owner.entry.id, payload.minutes, ctx.getSceneTime());
-      } else if (action === 'complete') result = ctx.completeDestination(source, current);
+        result = typeof ctx.snoozeDestination === 'function'
+          ? await ctx.snoozeDestination(source, payload.minutes, current, owner.entry)
+          : ['event', 'reminder', 'clock'].includes(owner.entry.destination?.kind) ? fail('unavailable')
+            : snoozeNotification(originalState, owner.entry.id, payload.minutes, ctx.getSceneTime());
+      } else if (action === 'complete') result = await ctx.completeDestination(source, current, owner.entry);
+      else if (action === 'accept' || action === 'decline') {
+        if (source.source?.kind !== 'call' || typeof ctx.callDestination !== 'function') return fail('unavailable');
+        result = await ctx.callDestination(source, action, current, owner.entry);
+      }
       else {
         const body = itemUi(owner.entry).replyBody;
         if (typeof body !== 'string' || !body.trim()) return fail('invalid_arguments');
-        result = ctx.replyDestination(source, body, current);
+        result = await ctx.replyDestination(source, body, current, owner.entry);
       }
       if (result?.status !== 'applied') return result ?? fail('unavailable');
       // Source mutation/opening is already committed. Presentation cleanup must
       // not invent a rejection or act on a replacement Root with the same ID.
       if (alive() && originalState.entries.includes(owner.entry)) {
-        if (action !== 'snooze') dismissNotification(originalState, owner.entry.id);
-        finishItem(owner.entry);
-        if (action === 'snooze') snoozeSeen.set(owner.entry.id, { dueAt: owner.entry.snoozedUntil });
+        if (action !== 'snooze') {
+          const removed = removeEntries([owner.entry]);
+          // A committed source action is final. A rejected cleanup preserves the
+          // original alert instead of pretending the dismissal succeeded.
+          if (removed?.status === 'applied') finishItem(owner.entry);
+        } else finishItem(owner.entry);
+        if (action === 'snooze' && typeof ctx.snoozeDestination !== 'function')
+          snoozeSeen.set(owner.entry.id, { dueAt: result.target.snoozedUntil });
         if (action === 'open' && owner.pane && owned() === owner.pane) retire();
         if (owner.pane && owned() === owner.pane) prune(owner.pane);
       }
+      if (alive()) reconcileDelivery();
       await settle();
-      return applied({ notificationId: owner.entry.id, action, ...result.target });
+      return applied({ notificationId: owner.entry.id, action, ...result.target,
+        ...(action === 'snooze' ? { snoozedUntil: typeof ctx.snoozeDestination === 'function'
+          ? result.snoozedUntil : result.target.snoozedUntil } : {}),
+        ...(['accept', 'decline'].includes(action) ? { callId: source.source.recordId, callStatus: result.callStatus } : {}) });
     } finally {
       if (owner.banner && ui.banners.includes(owner.banner)) owner.banner.paused = false;
     }
   }
+  function settingsSelection(owner) {
+    if (owner.session != null) {
+      if (typeof ctx.getSettingsSelection !== 'function') return null;
+      try { return ctx.getSettingsSelection(owner); } catch { return null; }
+    }
+    return owner.window.notificationAppId;
+  }
   async function settingsOwner(target, controlId) {
+    reconcile();
+    if (!available()) return null;
     const owner = ctx.getSettingsOwner(target.windowId);
-    if (!owner || target.appId && owner.window.notificationAppId !== target.appId) return null;
-    const generation = epoch, version = ++revision, view = owner.view;
-    const guard = () => alive() && epoch === generation && revision === version && available()
-      && ctx.getSettingsOwner(target.windowId)?.window === owner.window
-      && ctx.getSettingsOwner(target.windowId)?.view === view
-      && (!target.appId || owner.window.notificationAppId === target.appId);
-    if (!guard() || await ctx.prepareSettings(owner, controlId, guard) !== true || !guard()) return null;
+    if (!owner || owner.session != null && (typeof ctx.getSettingsSelection !== 'function'
+      || typeof ctx.selectSettingsApp !== 'function') || target.appId && settingsSelection(owner) !== target.appId) return null;
+    const generation = epoch, version = ++revision, view = owner.view, session = owner.session, sceneTime = ctx.getSceneTime();
+    const guard = () => {
+      const retained = ctx.getSettingsOwner(target.windowId);
+      return alive() && epoch === generation && revision === version && available()
+        && epoch === generation && revision === version && ctx.getSceneTime() === sceneTime
+        && retained?.window === owner.window && retained?.view === view && retained?.session === session
+        && view?.available() === true && (!target.appId || settingsSelection(owner) === target.appId);
+    };
+    if (!guard() || await native(() => ctx.prepareSettings(owner, controlId, guard)) !== true || !guard()) return null;
     return { ...owner, guard };
   }
   function deliveryHandlers() {
     return {
       'notifications.item.open': (target, payload) => fields(payload, []) ? performItem(target, 'open') : fail('invalid_arguments'),
       'notifications.item.complete': (target, payload) => fields(payload, []) ? performItem(target, 'complete') : fail('invalid_arguments'),
-      'notifications.item.snooze': (target, payload) => fields(payload, ['minutes']) && [5, 15, 60].includes(payload.minutes)
+      'notifications.item.accept': (target, payload) => fields(payload, []) ? performItem(target, 'accept') : fail('invalid_arguments'),
+      'notifications.item.decline': (target, payload) => fields(payload, []) ? performItem(target, 'decline') : fail('invalid_arguments'),
+      'notifications.item.snooze': (target, payload) => fields(payload, ['minutes'])
+        && Number.isSafeInteger(payload.minutes) && payload.minutes >= 1 && payload.minutes <= 60
         ? performItem(target, 'snooze', { minutes: payload.minutes }) : fail('invalid_arguments'),
       'notifications.item.expand': (target, payload) => fields(payload, ['expanded']) && typeof payload.expanded === 'boolean'
         ? presentationChange(target, `details:${target.notificationId}`, value => { value.expanded = payload.expanded; }) : fail('invalid_arguments'),
@@ -394,7 +625,7 @@ export function createNotificationCommands(ctx) {
         if (!banner) return fail('stale_target');
         const owner = itemOwner({ bannerId: banner.bannerId, notificationId: banner.notificationId }, 'dismiss');
         if (!await prepareItem(owner)) return fail('unavailable');
-        const result = dismissNotification(originalState, owner.entry.id);
+        const result = removeEntries([owner.entry], owner.guard);
         if (result.status !== 'applied') return result;
         finishItem(owner.entry); await settle();
         return applied({ bannerId: banner.bannerId, notificationId: owner.entry.id, dismissed: true });
@@ -448,23 +679,33 @@ export function createNotificationCommands(ctx) {
         const current = () => alive() && epoch === generation && available();
         if (!await settle() || !current()) return fail('unavailable');
         const result = await ctx.openSettings(payload.appId);
-        return current() ? result : fail('unavailable');
+        return result?.status === 'applied' ? result : current() ? result : fail('unavailable');
       },
       'notifications.settings.select': async (target, payload) => {
         if (!fields(target, ['windowId', 'appId']) || !id(target.windowId) || !id(target.appId)
           || !Object.hasOwn(ctx.profile.applications, target.appId) || !fields(payload, [])) return fail('invalid_arguments');
         const appId = target.appId, owner = await settingsOwner({ windowId: target.windowId }, `notifications-app:${appId}`);
-        if (!owner) return fail('unavailable');
-        owner.window.notificationAppId = appId; await settle();
-        if (owner.guard()) await native(() => owner.view.focus('notifications-allow'));
+        if (!owner || !owner.guard()) return fail('unavailable');
+        if (owner.session != null) {
+          const result = await native(() => ctx.selectSettingsApp(owner, appId, owner.guard));
+          if (result?.status !== 'applied') return result?.status === 'rejected' ? result : fail('unavailable');
+          if (settingsSelection(owner) !== appId) return fail('unavailable');
+        } else owner.window.notificationAppId = appId;
+        await settle();
+        if (owner.guard()) await native(() => owner.view.focus(classic
+          ? notificationAppSettings(originalState, appId)?.desktop ? 'notifications-style' : 'notifications-desktop'
+          : 'notifications-allow'));
         return applied({ windowId: owner.window.id, appId });
       },
       'notifications.settings.configure': async (target, payload) => {
         if (!fields(target, ['windowId', 'appId']) || !id(target.windowId) || !id(target.appId)
-          || !fields(payload, ['configuration']) || !fields(payload.configuration, [], ['allow', 'desktop', 'center', 'style', 'previews'])) return fail('invalid_arguments');
+          || !fields(payload, ['configuration']) || !fields(payload.configuration, [], ['allow', 'desktop', 'center', 'badges', 'sound', 'style', 'previews'])) return fail('invalid_arguments');
         const configuration = { ...payload.configuration }, owner = await settingsOwner(target, 'panel');
         if (!owner) return fail('unavailable');
-        for (const key of Object.keys(configuration)) if (await ctx.prepareSettings(owner, `notifications-${key}`, owner.guard) !== true || !owner.guard()) return fail('unavailable');
+        const coupledNativeStyle = (classic || ctx.profile.renderer === 'sonoma') && ['temporary', 'persistent'].includes(configuration.style)
+          && configuration.allow === true && configuration.desktop === true;
+        const keys = Object.keys(configuration).filter(key => !coupledNativeStyle || !['allow', 'desktop'].includes(key));
+        for (const key of keys) if (await ctx.prepareSettings(owner, `notifications-${key}`, owner.guard) !== true || !owner.guard()) return fail('unavailable');
         const result = configureNotificationApp(originalState, ctx.profile, target.appId, configuration,
           delta => owner.guard() && ctx.canCommit(delta) === true && owner.guard());
         if (result.status === 'applied') { reconcileDelivery(); await settle(); }
@@ -503,7 +744,7 @@ export function createNotificationCommands(ctx) {
         const token = ctx.captureFocus();
         if (!guard()) return fail('stale_target');
         const centerId = `${namespace}-notification-center-${++sequence}`;
-        ctx.setPane({ centerId, expandedGroupIds: [], focusedControl: null, scroll: { top: 0, left: 0 } });
+        ctx.setPane({ centerId, tab: 'notifications', expandedGroupIds: [], focusedControl: null, scroll: { top: 0, left: 0 } });
         pane = ctx.getPane();
         if (!pane || pane.centerId !== centerId || !alive()) return fail('stale_target');
         ownerPane = pane; returnToken = token; epoch++;
@@ -540,11 +781,11 @@ export function createNotificationCommands(ctx) {
       const source = Object.hasOwn(payload, 'destination') && payload.destination !== null
         ? ctx.retainDestination({ appId: target.appId, destination: payload.destination }) : null;
       if (payload.destination !== undefined && payload.destination !== null && !source?.current()) return fail('invalid_arguments');
-      const generation = epoch, version = ++revision;
+      const generation = epoch, version = ++revision, sceneTime = ctx.getSceneTime();
       let interrupted = null;
       const guard = () => alive() && epoch === generation && revision === version && available()
-        && (!source || source.current()) && alive() && epoch === generation && revision === version;
-      const result = postNotification(originalState, ctx.profile, target.appId, payload, ctx.getSceneTime(), delta => {
+        && (!source || source.current()) && alive() && epoch === generation && revision === version && ctx.getSceneTime() === sceneTime;
+      const result = postNotification(originalState, ctx.profile, target.appId, payload, sceneTime, delta => {
         if (!guard()) { interrupted = alive() ? 'unavailable' : 'stale_target'; return false; }
         const accepted = ctx.canCommit(delta) === true;
         if (!guard()) { interrupted = alive() ? 'unavailable' : 'stale_target'; return false; }
@@ -552,6 +793,19 @@ export function createNotificationCommands(ctx) {
       });
       if (result.status === 'applied') announce(originalState.entries.find(entry => entry.id === result.target.notificationId));
       return interrupted ? fail(interrupted) : result;
+    },
+    'notifications.tab.select': async (target, payload) => {
+      if (!targetPane(target) || !fields(payload, ['tab']) || !['today', 'notifications'].includes(payload.tab)) return fail('invalid_arguments');
+      if (!classic) return fail('unsupported_profile');
+      const pane = get(target); if (!pane) return fail('stale_target');
+      const guard = lease(pane), view = await prepare(pane, `tab:${payload.tab}`, guard);
+      if (!view || !live(view, guard)) return failure(pane);
+      pane.tab = payload.tab;
+      if (await settle() && live(view, guard)) {
+        await focus(pane, view, `tab:${payload.tab}`, guard);
+        if (live(view, guard)) observe(pane, view);
+      }
+      return applied({ centerId: pane.centerId, tab: payload.tab });
     },
     'notifications.group.setExpanded': async (target, payload) => {
       if (!targetPane(target, ['groupId']) || !id(target.groupId) || !fields(payload, ['expanded']) || typeof payload.expanded !== 'boolean') return fail('invalid_arguments');
@@ -573,7 +827,10 @@ export function createNotificationCommands(ctx) {
       const pane = get(target); if (!pane) return fail('stale_target');
       const owner = retainedEntry(notificationId), remaining = afterRemoval(groups(), new Set([notificationId]));
       return change(pane, `dismiss:${notificationId}`, owner, allowedControls(pane, remaining),
-        () => dismissNotification(originalState, notificationId));
+        () => {
+          const result = removeEntries(originalState.entries.filter(entry => entry.id === notificationId), () => alive() && owner());
+          return result?.status === 'applied' ? applied({ notificationId, dismissed: true }) : result;
+        });
     },
     'notifications.clear': async (target, payload) => {
       if (!targetPane(target, [], ['groupId']) || Object.hasOwn(target, 'groupId') && !id(target.groupId) || !fields(payload, [])) return fail('invalid_arguments');
@@ -581,10 +838,15 @@ export function createNotificationCommands(ctx) {
       const values = groups(), groupId = target.groupId;
       const owner = groupId === undefined ? values.length ? retainedAll() : null : retainedGroup(groupId);
       const remaining = groupId === undefined ? [] : values.filter(group => group.groupId !== groupId);
-      const expanded = pane.expandedGroupIds.includes(groupId);
+      const expanded = !classic && (flat || pane.expandedGroupIds.includes(groupId));
       const group = values.find(value => value.groupId === groupId);
       const controlId = groupId === undefined ? 'clear-all' : expanded ? `clear:${groupId}` : `dismiss:${group?.entries[0]?.id}`;
-      return change(pane, controlId, owner, allowedControls(pane, remaining), () => clearNotifications(originalState, groupId));
+      const originals = originalState.entries.filter(entry => groupId === undefined || entry.appId === groupId);
+      return change(pane, controlId, owner, allowedControls(pane, remaining),
+        () => {
+          const result = removeEntries(originals, () => alive() && owner());
+          return result?.status === 'applied' ? applied({ removedIds: originals.map(entry => entry.id) }) : result;
+        });
     },
     'notifications.focus': async (target, payload) => {
       if (!targetPane(target, ['controlId']) || !id(target.controlId) || !fields(payload, [])) return fail('invalid_arguments');
@@ -618,11 +880,16 @@ export function createNotificationCommands(ctx) {
     reconcile(); const pane = owned(); if (!pane) return null;
     const view = available() ? ctx.getView() : null;
     if (view?.available() === true && owned() === pane) observe(pane, view);
-    return { centerId: pane.centerId, expandedGroupIds: [...pane.expandedGroupIds],
+    return { centerId: pane.centerId, tab: pane.tab ?? 'notifications', expandedGroupIds: [...pane.expandedGroupIds],
       focusedControl: view?.available() === true ? pane.focusedControl : null, scroll: { ...pane.scroll } };
   }
-  return { handlers, reconcile, summary, groups, actions, itemUi,
-    preview: entry => notificationPreviewVisible(originalState, entry.appId, true),
+  return { handlers, reconcile, summary, groups, actions, snoozeChoices, itemUi, notificationPosted: announce,
+    notificationRemoved() { if (alive()) reconcileDelivery(); },
+    preview(entry) {
+      if (!notificationPreviewVisible(originalState, entry.appId, typeof ctx.isUnlocked === 'function' ? ctx.isUnlocked() === true : true)) return false;
+      try { return typeof ctx.previewAllowed !== 'function' || ctx.previewAllowed(entry) === true; }
+      catch { return false; }
+    },
     targets() {
       const pane = summary(), view = pane && available() ? ctx.getView() : null;
       return { centerId: pane?.centerId ?? null,
@@ -642,7 +909,7 @@ export function createNotificationCommands(ctx) {
   };
 }
 
-const profiles = ['macos-golden-gate-27.0.1'], capability = 'shell.notification-center';
+const profiles = [...notificationProfileIds], capability = 'shell.notification-center';
 const entry = notificationsSchema.properties.entries.items.properties;
 const offset = { type: 'number', minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
 const centerTarget = object({ centerId: identity });
@@ -654,6 +921,11 @@ export const notificationCatalog = Object.fromEntries([
   catalog('close', centerTarget, object({ restoreFocus: flag }, []), { centerId: identity, closed: { const: true } }),
   catalog('post', object({ appId: identity }), object({ title: entry.title, body: entry.body, createdAt: entry.createdAt, destination: entry.destination }, ['title', 'body']),
     { notificationId: entry.id, appId: identity, createdAt: entry.createdAt }, ['append one canonical notification and consume one nonreusable allocation']),
+  defineCommand(['macos-high-sierra-10.13', 'macos-mojave-10.14'], 'notifications.tab.select', capability,
+    centerTarget, object({ tab: choice('today', 'notifications') }),
+    ['original foreground classic macOS Notification Center'],
+    ['native Today/Notifications tabs, achieved focus'], [], [],
+    object({ centerId: identity, tab: choice('today', 'notifications') })),
   catalog('group.setExpanded', object({ centerId: identity, groupId: identity }), object({ expanded: flag }),
     { centerId: identity, groupId: identity, expanded: flag }),
   catalog('dismiss', object({ centerId: identity, notificationId: entry.id }), empty,
@@ -675,22 +947,28 @@ function notificationDeliveryCatalogEntries() {
   const settingsTarget = object({ windowId: identity }), appTarget = object({ windowId: identity, appId: identity });
   const define = (name, target, payload, result, data = []) => defineCommand(profiles, `notifications.${name}`,
     'shell.notification-delivery', target, payload,
-    ['original foreground Golden Root and original notification/source/banner/center/settings/native view'],
+    ['original foreground Root and original notification/source/banner/center/settings/native view'],
     ['Temporary/Persistent desktop presentation, source-backed actions, achieved native focus/scroll and real Notification settings'],
     data, [], result);
   return [
     define('item.open', itemTarget, empty, object({ notificationId: entry.id, action: { const: 'open' }, appId: identity, windowId: nullableId, recordId: nullableId }),
       ['open only the original source item in its real ordinary app; dismiss original alert after success']),
-    define('item.snooze', itemTarget, object({ minutes: { enum: [5, 15, 60] } }),
-      object({ notificationId: entry.id, action: { const: 'snooze' }, snoozedUntil: entry.createdAt }), ['snooze original linked reminder/event until authored scene time, without duplicate IDs']),
+    define('item.snooze', itemTarget, object({ minutes: { type: 'integer', minimum: 1, maximum: 60 } }),
+      object({ notificationId: entry.id, action: { const: 'snooze' }, snoozedUntil: entry.createdAt }), ['snooze the original source by its currently offered duration and report its actual authored ledger deadline']),
     define('item.complete', itemTarget, empty, object({ notificationId: entry.id, action: { const: 'complete' }, reminderId: identity, completed: { const: true } }),
       ['complete original shared reminder and dismiss alert']),
+    define('item.accept', itemTarget, empty, object({ notificationId: entry.id, action: { const: 'accept' },
+      windowId: identity, callId: identity, callStatus: { const: 'connecting' } }),
+      ['accept only the original ringing call through its actual Calls native utility']),
+    define('item.decline', itemTarget, empty, object({ notificationId: entry.id, action: { const: 'decline' },
+      windowId: identity, callId: identity, callStatus: { const: 'ended' } }),
+      ['decline only the original ringing call through its actual Calls native utility']),
     define('item.expand', itemTarget, object({ expanded: flag }), itemResult),
     define('options.setOpen', itemTarget, object({ open: flag }), itemResult),
     define('reply.open', itemTarget, empty, itemResult),
     define('reply.update', itemTarget, object({ body: entry.body }), itemResult),
-    define('reply.send', itemTarget, empty, object({ notificationId: entry.id, action: { const: 'reply' }, appId: choice('messages', 'mail'), recordId: identity }),
-      ['commit an actual reply to the fictional local outbox atomically; no network delivery']),
+    define('reply.send', itemTarget, empty, object({ notificationId: entry.id, action: { const: 'reply' }, appId: choice('messages', 'teams', 'mail'), recordId: identity }),
+      ['commit an actual reply through the canonical local Messages or Mail send pipeline; no network delivery']),
     define('reply.cancel', itemTarget, empty, itemResult),
     define('banner.dismiss', bannerTarget, empty, object({ bannerId: identity, notificationId: entry.id, dismissed: { const: true } }),
       ['dismiss original canonical alert, preserving allocation counter']),
@@ -702,7 +980,7 @@ function notificationDeliveryCatalogEntries() {
     define('settings.open', empty, object({ appId: identity }, []), object({ appId: { const: 'settings' }, windowId: identity, selectedAppId: identity })),
     define('settings.select', appTarget, empty, object({ windowId: identity, appId: identity })),
     define('settings.configure', appTarget, object({ configuration: object({
-      allow: flag, desktop: flag, center: flag, style: choice('temporary', 'persistent'), previews: choice('default', 'always', 'when-unlocked', 'never'),
+      allow: flag, desktop: flag, center: flag, badges: flag, sound: flag, style: choice('temporary', 'persistent'), previews: choice('default', 'always', 'when-unlocked', 'never'),
     }, []) }), object({ windowId: identity, appId: identity, settings: appSettings }), ['retain one canonical per-local app notification policy']),
     define('settings.global.configure', settingsTarget, object({ showPreviews: choice('always', 'when-unlocked', 'never') }),
       object({ windowId: identity, preferences }), ['retain canonical per-local preview default']),

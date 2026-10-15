@@ -5,7 +5,7 @@ const appTarget = object({appId:choice(...appIds)});
 const controlTarget = object({appId:choice(...appIds),control:identity});
 const areaTarget = object({appId:choice(...appIds),area:identity});
 export const baseAppSpecs = {
-  'win11.files.open':[object({fileId:identity}),empty,['Open the associated native application and populate its actual session document.'],[]],
+  'win11.files.open':[object({fileId:identity}),empty,['Open the MIME/encoding-associated real native document destination with the complete original File bytes and revision. Optional windowId owns the original source actor, never the destination. Standalone SVG prepares an actual SDK-owned photos-svg viewer and commits through its guarded real SVG handler; it never enters the raster codec. Folders retain Explorer navigation; unsupported MIME rejects before creating an editor.'],[]],
   'win11.apps.menu':[appTarget,object({menu:{anyOf:[identity,{const:null}]}}),['Open a current application menu, or dismiss it.'],[]],
   'win11.apps.focus':[controlTarget,empty,['Focus an actual currently mounted, enabled semantic control.'],[]],
   'win11.apps.focus.observe':[object({appId:choice(...appIds),control:{anyOf:[identity,{const:null}]}}),empty,['Retain observed real control focus.'],[]],
@@ -21,10 +21,13 @@ export const windows11AppSpecs = Object.fromEntries(Object.entries(nativeSpecs).
 export const windows11AppCatalog = Object.fromEntries(Object.entries(windows11AppSpecs).map(([name, [target, payload, presentation = [], data = [], rules = []]]) => {
   const descriptor = defineCommand(['windows11-23h2-22631.2428'], name, 'windows.apps', target, payload,
     globalFileCommand(name) ? ['Global virtual filesystem authority; no application window or mounted view is required.'] :
-      ['Targets must be live in this profile session. Presentation commands require a visible mounted view.',
-        'windowId selects an exact application session. Omit it only with zero or one application window; multiple-window ambiguity rejects without mutation.'],
+      name === 'win11.files.open' ? ['The original live File owns its complete MIME/encoding/content/revision metadata.',
+        'Optional windowId pins the original source window; the actual associated destination returns its own appId and windowId.'] :
+        ['Targets must be live in this profile session. Presentation commands require a visible mounted view.',
+          'windowId selects an exact application session. Omit it only with zero or one application window; multiple-window ambiguity rejects without mutation.'],
     presentation, data, rules, globalFileCommand(name) ? object({ fileId: identity }) :
-      { type: 'object', properties: { appId: choice(...appIds), windowId: identity }, required: ['appId'], additionalProperties: true });
+      { type: 'object', properties: { appId: name === 'win11.files.open' ? identity : choice(...appIds), windowId: identity },
+        required: name === 'win11.files.open' ? ['appId', 'windowId'] : ['appId'], additionalProperties: true });
   if (!nativeSpecs[name][0].required.length) descriptor[1].requestSchema.required = descriptor[1].requestSchema.required.filter(key => key !== 'target');
   return descriptor;
 }));

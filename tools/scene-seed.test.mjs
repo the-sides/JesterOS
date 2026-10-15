@@ -1,15 +1,124 @@
 import { expect, test } from 'bun:test';
 import { getOSProfile } from '../frontend/src/os-profiles.js';
-import { createDefaultSceneSeed, validateSceneSeed, createSceneSeedCommands } from '../frontend/src/scene-seed.js';
-import { createNote } from '../frontend/src/notes-state.js';
+import { createDefaultSceneSeed, projectSceneSeed, rehydrateSceneSeed, validateSceneSeed, createSceneSeedCommands } from '../frontend/src/scene-seed.js';
+import { createDefaultApplicationFiles } from '../frontend/src/default-application-files.js';
+import { createNotesWorkspaceWindow } from '../frontend/src/notes-workspace-state.js';
+import { documentFromText, firstDocumentSelection } from '../frontend/src/notes-workspace-document.js';
 import { nextMacFileTimestamp, liveMacFileRecords } from '../frontend/src/desktop-file-state.js';
 import { createFile, writeFile } from '../frontend/src/windows11-app-helpers.js';
 import { recordMacAppUse } from '../frontend/src/mac-dock-model.js';
 import { draftPreview, createCommunicationDraft, submitCommunicationDraft } from '../frontend/src/communication-state.js';
+import { validateFilesystemStore } from '../frontend/src/filesystem-transactions.js';
+import { mediaAssetContent, mediaTextUnits } from '../frontend/src/media-state.js';
+import { MEDIA_FIXTURES } from '../frontend/src/media-fixtures.js';
 
 const profile = getOSProfile('macos-golden-gate-27.0.1');
-const fixture = () => createDefaultSceneSeed(profile);
+const fixture = () => createDefaultSceneSeed(profile, { createFiles: createDefaultApplicationFiles });
 const validate = seed => validateSceneSeed(seed, profile);
+
+const installedProfileIds = ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0',
+  'macos-golden-gate-27.0.1', 'windows11-23h2-22631.2428'];
+for (const profileId of installedProfileIds) {
+  test(`${profileId}: genuine Files and native graphs survive complete cold projection and rehydration`, async () => {
+    const installed = getOSProfile(profileId), files = createDefaultApplicationFiles(installed);
+    expect(validateFilesystemStore(files, installed)).toEqual({ ok: true });
+    const seed = createDefaultSceneSeed(installed, { files });
+    expect(seed.files).toBe(files);
+    expect(validateSceneSeed(seed, installed)).toEqual({ ok: true });
+    const projected = projectSceneSeed(seed, installed), restored = rehydrateSceneSeed(projected, installed);
+    expect(validateSceneSeed(projected, installed)).toEqual({ ok: true });
+    expect(validateSceneSeed(restored, installed)).toEqual({ ok: true });
+    expect(validateFilesystemStore(restored.files, installed)).toEqual({ ok: true });
+    expect(restored.files).toEqual(files);
+    expect(restored.files).not.toBe(files);
+    for (const graph of [seed.media, projected.media, restored.media]) {
+      expect(graph.version).toBe(2);
+      expect(graph.assets).toHaveLength(7);
+      expect(mediaTextUnits(graph)).toBeLessThan(20_000);
+      for (const original of MEDIA_FIXTURES) {
+        const asset = graph.assets.find(row => row.id === original.id);
+        expect(asset.bundledId).toBe(original.id);
+        expect(asset.content).toBeNull();
+        expect(asset.fileId).toBeNull();
+        expect(mediaAssetContent(asset)).toBe(original.content);
+      }
+    }
+    const replacements = [], handlers = createSceneSeedCommands({ profile: installed, available: () => true,
+      defaultSeedOptions: { createFiles: createDefaultApplicationFiles },
+      replaceScene: async (value, source) => { replacements.push({ value, source }); } });
+    expect((await handlers['scene.replaceSeed']({}, { seed: projected })).status).toBe('applied');
+    expect((await handlers['scene.reset']({}, {})).status).toBe('applied');
+    expect(replacements.map(value => value.source)).toEqual(['replacement', 'default']);
+    const legacyMedia = structuredClone(projected);
+    legacyMedia.media.version = 1;
+    for (const asset of legacyMedia.media.assets) {
+      asset.content = mediaAssetContent(asset);
+      delete asset.bundledId;
+    }
+    expect(validateSceneSeed(legacyMedia, installed).ok).toBe(false);
+    expect(() => projectSceneSeed(legacyMedia, installed)).toThrow();
+    expect(() => rehydrateSceneSeed(legacyMedia, installed)).toThrow();
+    expect((await handlers['scene.replaceSeed']({}, { seed: legacyMedia })).error.code).toBe('invalid_arguments');
+    expect(replacements).toHaveLength(2);
+    for (const book of restored.books.books) {
+      const source = restored.files.files.find(file => file.id === book.fileId);
+      expect(source?.mime).toBe(book.mime);
+      expect(source?.revision).toBe(book.fileRevision);
+    }
+    for (const omit of [
+      value => { delete value.files.files.find(file => file.kind !== 'folder').kind; },
+      value => { delete value.files.files.find(file => file.kind === 'folder').appId; },
+      value => { delete value.clockApp; },
+      value => { delete value.system.notifications; },
+    ]) {
+      const incomplete = structuredClone(seed);
+      omit(incomplete);
+      expect(validateSceneSeed(incomplete, installed).ok).toBe(false);
+    }
+    for (const corrupt of [
+      value => { value.files.files.find(file => file.kind !== 'folder').revision = 0; },
+      value => { value.files.files.find(file => file.kind !== 'folder').name = '..'; },
+      value => { value.files.files.find(file => file.kind !== 'folder').name = installed.family === 'windows' ? 'NUL.txt' : 'unsafe:name'; },
+      value => { value.files.files.find(file => file.kind !== 'folder').name = 'outside/path'; },
+      value => { value.files.nextFileId = Number.MAX_SAFE_INTEGER; },
+      value => { value.files.files.find(file => file.kind === 'folder').content = 'not folder bytes'; },
+    ]) {
+      const candidate = structuredClone(projected);
+      corrupt(candidate);
+      const before = structuredClone(candidate);
+      expect(validateFilesystemStore(candidate.files, installed).ok).toBe(false);
+      expect((await handlers['scene.replaceSeed']({}, { seed: candidate })).error.code).toBe('invalid_arguments');
+      expect(candidate).toEqual(before);
+      expect(replacements).toHaveLength(2);
+    }
+    let reads = 0;
+    for (const level of ['store', 'array', 'file']) {
+      const candidate = structuredClone(projected);
+      const [owner, key] = level === 'store' ? [candidate.files, 'files']
+        : level === 'array' ? [candidate.files.files, '0'] : [candidate.files.files[0], 'name'];
+      Object.defineProperty(owner, key, { enumerable: true, get() { reads++; throw new Error('Must not traverse malformed Files'); } });
+      expect(validateFilesystemStore(candidate.files, installed).ok).toBe(false);
+      expect((await handlers['scene.replaceSeed']({}, { seed: candidate })).error.code).toBe('invalid_arguments');
+      expect(replacements).toHaveLength(2);
+    }
+    expect(reads).toBe(0);
+    if (installed.family === 'windows') {
+      const borrowedVolumeName = structuredClone(seed);
+      borrowedVolumeName.files.files.find(file => file.id === 'downloads').name =
+        seed.files.files.find(file => file.id === 'root').name;
+      expect(validateSceneSeed(borrowedVolumeName, installed).ok).toBe(false);
+      const copiedDock = structuredClone(seed);
+      copiedDock.dock.pinnedAppIds = [installed.defaults.desktopAppId];
+      copiedDock.dock.mainOrderAppIds = [...copiedDock.dock.pinnedAppIds];
+      expect(validateSceneSeed(copiedDock, installed).ok).toBe(false);
+    }
+    const originalBookFile = files.files.find(file => file.id === seed.books.books[0].fileId);
+    originalBookFile.revision++;
+    const retainedSourceSeed = createDefaultSceneSeed(installed, { files });
+    expect(retainedSourceSeed.books.books[0].fileRevision).toBe(originalBookFile.revision);
+    expect(validateSceneSeed(retainedSourceSeed, installed)).toEqual({ ok: true });
+  });
+}
 
 test('notification bodies participate in the complete seed aggregate text budget', () => {
   const seed = fixture();
@@ -142,16 +251,16 @@ test('replacement accepts canonical notifications but rejects incomplete, malfor
 test('complete custom seeds accept empty models and independent null note selection without merging', () => {
   const seed = fixture();
   seed.notes.notes = [];
-  seed.notes.selectedId = null;
-  seed.notes.folder = 'deleted';
-  seed.notes.search = 'No matching notes';
+  const window = createNotesWorkspaceWindow(seed.notes, 'empty-notes-window', { folderId: 'deleted', query: 'No matching notes' });
+  seed.notes.windows.push(window);
+  expect(window.selectedId).toBe(null);
   seed.files.files = seed.files.files.filter(file => ['disk', 'desktop', 'downloads', 'trash', 'documents', 'icloud-drive', 'mail-cache'].includes(file.id));
   seed.files.files.find(file => file.id === 'disk').name = 'Fictional Archive';
-  seed.messages.pinned = [];
   seed.messages.conversations = [];
-  seed.messages.thread.items = [];
-  seed.messages.thread.name = '別の会話';
-  seed.messages.thread.timestamp = '2024-02-29T23:59:59Z';
+  seed.messages.selectedConversationId = null;
+  seed.messages.selectedMessageId = null;
+  seed.messages.drafts = [];
+  seed.messages.selectedDraftId = null;
   seed.appearance = { mode: 'dark', accent: 'pink', highlight: '#A1b2C3' };
   seed.dock.pinnedAppIds = ['finder'];
   seed.dock.mainOrderAppIds = ['finder'];
@@ -175,26 +284,30 @@ test('Golden seed preference validation rejects incomplete, extended and out-of-
   ]) rejects(change);
   for (const textSize of [12, 24]) {
     const seed = fixture();
-    seed.notes.preferences = { sortBy: 'title', groupByDate: false, textSize };
+    seed.notes.preferences = { ...seed.notes.preferences, sortBy: 'title', groupByDate: false, textSize };
     expect(validate(seed)).toEqual({ ok: true });
   }
 });
 
 
 test('selected note must satisfy actual folder and whitespace-normalized search semantics', () => {
-  const seed = fixture(), note = seed.notes.notes.find(note => note.id === seed.notes.selectedId);
-  note.text = '東京\n  café\tmeeting';
-  seed.notes.search = '東京   café';
+  const seed = fixture(), note = seed.notes.notes.find(note => note.deletedAt === null);
+  note.document = documentFromText('東京\n  café\tmeeting', note.id);
+  const window = createNotesWorkspaceWindow(seed.notes, 'search-notes-window', { noteId: note.id, query: '東京   café' });
+  seed.notes.windows.push(window);
   expect(validate(seed)).toEqual({ ok: true });
-  seed.notes.search = 'absent';
+  window.query = 'absent';
   expect(validate(seed).ok).toBe(false);
-  seed.notes.selectedId = null;
+  window.selectedId = null;
+  window.selection = null;
   expect(validate(seed)).toEqual({ ok: true });
-  seed.notes.selectedId = note.id;
-  seed.notes.search = '';
-  seed.notes.folder = 'deleted';
+  window.selectedId = note.id;
+  window.selection = firstDocumentSelection(note.document);
+  window.query = '';
+  window.folderId = 'deleted';
   expect(validate(seed).ok).toBe(false);
-  note.deleted = true;
+  note.deletedAt = note.updatedAt;
+  note.restoreFolderId = note.folderId;
   expect(validate(seed)).toEqual({ ok: true });
 });
 
@@ -222,13 +335,11 @@ test('case-insensitive sibling collisions reject live records but allow deleted 
 
 test('counter boundary accepts the next real increment and rejects collision or exhausted counters', () => {
   const seed = fixture(), limit = Number.MAX_SAFE_INTEGER - 1, dateLimit = 8_640_000_000_000_000 - 1;
-  seed.notes.timeBase = dateLimit;
   seed.files.sceneTime = dateLimit;
   seed.files.nextFileId = limit;
   seed.files.files.find(file => file.id === 'itinerary').revision = limit;
   seed.dock.usageSequence = limit;
   expect(validate(seed)).toEqual({ ok: true });
-  expect(() => createNote(seed.notes, '', seed.files.sceneTime)).toThrow();
   expect(nextMacFileTimestamp(seed.files)).toBe(dateLimit + 1);
   expect(createFile(seed.files, 'desktop', 'New.txt').id).toBe(`file-${limit}`);
   writeFile(seed.files, seed.files.files.find(file => file.id === 'itinerary'), 'New content');
@@ -238,12 +349,12 @@ test('counter boundary accepts the next real increment and rejects collision or 
   expect(validate(seed).ok).toBe(false);
   rejects(seed => { seed.files.files.find(file => file.id === 'personal').id = 'file-12'; seed.files.nextFileId = 12; });
   rejects(seed => { seed.notes.notes[0].updatedAt = seed.notes.notes[0].createdAt - 1; });
-  rejects(seed => { seed.notes.timeBase = Number.MAX_SAFE_INTEGER; });
+  rejects(seed => { seed.notes.nextId = Number.MAX_SAFE_INTEGER; });
 });
 
 test('out-of-Date-range timestamps reject before native Notes can call toISOString or Intl', () => {
   for (const change of [
-    seed => { seed.notes.timeBase = Number.MAX_SAFE_INTEGER - 1; },
+    seed => { seed.notes.notes[0].createdAt = Number.MAX_SAFE_INTEGER - 1; },
     seed => { seed.notes.notes[0].updatedAt = Number.MAX_SAFE_INTEGER - 1; },
     seed => { seed.files.sceneTime = Number.MAX_SAFE_INTEGER - 1; },
     seed => { seed.files.files[0].createdAt = Number.MAX_SAFE_INTEGER - 1; },
@@ -271,14 +382,14 @@ test('closed schemas reject partial seeds, unknown fields, unsafe media and malf
     seed => { seed.notes.extra = true; },
     seed => { seed.files.files[0].readOnly = true; },
     seed => { seed.dock.hover = null; },
-    seed => { seed.messages.thread.items.push({ kind: 'trail', url: 'https://example.com/image.svg' }); },
-    seed => { seed.messages.thread.tint = 'red; background:url(test)'; },
-    seed => { seed.messages.pinned[0].selected = true; },
-    seed => { seed.messages.thread.timestamp = '2026-02-30T09:41:00Z'; },
+    seed => { seed.messages.conversations[2].items.push({ id: 'remote', kind: 'trail', direction: 'incoming', url: 'https://example.com/image.svg' }); },
+    seed => { seed.messages.conversations[2].tint = 'red; background:url(test)'; },
+    seed => { seed.messages.selectedMessageId = seed.messages.conversations[3].items[0].id; seed.messages.selectedConversationId = 'casey'; },
+    seed => { seed.messages.conversations[2].timestamp = 8_640_000_000_000_000; },
     seed => { seed.notes.notes.push({ ...seed.notes.notes[0] }); },
   ]) rejects(change);
   const accessor = fixture();
-  Object.defineProperty(accessor.notes, 'search', { enumerable: true, get() { throw new Error('Must not execute seed accessors'); } });
+  Object.defineProperty(accessor.notes.preferences, 'sortBy', { enumerable: true, get() { throw new Error('Must not execute seed accessors'); } });
   expect(validate(accessor).ok).toBe(false);
   const symbol = fixture(); symbol.notes[Symbol('extra')] = true;
   expect(validate(symbol).ok).toBe(false);
@@ -286,13 +397,18 @@ test('closed schemas reject partial seeds, unknown fields, unsafe media and malf
   expect(validate(cyclic).ok).toBe(false);
 });
 
-test('historical or capability-less profiles reject setup commands before malformed arguments', async () => {
-  for (const unsupported of [getOSProfile('macos-mojave-10.14'), { ...profile, capabilities: profile.capabilities.filter(capability => capability !== 'scene.seed') }]) {
+test('capability-less and uninstalled profiles reject setup before malformed argument traversal', async () => {
+  for (const unsupported of [{ ...profile, capabilities: profile.capabilities.filter(capability => capability !== 'scene.seed') },
+    { ...profile, id: 'uninstalled-profile' }]) {
     expect(validateSceneSeed(fixture(), unsupported).ok).toBe(false);
     const handlers = createSceneSeedCommands({ profile: unsupported });
+    let reads = 0;
+    const malformed = {};
+    Object.defineProperty(malformed, 'seed', { enumerable: true, get() { reads++; throw new Error('Must not traverse'); } });
     for (const name of ['scene.reset', 'scene.replaceSeed']) {
-      expect((await handlers[name](null, null)).error.code).toBe('unsupported_profile');
+      expect((await handlers[name](null, malformed)).error.code).toBe('unsupported_profile');
     }
+    expect(reads).toBe(0);
   }
 });
 
@@ -352,11 +468,10 @@ test('Spotlight exclusions validate real retained and generated folder graph ide
 test('complete seeds carry canonical widget leaves and reject corrupted widget data atomically', () => {
   const seed = fixture();
   expect(validate(seed)).toEqual({ ok: true });
-  expect(seed.system.widgets.instances.map(row => row.kind)).toEqual(['date', 'calendar', 'weather', 'reminders', 'stock-symbol', 'clock-world']);
   seed.system.widgets = {
     nextId: 2, instances: [{ id: 'widget-1', kind: 'date', size: 'small', configuration: {} }],
-    sources: { calendars: [], events: [], reminderLists: [], reminders: [], weather: [], stocks: [], clockCities: [] },
-    selected: { calendarEventId: null, reminderListId: null, weatherLocationId: null, stockSymbolId: null, clockCityIds: [] },
+    sources: { weather: [], stocks: [], clockCities: [] },
+    selected: { weatherLocationId: null, stockSymbolId: null, clockCityIds: [] },
   };
   expect(validate(seed)).toEqual({ ok: true });
   for (const change of [
@@ -365,7 +480,7 @@ test('complete seeds carry canonical widget leaves and reject corrupted widget d
     value => { value.system.widgets.instances[0].size = 'large'; },
     value => { value.system.widgets.instances[0].configuration = { locationId: null }; },
     value => { value.system.widgets.nextId = 1; },
-    value => { value.system.widgets.selected.calendarEventId = 'event-missing'; },
+    value => { value.system.widgets.selected.weatherLocationId = 'location-missing'; },
   ]) {
     const candidate = structuredClone(seed); change(candidate);
     const before = structuredClone(candidate);
@@ -378,7 +493,7 @@ test('complete seeds carry canonical widget leaves and reject corrupted widget d
     const [owner, key] = level === 'leaf' ? [candidate.system, 'widgets']
       : level === 'array' ? [candidate.system.widgets, 'instances']
         : level === 'instance' ? [candidate.system.widgets.instances[0], 'kind']
-          : [candidate.system.widgets.sources, 'calendars'];
+        : [candidate.system.widgets.sources, 'weather'];
     Object.defineProperty(owner, key, { enumerable: true, get() { reads++; throw new Error('Getter must not run'); } });
     expect(validate(candidate).ok).toBe(false);
   }

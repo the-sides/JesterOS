@@ -42,14 +42,52 @@
   import MacDesktopFolder from './MacDesktopFolder.svelte';
   import MacDesktopInfo from './MacDesktopInfo.svelte';
   import MacDesktopViewOptions from './MacDesktopViewOptions.svelte';
-  import { createNotesCommands } from './notes-commands.js';
+  import NotesApp from './NotesApp.svelte';
+  import { createNotesWorkspaceCommands } from './notes-workspace-commands.js';
+  import { notesWorkspaceWindow, visibleWorkspaceNotes, noteWorkspaceText, noteWorkspaceTitle, notesWorkspacePublicProjection } from './notes-workspace-state.js';
+  import { notesWorkspaceTextSource, notesPlaintextNativeSelection } from './notes-workspace-projections.js';
+  import { createMessagesCommands } from './messages-commands.js';
+  import { attachmentContent } from './messages-rich-commands.js';
+  import { selectedMessageConversation, messagesHistoryCutoff, validateMessagesState, expireMessages, messageOutgoingProfile } from './messages-state.js';
+  import Windows11Teams from './Windows11Teams.svelte';
+  import BrowserApp from './BrowserApp.svelte';
+  import MailApp from './MailApp.svelte';
+  import ContactsApp from './ContactsApp.svelte';
+  import CalendarApp from './CalendarApp.svelte';
+  import { createBrowserCommands } from './browser-commands.js';
+  import { browserSessionSnapshot } from './browser-state.js';
+  import { browserMenuProvider } from './browser-menus.js';
+  import { createMailCommands, createMailServiceDraft } from './mail-commands.js';
+  import { mailWindow, createMailWindow, mailNewId, validateMailState } from './mail-state.js';
+  import { mailMenuProvider } from './mail-menus.js';
+  import { createContactsCommands, contactsMenuProvider } from './contacts-commands.js';
+  import { resolveContacts as resolveCanonicalContacts, linkedContact, contactName, contactsWindow, createContact, validateContactsState } from './contacts-state.js';
+  import { createCalendarCommands } from './calendar-commands.js';
+  import { calendarMenuProvider } from './calendar-menus.js';
+  import CallsApp from './CallsApp.svelte';
+  import RemindersApp from './RemindersApp.svelte';
+  import { createCallsCommands } from './calls-commands.js';
+  import { createRemindersCommands } from './reminders-commands.js';
+  import { reminderCalendarProjection } from './reminders-state.js';
+  import { calendarWidgetProjection, calendarDateString, calendarLocalString, calendarTimestamp, createCalendarInvitation, acceptCalendarInvitation, validateCalendarState } from './calendar-state.js';
+  import { reminderWidgetProjection } from './reminders-state.js';
+  import { canonicalStringUnits, copyCanonicalData, applyCanonicalData } from './canonical-data.js';
+  import { createApplicationFileBridges } from './application-file-bridges.js';
+  import { createMessageDraft } from './messages-composition.js';
+  import { createDocumentDestinationPresentation, createDocumentDestinationCommands, documentFileMime } from './document-destination-commands.js';
+  import { printingDefaults } from './printing-state.js';
+  import NativeDocumentDestination from './NativeDocumentDestination.svelte';
+  import { recipientFold, recipientIdentity } from './messages-recipients.js';
   import { commandCatalog } from './command-catalog.js';
   import { visibleNotes, createNote, nextNoteTimestamp, noteTitle } from './notes-state.js';
   import { appCommandMenuProviders } from './app-command-menus.js';
+  import { messagesAppMenuProviders, messagesMenuShortcut } from './messages-app-menus.js';
+  import { menuBarDefaults, createMenuBarCommands } from './menu-bar.js';
+  import GoldenGateMenuBar from './GoldenGateMenuBar.svelte';
   import { APPLICATION_MENU_UTILITY_SIZES, goldenApplicationMenuItems, createApplicationMenuCommands } from './application-menu.js';
   import { SYSTEM_UTILITY_SIZES } from './apple-menu.js';
   import { createAppleCommands } from './apple-commands.js';
-  import { recordSystemRecent, clearSystemRecents, systemRecentTextDelta, systemStorageSummary } from './system-state.js';
+  import { recordSystemRecent, clearSystemRecents, systemRecentTextDelta, systemStorageSummary, validateSystemState } from './system-state.js';
   import { createStorageCommands } from './storage-commands.js';
   import { storageInventory, storageRows, trashStorageFiles, restoreStorageFiles, purgeStorageFiles,
     setStorageRecommendation, maintainStorage, downloadStorageFile } from './storage-model.js';
@@ -71,9 +109,7 @@
   import GoldenGateClockTimeEdit from './GoldenGateClockTimeEdit.svelte';
   import GoldenGateDateTimeSettings from './GoldenGateDateTimeSettings.svelte';
   import { createSoundCommands } from './sound-commands.js';
-  import { createSoundMediaCommands } from './sound-media-commands.js';
   import GoldenGateSoundSettings from './GoldenGateSoundSettings.svelte';
-  import GoldenGateAudioPlayer from './GoldenGateAudioPlayer.svelte';
   import { createBluetoothCommands } from './bluetooth-commands.js';
   import GoldenGateBluetoothSettings from './GoldenGateBluetoothSettings.svelte';
   import GoldenGateBluetoothPair from './GoldenGateBluetoothPair.svelte';
@@ -86,7 +122,7 @@
   import { spotlightFileExcluded } from './spotlight-preferences.js';
   import { prepareSpotlightPreview } from './spotlight-preview.js';
   import GoldenGateSpotlightSettings from './GoldenGateSpotlightSettings.svelte';
-  import { createNotificationCommands } from './notification-commands.js';
+  import { createDomainNotificationBridges, createNotificationCommands } from './notification-commands.js';
   import GoldenGateNotificationCenter from './GoldenGateNotificationCenter.svelte';
   import GoldenGateNotificationBanner from './GoldenGateNotificationBanner.svelte';
   import GoldenGateNotificationSettings from './GoldenGateNotificationSettings.svelte';
@@ -95,25 +131,22 @@
   import { createNotificationWidgetCommands } from './notification-widget-commands.js';
   import GoldenGateWidgetGallery from './GoldenGateWidgetGallery.svelte';
   import GoldenGateWidgetData from './GoldenGateWidgetData.svelte';
-  import { widgetDataApps, widgetDataScope, validateWidgetsState, setWidgetReminderCompleted } from './notification-widget-model.js';
+  import { widgetDataApps, widgetDataScope, validateWidgetsState } from './notification-widget-model.js';
   import GoldenGateAboutApp from './GoldenGateAboutApp.svelte';
   import GoldenGateNotesSettings from './GoldenGateNotesSettings.svelte';
-  import { createNotesFileCommands } from './notes-file-commands.js';
-  import { createFileDialogCommands } from './file-dialog-commands.js';
-  import GoldenGateFileSheet from './GoldenGateFileSheet.svelte';
-  import GoldenGatePrintDialog from './GoldenGatePrintDialog.svelte';
-  import GoldenGatePrintCenter from './GoldenGatePrintCenter.svelte';
   import { createFinderFileCommands } from './finder-file-commands.js';
-  import { createTextEditingCommands, noteTextControlValue } from './text-editing-commands.js';
+  import { createTextEditingCommands } from './text-editing-commands.js';
   import { createFinderEditing } from './finder-editing.js';
   import { createTextAssistance } from './text-assistance.js';
   import { createTextToolsCommands } from './text-tools-commands.js';
   import { selectNativeText, documentControlRange, controlDocumentOffset } from './text-native-selection.js';
   import { createNativeClipboardCommands } from './native-clipboard.js';
-  import { validateViewing, notesViewProjection, finderPresentationDefaults, notesPresentationDefaults } from './viewing-state.js';
+  import { validateViewing, finderPresentationDefaults } from './viewing-state.js';
   import { createViewWorkflowCommands } from './view-workflow-commands.js';
   import { createWindowExtensionCommands } from './window-extension-commands.js';
   import { createHelpViewerCommands } from './help-viewer-commands.js';
+  import { helpMenuProviders } from './help-menu-model.js';
+  import { helpArticles } from './help-content.js';
   import GoldenGateHelpViewer from './GoldenGateHelpViewer.svelte';
   import { createServiceCommands } from './service-commands.js';
   import { createServiceSources } from './service-sources.js';
@@ -126,9 +159,15 @@
   import { clampPosition, expandedBounds, resizeBounds, fitNormalBounds as fitRetainedBounds, WINDOW_RESIZE_AXES } from './window-state.js';
   import { getOSProfile, listOSProfiles } from './os-profiles.js';
   import { captureRetainedView, restoreRetainedView } from './retained-native-view.js';
+  import { nativeDomainDefinitions, nativeDomainForWindow, nativeInstalledAppMetadata } from './native-domain-registry.js';
+  import { nativeDomainComponents } from './native-domain-components.js';
+  import { createDefaultApplicationFiles } from './default-application-files.js';
+  import { createDesktopFrameCapture } from './desktop-frame-capture.js';
+  import { fictionalSessionDefaults } from './fictional-session.js';
+  import { createSceneRuntimeInventory } from './scene-runtime-inventory.js';
 
   let { profile: profileInput, adapter: adapterInput, seed: seedInput, savedScene: savedSceneInput, registerCommands, selectProfile,
-    registerSessionScene, registerSessionView, session, executeSession, menuBarState, menuBarMenus = [], dismissMenuBar, getMenuReturnFocus,
+    registerSessionScene, registerSessionView, session, executeSession, menuBarState: sharedMenuBarState, menuBarMenus = [], dismissMenuBar: dismissSharedMenuBar, getMenuReturnFocus: getSharedMenuReturnFocus,
     foreground = true, appearanceOwner = true, windowNamespace = '' } = $props();
   let sceneRoot;
   // One immutable profile per scene instance. A profile change mounts a fresh
@@ -137,12 +176,21 @@
   const adapter = untrack(() => adapterInput);
   const seed = untrack(() => seedInput);
   const savedScene = untrack(() => savedSceneInput);
+  const initialData = adapter.createSceneData(savedScene?.seed ?? seed, profile);
+  let nativeApplications = $state(Object.fromEntries(Object.keys(nativeDomainDefinitions)
+    .filter(key => key !== 'browser').map(key => [key, initialData[key]])));
   const hasRetention = profile.capabilities.includes('scene.saved-session');
   const { Desktop, Window, MessagesWindow, NotesWindow, Applications } = adapter;
-  const { applications } = profile;
+  const applications = $derived({ ...profile.applications, ...nativeInstalledAppMetadata(nativeApplications.store, profile) });
   const macDesktop = profile.family === 'macos';
   const expandedProperty = adapter.expandedProperty;
   const hasMenuBar = profile.capabilities.includes('shell.menu-bar');
+  const legacyMessagesMenu = $state(menuBarDefaults());
+  const legacyMenuViews = new Map();
+  let legacyMenuLifecycle;
+  const menuBarState = $derived(sharedMenuBarState ?? legacyMessagesMenu);
+  const dismissMenuBar = () => hasMenuBar ? dismissSharedMenuBar?.() : legacyMenuLifecycle?.clear();
+  const getMenuReturnFocus = () => hasMenuBar ? getSharedMenuReturnFocus?.() : legacyMenuLifecycle?.getReturnFocus();
   const hasWifi = profile.capabilities.includes('status.wifi');
   const hasBattery = profile.capabilities.includes('status.battery');
   const hasClock = profile.capabilities.includes('status.clock');
@@ -152,12 +200,14 @@
   const hasSpotlight = profile.capabilities.includes('shell.spotlight');
   const hasNotifications = profile.capabilities.includes('shell.notification-center');
   const hasWidgets = profile.capabilities.includes('shell.notification-widgets');
+  const hasMessages = profile.capabilities.includes('messages.conversations');
   const hasApplicationMenu = profile.capabilities.includes('shell.application-menu');
   const hasFileWorkflows = profile.capabilities.includes('shell.file-workflows');
-  const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows');
+  const hasEditWorkflows = profile.capabilities.includes('shell.edit-workflows') || profile.capabilities.includes('notes.workspace');
   const hasViewWorkflows = profile.capabilities.includes('shell.view-workflows');
   const hasWindowExtensions = profile.capabilities.includes('shell.window-extensions');
   const hasHelpWorkflows = profile.capabilities.includes('shell.help-workflows');
+  const hasHelpViewer = hasHelpWorkflows && Object.keys(profile.applications).some(appId => helpArticles(profile, appId).length > 0);
   const hasServices = profile.capabilities.includes('shell.services-workflows');
   const hasAppleMenu = profile.capabilities.includes('shell.apple-menu');
   const hasWindowMenu = profile.capabilities.includes('shell.window-menu') && !hasMenuBar;
@@ -171,7 +221,11 @@
   const hasAppearance = profile.capabilities.includes('shell.appearance');
   const modernMac = macDesktop && profile.capabilities.includes('shell.window-green-menu');
   const resizeEdges = Object.keys(WINDOW_RESIZE_AXES);
-  const WINDOW_UTILITY_SIZES = { ...APPLICATION_MENU_UTILITY_SIZES, ...SYSTEM_UTILITY_SIZES };
+  const WINDOW_UTILITY_SIZES = { ...APPLICATION_MENU_UTILITY_SIZES, ...SYSTEM_UTILITY_SIZES,
+    'teams-call': { width: 960, height: 680, minimumSize: { width: 640, height: 480 } },
+    'document-print': { width: macDesktop ? 740 : 900, height: macDesktop ? 620 : 650, minimumSize: { width: 560, height: 440 } },
+    'document-picker': { width: macDesktop ? 760 : 820, height: 550, minimumSize: { width: 540, height: 400 } },
+    'document-share': { width: macDesktop ? 450 : 620, height: macDesktop ? 390 : 460, minimumSize: { width: 360, height: 300 } } };
   const desktopUtilityApps = macDesktop ? {
     'desktop-info': { ...applications.finder, width: 360, height: 560, minimumSize: { width: 300, height: 300 } },
     'desktop-view-options': { ...applications.finder, width: 384, height: 500, minimumSize: { width: 360, height: 340 } },
@@ -398,12 +452,45 @@
     return () => { cancelled = true; };
   });
   // Application data outlives its window; close/minimize must not erase edits.
-  const initialData = profile.renderer === 'golden-gate' ? adapter.createSceneData(savedScene?.seed ?? seed, profile) : adapter.createSceneData();
   let notesState = $state(initialData.notes);
   let nativeState = $state(initialData.native);
+  adapter.restoreWindows?.(nativeState, windows, savedScene, profile);
   let messagesState = $state(initialData.messages);
+  let browserState = $state(initialData.browser);
+  let mailState = $state(initialData.mail);
+  let contactsState = $state(initialData.contacts);
+  let calendarState = $state(initialData.calendar);
+  let callsState = $state(initialData.calls);
+  let remindersState = $state(initialData.reminders);
+  let sharedMutationReserve = 0;
+  const domainViews = new Map();
+  const domainControllers = new Map();
+  const nativeContexts = new Map(), nativeControllers = new Map();
+  const ownedNativeTargets = new Map();
+  let standaloneSession = $state(session ? null : fictionalSessionDefaults(profile));
+  const nativeHardware = { touchId: !['macos-high-sierra-10.13', 'macos-mojave-10.14'].includes(profile.id),
+    tablet: false, mouse: true, trackpad: true, camera: true, microphone: true };
+  const messagesViews = new Map();
+  let messagesViewEpoch = $state(0);
+  let messagesController;
   let communicationsState = $state(hasServices ? initialData.communications : undefined);
-  const systemState = $state(hasAppleMenu ? initialData.system : undefined);
+  const systemState = $state(initialData.system);
+  const notificationBridges = createDomainNotificationBridges({
+    profile, getState: () => systemState.notifications, alive: () => !disposed,
+    getSceneTime: () => sharedClockWriter.getSceneTime(),
+    canCommit: delta => completeSceneStringUnits() + delta <= 4 * 1024 * 1024,
+    reserve: (delta, commit) => {
+      sharedMutationReserve += delta;
+      try { return commit(); } finally { sharedMutationReserve -= delta; }
+    },
+    onPosted: entry => notificationController?.notificationPosted(entry),
+    onRemoved: () => notificationController?.notificationRemoved(),
+  });
+  const notificationPorts = {
+    notify: notificationBridges.notify, planNotification: notificationBridges.planNotification,
+    updateNotification: notificationBridges.updateNotification,
+    updateNotifications: notificationBridges.updateNotifications,
+  };
   const spotlightFileIndex = $derived(new Map((macFiles?.files ?? []).map(file => [file.id, file])));
   const wifiPresentation = $state({ otherNetworks: false, join: null });
   let wifiJoinView = $state(null), wifiController;
@@ -431,19 +518,21 @@
   let storageMaintenanceError = $state(null);
   let storageMaintenanceClock = null;
   let appearanceState = $state(macDesktop ? initialData.appearance ?? appearanceDefaults(profile) : undefined);
-  let printingState = $state(hasFileWorkflows ? initialData.printing : undefined);
+  let printingState = $state(initialData.printing ?? printingDefaults());
+  let documentDestinations = $state(createDocumentDestinationPresentation());
   let editingPreferences = $state(hasEditWorkflows ? initialData.editing : undefined);
   let viewing = $state(hasViewWorkflows ? initialData.viewing : undefined);
-  const notesProjection = $derived(hasViewWorkflows ? notesViewProjection(notesState, viewing) : notesState);
   $effect(() => {
     if (appearanceOwner) return applyAppearance(document.documentElement, profile, macDesktop ? appearanceState
       : { mode: nativeState.apps.settings.theme, accent: nativeState.apps.settings.accent });
   });
   let macFiles = $state(macDesktop ? createMacSceneFiles() : undefined);
-  const clockContext = $derived(hasClock ? { sceneTime: macFiles.sceneTime,
-    timeZone: systemState.clock.timeZone, use24Hour: systemState.clock.use24Hour } : undefined);
-  const sharedClockWriter = hasClock ? { getSceneTime: () => macFiles.sceneTime,
-    onTimeChanged: time => { macFiles.sceneTime = Math.max(macFiles.sceneTime, time); } } : {};
+  let windowsSceneTime = $state(macDesktop ? null : initialData.files.sceneTime);
+  const clockContext = $derived({ sceneTime: macDesktop ? macFiles.sceneTime : windowsSceneTime,
+    timeZone: systemState.clock.timeZone, use24Hour: systemState.clock.use24Hour });
+  let clockPumpWork = Promise.resolve();
+  const sharedClockWriter = { getSceneTime: () => macDesktop ? macFiles.sceneTime : windowsSceneTime,
+    onTimeChanged: time => setClockSceneTime(Math.max(sharedClockWriter.getSceneTime(), time)) };
   const storageManagement = $derived(hasAppleMenu ? storageInventory(profile, macFiles) : null);
   const systemStorage = $derived(hasAppleMenu ? systemStorageSummary(profile, macFiles, storageManagement) : null);
   let recentDocumentCursor = hasAppleMenu ? macFiles.files.reduce((latest, file) =>
@@ -523,7 +612,7 @@
     }
   });
   let notesViewState = $state(initialData.notes ? { context: null, contextItem: null, focusedControl: null,
-    scroll: savedScene?.notesScroll ?? { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } } : undefined);
+    scroll: { list: { top: 0, left: 0 }, editor: { top: 0, left: 0 } } } : undefined);
   let desktopView = null;
   let dockStackControls = $state();
   let dockStackAnchor = $state(null);
@@ -551,7 +640,6 @@
   });
   let notesView = $state.raw(null);
   const applicationViews = new Map();
-  const soundMediaViews = new Map();
   let initialized = $state(false);
   let starting = false;
   let startup = Promise.resolve(null);
@@ -579,14 +667,16 @@
       if (nextProfile.id !== profile.id) await selectProfile(nextProfile);
       return { status: 'applied', target: { profileId: nextProfile.id } };
     },
-    ...createApplicationCommands(applications, {
+    ...createApplicationCommands(() => applications, {
       available: app => app.presentation ? sceneInteractionsAvailable() : windowInteractionsAvailable(),
       hasWorkspace: () => area.width > 0 && area.height > 0,
       hasWindow: appId => windows.some(window => window.appId === appId),
       isQuitting: appId => pendingQuitAppIds.includes(appId),
       canCreateWindow: appId => adapter.canCreateWindow?.(nativeState, appId) ?? true,
-      present: kind => handlers[`shell.${kind}.open`]({}, {}),
-      open: openWindow, focusKeyboard: focusKeyboardWindow, quit: quitApplication,
+      present: (kind, ownership) => handlers[`shell.${kind}.open`]({}, {}, ownership),
+      open: (appId, title, fresh, options) => openWindow(appId, title, fresh, options.utilityKind, options),
+      focusKeyboard: focusKeyboardWindow,
+      quit: (appId, ownership) => quitApplication(appId, false, ownership),
     }),
     'desktop.refreshLayout': (target, payload) => {
       if (Object.keys(target).length || Object.keys(payload).length) {
@@ -837,38 +927,87 @@
         else window.fileId = file.id;
       },
       focusDesktop,
-      openApp: (target, payload) => handlers['app.open'](target, payload),
+      openFile: file => {
+        const record = applicationFiles.getFile(file.id);
+        const mime = record && documentFileMime(record);
+        if (record && (['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'application/pdf', 'application/rtf'].includes(mime)
+          || typeof mime === 'string' && mime.startsWith('text/'))) {
+          const sourceWindow = windows.find(window => window.id === activeWindowId);
+          return openAssociatedVirtualFile(record.id, {}, {
+            windowId: sourceWindow?.id,
+            guard: () => !disposed && windowInteractionsAvailable()
+              && (!sourceWindow || windows.find(window => window.id === sourceWindow.id) === sourceWindow),
+          });
+        }
+        return handlers['app.open']({ appId: file.appId }, file.kind === 'application' ? {} : { title: file.name });
+      },
       windowAction: (command, target, payload) => handlers[command](target, payload),
     }),
   );
-  if (notesState) Object.assign(handlers, createNotesCommands(notesState, notesViewState, {
-    ...sharedClockWriter,
-    getView: () => notesView, focusWindow: () => focusWindow(windows.find(window => window.appId === 'notes' && !window.utilityKind).id),
-    prepareFocus: target => {
-      if (!hasViewWorkflows || !['title', 'body'].includes(target.control)) return;
-      const window = windows.find(window => window.appId === 'notes' && !window.utilityKind);
-      if (window?.notesPresentation) window.notesPresentation.documentVisible = true;
-    },
-    isVisible: () => sceneInteractionsAvailable() && !spaceState.overview && !launchpadState.view && !dashboardOpen && !desktopState.dock?.appWindows && !switching.switcher && !presentation.pairing
-      && windows.some(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window)),
-  }));
+  if (hasMessages && messagesState) {
+    messagesController = createMessagesCommands({
+      profile, getState: () => messagesState, alive: () => !disposed,
+      ...sharedClockWriter,
+      ...notificationPorts,
+      notifyMessage: notificationBridges.notify,
+      getWindow: messageWindow, getWindows: () => windows, getView: id => messagesViews.get(id),
+      available: messageWindowAvailable, focusWindow,
+      getActiveWindowId: () => activeWindowId,
+      resolveRecipient: resolveMessageRecipient,
+      getContacts: () => contactsState,
+      getContactEndpoints: () => captureMessageContactEndpoints()?.endpoints ?? [],
+      captureContactEndpoints: captureMessageContactEndpoints,
+      getReceivedFileFolders: () => desktopFileStore.files.filter(file => file.kind === 'folder' && !file.readOnly
+        && file.id !== 'trash' && applicationFiles.getFile(file.id) === file).map(file => ({ id: file.id, name: file.name })),
+      captureOutgoingProfile: conversation => {
+        const contacts = captureMessageContactEndpoints();
+        if (!contacts) return null;
+        const endpoints = new Set(contacts.endpoints.map(recipientIdentity));
+        return { profile: messageOutgoingProfile(messagesState, conversation,
+          conversation.participants.every(address => endpoints.has(recipientIdentity(address)))), current: contacts.current };
+      },
+      setBlockedAddresses: setCanonicalBlockedAddresses,
+      getClipboard: () => clipboardState,
+      setClipboard: (spec, owner) => applicationFiles.setClipboard(spec, owner),
+      getFile: id => applicationFiles.getFile(id),
+      createFile: (spec, owner) => applicationFiles.createFile(spec, owner),
+      planFile: (spec, owner) => applicationFiles.planFile(spec, owner),
+      saveAttachmentFile: (spec, owner) => destinationCommands.saveFile(spec, owner),
+      openFile: openAssociatedVirtualFile,
+      openSharedMessageContent,
+      chooseFile: (spec, owner) => destinationCommands.chooseFile(spec, owner),
+      printDocument: (spec, owner) => destinationCommands.printDocument(spec, owner),
+      ...(profile.family === 'windows' ? {
+        getSearchOptions: () => nativeState.apps.teams.ui.searchMode === 'history'
+          ? { scope: 'history', conversationId: messagesState.selectedConversationId,
+            historySince: messagesHistoryCutoff(sharedClockWriter.getSceneTime()) } : { scope: 'names' },
+        showThread: async (window, guard) => {
+          if (!guard()) return false;
+          const result = await handlers['win11.teams.surface.set']({ windowId: window.id }, { surface: 'full' });
+          return result.status === 'applied' && messageWindow(window.id) === window;
+        },
+      } : {}),
+      canCommitQuery: delta => completeSceneStringUnits() + delta <= 4 * 1024 * 1024,
+      canCommit: candidate => completeSceneStringUnits() - persistentStringUnits(messagesState)
+        + persistentStringUnits(candidate) <= 4 * 1024 * 1024,
+      settle: async () => { await tick(); await tick(); },
+    });
+    Object.assign(handlers, messagesController.handlers);
+  }
   if (hasEditWorkflows) {
     textEditing = createTextEditingCommands(notesState, clipboardState, {
       ...sharedClockWriter,
-      available: windowInteractionsAvailable, dataAvailable: sceneCoreAvailable, getSource: ownedTextSource,
-      prepare: target => prepareOwnedText(target),
-      finishSelection: finishOwnedTextSelection,
-      canCommitNote: (note, text) => workflowTextSize() - note.text.length + text.length - notesState.search.length <= 4 * 1024 * 1024,
-      canCommitSearch: query => workflowTextSize() - notesState.search.length + query.length <= 4 * 1024 * 1024,
-      onChanged: () => editingEpoch++,
+      available: windowInteractionsAvailable, dataAvailable: sceneCoreAvailable,
+      getView: id => domainViews.get(id),
+      prepare: prepareOwnedText,
+      invoke: (command, target, payload) => handlers[command](target, payload),
     });
     Object.assign(handlers, textEditing.handlers);
     const ownedTextTools = createTextToolsCommands(textToolsState, editingPreferences, clipboardState, textAssistance, {
       available: windowInteractionsAvailable, getDocument: ownedTextDocument, getNotesWindow: ownedNotesWindow,
       getToolInput: ownedToolInput, focusTool: focusOwnedTool, finishToolSelection: finishToolSelection,
-      prepareDocument: target => prepareOwnedText({ ...target, control: 'body' }),
-      revealMatch: revealNoteMatch, invoke: (command, target, payload, label) => command === 'notes.edit'
-        ? textEditing.editDocument(target.noteId, payload.text, label) : handlers[command](target, payload),
+      prepareDocument: target => prepareOwnedText({ ...target, control: 'editor' }),
+      revealMatch: revealNoteMatch, invoke: (command, target, payload) => handlers[command](target, payload),
       captureReturn: () => captureNativeFocus(),
       isReturnCurrent: textToolReturnCurrent,
       getDocumentSelection: documentSelectionTarget,
@@ -880,53 +1019,7 @@
     textTools = ownedTextTools;
     Object.assign(handlers, ownedTextTools.handlers);
   }
-  if (hasFileWorkflows) {
-    let fontBytes;
-    const fontLoader = () => fontBytes ??= (async () => {
-      const response = await fetch(`${import.meta.env.BASE_URL}fonts/LiberationSans-Regular.ttf`);
-      if (!response.ok) throw new Error('The bundled PDF font is unavailable.');
-      return new Uint8Array(await response.arrayBuffer());
-    })().catch(error => { fontBytes = undefined; throw error; });
-    const fileCommands = createNotesFileCommands(notesState, macFiles, printingState, {
-      ...sharedClockWriter,
-      available: fileWorkflowsAvailable, fontLoader,
-      captureLease: () => fileDialogController.captureLease(),
-      otherTextSize: fileWorkflowOtherTextSize,
-      isNotesVisible: () => !fileDialogState.current && Boolean(notesView)
-        && windows.some(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window)),
-      prepareNotesFocus: async () => {
-        const window = windows.find(window => window.appId === 'notes' && !window.utilityKind && !window.minimized && windowPresented(window));
-        if (!window) return false;
-        focusWindow(window.id);
-        if (hasViewWorkflows) window.notesPresentation.documentVisible = true;
-        return focusApplicationServiceBody(window.id);
-      },
-      notesCreated: async (noteId, focus) => {
-        clearNotesPresentation();
-        await tick(); await tick();
-        if (focus && sceneInteractionsAvailable() && notesState.selectedId === noteId) {
-          const window = windows.find(window => window.id === activeWindowId && window.appId === 'notes' && !window.utilityKind);
-          if (window) await focusApplicationServiceBody(window.id, noteId);
-        }
-        const control = document.activeElement?.dataset?.notesControl;
-        notesViewState.focusedControl = ['title', 'body', 'search'].includes(control) ? { control } : null;
-      },
-    });
-    Object.assign(handlers, fileCommands);
-    const fileDialog = createFileDialogCommands({
-      state: fileDialogState, files: macFiles, getIdPrefix: () => windowNamespace, fontLoader,
-      alive: () => !disposed, available: fileWorkflowsAvailable, getSource: fileDialogSource,
-      getView: () => fileDialogControls, captureReturn: captureSessionDesktop,
-      settle: async () => { await tick(); await tick(); },
-      restoreReturn: async (snapshot, dialog) => {
-        if (!sceneInteractionsAvailable() || activeWindowId !== dialog.windowId) return false;
-        if (notesState.selectedId === dialog.noteId) return restoreSessionDesktop(snapshot);
-        return focusKeyboardWindow(dialog.windowId);
-      },
-      invoke: (command, target, payload) => fileCommands[command](target, payload),
-    });
-    fileDialogController = fileDialog;
-    Object.assign(handlers, fileDialog.handlers);
+  if (macDesktop) {
     const finderContext = {
       files: macFiles, available: windowInteractionsAvailable,
       getWindow: windowId => activeAppId === 'finder' && activeWindowId === windowId
@@ -940,34 +1033,16 @@
       getDesktopSelection: () => activeAppId === 'finder' && activeWindowId === null ? desktopState.selectedFileIds : null,
       selectDesktop: fileId => { desktopState.selectedFileIds = [fileId]; desktopState.selectionAnchorId = fileId; },
     };
-    if (hasEditWorkflows) {
+    if (hasFileWorkflows && hasEditWorkflows) {
       finderEditing = createFinderEditing({ ...finderContext, clipboard: clipboardState, onChanged: () => editingEpoch++,
         filesChanged: reconcileFinderLocations,
         selectDesktop: fileIds => { desktopState.selectedFileIds = [...fileIds]; desktopState.selectionAnchorId = fileIds[0] ?? null; } });
       finderContext.editingHistory = finderEditing;
       Object.assign(handlers, finderEditing.handlers);
     }
-    Object.assign(handlers, createFinderFileCommands(finderContext));
-    handlers['notes.document.create'] = async (target, payload) => {
-      if (Object.keys(target).length || Object.keys(payload).length)
-        return rejected('invalid_arguments', 'Use an empty New Note target and payload.');
-      if (!windowInteractionsAvailable()) return rejected('unavailable', 'New Note is unavailable.');
-      const time = nextNoteTimestamp(notesState, hasClock ? macFiles.sceneTime : undefined);
-      let number = notesState.notes.length + 1;
-      while (notesState.notes.some(note => note.id === `note-${number}`) && number < Number.MAX_SAFE_INTEGER - 1) number++;
-      const noteId = `note-${number}`;
-      const record = { id: noteId, text: '', pinned: false, deleted: false, createdAt: time, updatedAt: time };
-      const delta = persistentStringUnits(record) + String(notesState.notes.length).length
-        + noteId.length - (notesState.selectedId?.length ?? 0) + 'notes'.length - notesState.folder.length - notesState.search.length;
-      if (notesState.notes.length >= 1024 || time === null || number >= Number.MAX_SAFE_INTEGER - 1
-        || workflowTextSize() + delta > 4 * 1024 * 1024)
-        return rejected('limit_exceeded', 'New Note exceeds the bounded scene record, clock or content budget.');
-      const opened = await handlers['app.open']({ appId: 'notes' }, {});
-      if (opened.status !== 'applied') return opened;
-      const created = await handlers['notes.create']({}, { focus: true });
-      return created.status === 'applied'
-        ? { status: 'applied', target: { noteId: created.target.noteId, windowId: opened.target.windowId } } : created;
-    };
+    const finderCommands = createFinderFileCommands(finderContext);
+    if (hasFileWorkflows) Object.assign(handlers, finderCommands);
+    else handlers['finder.selection.set'] = finderCommands['finder.selection.set'];
   }
   if (hasEditWorkflows) {
     nativeClipboard = createNativeClipboardCommands(clipboardState, {
@@ -1023,7 +1098,7 @@
     });
     Object.assign(handlers, windowExtensions.handlers);
   }
-  if (hasHelpWorkflows) {
+  if (hasHelpViewer) {
     const ownedHelpViewer = createHelpViewerCommands({
       profile, namespace: untrack(() => windowNamespace || 'local'),
       getPane: () => helpPane, setPane: pane => { helpPane = pane; },
@@ -1039,19 +1114,13 @@
   if (hasServices) {
     serviceSources = createServiceSources({
       namespace: () => windowNamespace, available: servicesAvailable,
-      activeAppId: () => activeAppId, activeWindowId: () => activeWindowId,
-      frame: getServiceFrame, menuFocus: () => menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null,
-      noteSelection: textSelectionTarget, noteSource: ownedTextSource,
-      noteSearchRevision: () => textEditing.targets().searchRevision,
-      provider: getServiceProvider, entry: (appId, entryId) => communicationEntry(communicationsState, appId, entryId),
-      selectedEntry: appId => communicationsState.selected[appId], selectedFiles: serviceSelectedFiles,
-      isSample: serviceSampleAvailable, sampleItem: index => messagesState.thread.items[index],
-      sampleRevision: () => messagesState.thread.timestamp,
+      getPhysicalSource: getPhysicalServiceSource, getContactSource: getContactServiceSource,
+      ownsPresentation: source => source.windowId === null ? source.appId === 'finder' && desktopView?.itemsAvailable() === true
+        : getServiceFrame(source.windowId, false)?.window === source.window,
       retainedSource: () => services?.retainedSource(),
     });
-    const serviceCommands = createServiceCommands(communicationsState, {
-      ...sharedClockWriter,
-      profile, notes: notesState, clipboard: clipboardState, namespace: () => windowNamespace,
+    const serviceCommands = createServiceCommands({
+      ...sharedClockWriter, profile, namespace: () => windowNamespace, getNotesState: () => notesState,
       ui: { get lookup() { return serviceLookup; }, set lookup(value) { serviceLookup = value; },
         get context() { return serviceContext; }, set context(value) { serviceContext = value; } },
       available: servicesAvailable, getSource: serviceSources.getSource, sourceCurrent: serviceSources.current,
@@ -1059,23 +1128,25 @@
       captureReturn: () => ({ ...captureSessionDesktop(), focus: services?.getReturnFocus() ?? captureNativeFocus() }),
       restoreReturn: (snapshot, source) => serviceSources.owns(source) ? restoreSessionDesktop(snapshot) : false,
       settle: async () => { await tick(); await tick(); }, getLookupView: () => serviceLookupView, getContextView: () => serviceContextView,
-      getProvider: getServiceProvider, describeProviders: describeServiceProviders, describeSampleMessages,
-      prepareDestination: prepareServiceDestination, destinationCurrent: serviceDestinationCurrent,
-      rollbackDestination: rollbackServiceDestination, finishDestination: finishServiceDestination,
-      prepareSource: prepareServiceSource, showFileInfo: showServiceFileInfo, selectSampleMessage: selectServiceSampleMessage,
-      canCreateNote: canCreateServiceNote, canCommitDraft: canCreateServiceDraft,
-      canCommitCommunications: canCommitServiceCommunications, providerValuesCurrent: serviceProviderValuesCurrent,
-      noteCreated: () => { clearNotesPresentation(); notesViewState.focusedControl = { control: 'body' }; },
+      getProvider: getServiceProvider, describeProviders: describeServiceProviders,
+      prepareServiceDestination, serviceDestinationCurrent, rollbackServiceDestination, commitServiceTransition,
+      setProviderSelection, setClipboard: (spec, owner) => applicationFiles.setClipboard(spec, owner),
+      prepareSource: prepareServiceSource, showFileInfo: showServiceFileInfo,
       changed: () => serviceEpoch++,
     });
     services = serviceCommands;
     Object.assign(handlers, serviceCommands.handlers);
   }
-  if (hasApplicationMenu) Object.assign(handlers, createApplicationMenuCommands({
+  if (hasApplicationMenu || macDesktop && hasMessages) Object.assign(handlers, createApplicationMenuCommands({
     profile, notes: notesState,
     available: () => windowInteractionsAvailable() && !switching.switcher && !presentation.pairing,
     getActiveAppId: () => activeAppId, getRunningAppIds: () => runningAppIds,
     isHidden: isAppHidden, isQuitting: appId => pendingQuitAppIds.includes(appId),
+    openNotesPreferences: async () => {
+      const window = await prepareDomainWindow('notes', windowInteractionsAvailable);
+      return window ? handlers['notes.sheet.open']({ windowId: window.id }, { sheet: 'preferences' })
+        : rejected('unavailable', 'The original Notes preferences window is unavailable.');
+    },
     openPanel: (appId, kind) => openWindowPanel(appId, kind,
       kind === 'application-about' ? `About ${applications[appId].name}` : `${applications[appId].name} Settings`),
     getPanel: id => {
@@ -1160,24 +1231,10 @@
     dateShown: () => sceneRoot?.querySelector('[data-menu-invoker="clock"]')?.dataset.dateShown === 'true',
   }) : null;
   if (clockController) Object.assign(handlers, clockController.handlers);
-  const soundMediaController = hasSound ? createSoundMediaCommands({
-    profile, getState: () => systemState.sound, getViews: () => soundMediaViews.entries(),
-    getWindow: windowId => disposed ? null : windows.find(window => window.id === windowId) ?? null,
-    getView: windowId => soundMediaViews.get(windowId),
-    available: () => windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
-      && !servicePending && !switching.switcher && !presentation.pairing,
-    notify: () => {
-      const original = menuBarState?.menuId === 'sound' ? getMenuReturnFocus?.() : undefined;
-      soundMediaRevision++;
-      if (menuBarState?.menuId === 'sound' && systemState.sound.showWhen === 'when-active'
-        && !soundMediaController.targets().players.some(player => player.paused === false)) void retireStatusMenu('sound', original);
-    },
-  }) : null;
-  if (soundMediaController) Object.assign(handlers, soundMediaController.handlers);
   const soundController = hasSound ? createSoundCommands({
     profile, presentation: soundPresentation, getState: () => systemState.sound,
-    getMedia: () => { soundMediaRevision; return soundMediaController.targets().players; },
-    notifyMedia: () => soundMediaController.syncSound(),
+    getMedia: getNativeSoundPlayers,
+    notifyMedia: syncNativeSound,
     available: () => sceneCoreAvailable() && !fileDialogState.current && !wifiPresentation.join && !batteryPresentation.options && !bluetoothPresentation.pair
       && !clockPresentation.options && !clockPresentation.editor && !utilityPreparation && !servicePreparation
       && !servicePending && !switching.switcher && !presentation.pairing && !spaceState.overview
@@ -1202,7 +1259,7 @@
     capture: () => menuBarState?.menuId ? getMenuReturnFocus?.() ?? captureSessionDesktop() : captureSessionDesktop(),
     restore: snapshot => !disposed && foreground ? restoreSessionDesktop(snapshot) : false,
     settle: async () => { await tick(); await tick(); },
-    notifySound: () => soundMediaController.syncSound(),
+    notifySound: syncNativeSound,
     retireMenu: original => retireStatusMenu('bluetooth', original),
   }) : null;
   if (bluetoothController) Object.assign(handlers, bluetoothController.handlers);
@@ -1263,15 +1320,25 @@
     const ownedNotifications = createNotificationCommands({
       profile, namespace: untrack(() => `${windowNamespace || 'local'}-${crypto.randomUUID()}`),
       alive: () => !disposed, available: notificationInteractionsAvailable,
-      getState: () => systemState.notifications, getSceneTime: () => macFiles.sceneTime,
+      getState: () => systemState.notifications, getSceneTime: sharedClockWriter.getSceneTime,
       canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
+      reserve: (delta, commit) => {
+        sharedMutationReserve += delta;
+        try { return commit(); } finally { sharedMutationReserve -= delta; }
+      },
+      prepareNotificationDismissals: prepareCanonicalNotificationDismissals,
       getPane: () => notificationPane, setPane: pane => { notificationPane = pane; },
       getView: () => notificationViews.get(notificationPane?.centerId),
       getUi: () => notificationUi, getBannerView: id => notificationBannerViews.get(id),
       actions: entry => notificationDestinationActions(resolveNotificationDestination(entry, notificationSources(), profile)),
       retainDestination: entry => retainNotificationDestination(entry, notificationSources, profile, () => !disposed),
       openDestination: openNotificationDestination, completeDestination: completeNotificationDestination,
+      snoozeDestination: snoozeNotificationDestination,
+      snoozeChoices: entry => entry.destination?.kind === 'clock'
+        ? [nativeApplications.clockApp.preferences.snoozeMinutes] : [5, 15, 60],
       replyDestination: replyNotificationDestination, openSettings: openNotificationSettings,
+      callDestination: (lease, action, guard) => domainControllers.get(macDesktop ? 'facetime' : 'teams-call')
+        .notificationAction(lease.source.recordId, action, { guard }),
       getSettingsOwner: notificationSettingsOwner,
       prepareSettings: async (owner, controlId, guard) => {
         if (!guard() || !owner.view.controlIds().includes(controlId)) return false;
@@ -1303,6 +1370,10 @@
       getEditorView: editorId => widgetEditorViews.get(editorId),
       getDataOwner: widgetDataOwner, getDataView: windowId => widgetDataViews.get(windowId),
       getDataTargets: widgetDataTargets, openData: openSelectedSceneData,
+      getReminders: () => remindersState, getCalendar: () => calendarState,
+      getReminderWidgetProjection: () => reminderWidgetProjection(remindersState),
+      getCalendarWidgetProjection: () => calendarWidgetProjection(calendarState),
+      setReminderCompleted: setCanonicalReminderCompleted,
       closeCenter: pane => { if (notificationPane === pane) notificationController.clear(); },
       canCommit: delta => workflowTextSize() + delta <= 4 * 1024 * 1024,
       settle: async () => { await tick(); await tick(); },
@@ -1344,6 +1415,8 @@
     getProfile: () => profile, focusDesktop, focusWindow, closeWindow, cancelAppQuit,
     getDesktopItems, renameDesktopItem, moveDesktopItems, windowInteractionsAvailable,
     createDesktopFolder, trashDesktopItems, getDesktopFileInfo,
+    openAssociatedFile: (fileId, ownership) => openAssociatedVirtualFile(fileId, {}, ownership),
+    openLegacySvgFile,
     invoke: (command, target = {}, payload = {}) => handlers[command](target, payload),
   }));
   if (hasAppleMenu) Object.assign(handlers, createStorageCommands({
@@ -1381,13 +1454,160 @@
       return { status: 'applied', target: { windowId: entry.window.id, top: node.scrollTop, left: node.scrollLeft } };
     },
   }));
+  const domainGraphs = { browser: browserState, mail: mailState, contacts: contactsState, calendar: calendarState,
+    calls: callsState, reminders: remindersState, notes: notesState };
+  const applicationFiles = createApplicationFileBridges({
+    profile, getStore: () => desktopFileStore, alive: () => !disposed,
+    getSceneTime: sharedClockWriter.getSceneTime, getClipboard: () => clipboardState,
+    canCommit: delta => completeSceneStringUnits() + delta <= 4 * 1024 * 1024,
+    makeRecord: record => { let value = $state(record); return value; },
+    reserve: (delta, commit) => {
+      sharedMutationReserve += delta;
+      try { return commit(); } finally { sharedMutationReserve -= delta; }
+    },
+  });
+  const destinationCommands = createDocumentDestinationCommands({
+    profile, getPrinting: () => printingState, getPresentation: () => documentDestinations,
+    getFilesStore: () => desktopFileStore, alive: () => !disposed,
+    canCommit: delta => completeSceneStringUnits() + delta <= 4 * 1024 * 1024,
+    getSceneTime: sharedClockWriter.getSceneTime,
+    getWindow: id => windows.find(window => window.id === id),
+    getActiveWindowId: () => activeWindowId,
+    focusWindow: (id, { guard }) => {
+      if (guard() !== true || !destinationWindowAvailable(windows.find(window => window.id === id))) return false;
+      focusWindow(id);
+      return activeWindowId === id;
+    },
+    getView: id => domainViews.get(id) ?? messagesViews.get(id),
+    available: domainWindowAvailable,
+    tick: async () => { await tick(); await tick(); },
+    createWindow: (appId, options) => openWindow(appId, options.title, true, options.utilityKind, options),
+    closeWindow: (id, ownership) => closeWindow(id, ownership),
+    createFile: applicationFiles.createFile,
+    setClipboard: (spec, owner) => applicationFiles.setClipboard({ ...spec, kind: 'text', fileIds: [] }, owner),
+    composeMail: composeCanonicalMail, composeMessage: composeCanonicalMessage,
+  });
+  Object.assign(handlers, destinationCommands.handlers);
+  const sceneRuntime = createSceneRuntimeInventory({
+    profile, hardware: nativeHardware, getShared: getNativeShared,
+    makeRecord: value => { let original = $state(value); return original; },
+    canCommit: delta => completeSceneStringUnits() + delta <= 4 * 1024 * 1024,
+    getRunningAppIds: () => runningAppIds, getWindows: () => windows,
+    getFiles: () => desktopFileStore, getSceneTime: sharedClockWriter.getSceneTime,
+    getApplications: () => applications, getCatalog: () => sceneCatalog,
+    getApplicationGraph: appId => {
+      const definition = nativeDomainForWindow(profile, { appId });
+      return definition ? definition.key === 'browser' ? browserState : nativeApplications[definition.key]
+        : domainGraphs[appId] ?? nativeState?.apps?.[appId];
+    },
+  });
+  $effect(() => {
+    runningAppIds.length;
+    applications;
+    getNativeShared('session')?.users;
+    untrack(() => sceneRuntime.synchronize());
+  });
+  const captureNativeFrame = createDesktopFrameCapture({ getRoot: () => sceneRoot,
+    getGeneration: () => `${area.width}:${area.height}`, alive: () => !disposed && foreground });
+  const domainClipboard = {
+    read: () => clipboardState.text,
+    write: text => applicationFiles.setClipboard({ kind: 'text', text, fileIds: [] }).status === 'applied',
+  };
+  const browserMergeRetirements = new WeakSet();
+  for (const [kind, factory] of [['browser', createBrowserCommands], ['mail', createMailCommands],
+    ['contacts', createContactsCommands], ['calendar', createCalendarCommands], ['calls', createCallsCommands], ['reminders', createRemindersCommands], ['notes', createNotesWorkspaceCommands]]) {
+    const appId = kind === 'browser' ? macDesktop ? 'safari' : 'edge' : kind === 'calls' ? macDesktop ? 'facetime' : 'teams' : kind;
+    const utilityKind = kind === 'calls' && !macDesktop ? 'teams-call' : null;
+    const matches = window => kind === 'browser' ? ['safari', 'edge', 'chrome'].includes(window.appId) && !window.utilityKind
+      : window.appId === appId && (utilityKind ? window.utilityKind === utilityKind : !window.utilityKind);
+    const context = {
+      profile, getState: () => domainGraphs[kind], alive: () => !disposed,
+      ...notificationPorts,
+      getShared: getNativeShared, executeOwned: executeNativeOwned,
+      getWindow: id => windows.find(window => window.id === id) ?? null,
+      getWindows: () => windows.filter(matches),
+      getView: id => domainViews.get(id),
+      available: domainWindowAvailable, tick, getSceneTime: sharedClockWriter.getSceneTime,
+      setSceneDate: setCanonicalSceneDate,
+      focusWindow: id => focusWindow(id),
+      createWindow: (destination, options = {}) => {
+        if (options.isCurrent && options.isCurrent() !== true) return null;
+        return openWindow(destination, options.title, true, options.utilityKind, options);
+      },
+      closeWindow: (id, options = {}) => {
+        if (options.isCurrent && options.isCurrent() !== true) return false;
+        return closeWindow(id, options);
+      },
+      canCommit: delta => completeSceneStringUnits() + delta <= 4 * 1024 * 1024,
+      clipboard: kind === 'mail' ? clipboardState : domainClipboard, getClipboard: () => clipboardState,
+      composeMail: composeCanonicalMail, composeMessage: composeCanonicalMessage,
+      printDocument: destinationCommands.printDocument, share: destinationCommands.share,
+      chooseFile: destinationCommands.chooseFile,
+      startCall: startCanonicalCall,
+      getAccount: () => messagesState.account,
+      getBlockedAddresses: () => messagesState.blockedAddresses,
+      setBlockedAddresses: setCanonicalBlockedAddresses,
+      setAccount: setCanonicalAccount,
+      resolveContacts: kind === 'browser' ? query => resolveCanonicalContacts(contactsState, query) : resolveNativeContacts,
+      ...applicationFiles,
+      openFile: kind === 'browser' ? spec => openAssociatedVirtualFile(spec.fileId, null, { guard: spec.isCurrent, windowId: spec.windowId }) : openAssociatedVirtualFile,
+      revealFile: kind === 'browser' ? spec => revealCanonicalFile(spec.fileId, { guard: spec.isCurrent, windowId: spec.windowId }) : revealCanonicalFile,
+      createContact: createCanonicalContact, acceptInvitation: respondCanonicalInvitation,
+      playSound: playCanonicalMailSound,
+      mergeBrowserWindows: mergeCanonicalBrowserWindows,
+      createMailDraft: createCanonicalMailDraft,
+    };
+    const controller = factory(context);
+    if (kind === 'browser') { nativeContexts.set(kind, context); nativeControllers.set(kind, controller); }
+    domainControllers.set(utilityKind ?? appId, controller);
+    Object.assign(handlers, controller.handlers);
+  }
+  for (const definition of Object.values(nativeDomainDefinitions)) {
+    if (!definition.createCommands || definition.key === 'browser') continue;
+    const context = createNativeContext(definition);
+    const controller = definition.createCommands(context);
+    nativeContexts.set(definition.key, context);
+    nativeControllers.set(definition.key, controller);
+    for (const appId of definition.appIds(profile)) domainControllers.set(appId, controller);
+    for (const utilityKind of definition.utilityKinds ?? []) domainControllers.set(utilityKind, controller);
+    Object.assign(handlers, controller.handlers);
+  }
+  function representedMacMenuOwner() {
+    return macDesktop && ['messages', 'safari', 'mail', 'contacts', 'calendar'].includes(activeAppId);
+  }
+  if (macDesktop && !hasMenuBar) {
+    const menuHandlers = createMenuBarCommands({
+      profile, state: legacyMessagesMenu,
+      getMenus: () => representedMacMenuOwner() ? sharedMenuProviders().filter(menu => !['wifi', 'battery', 'clock', 'sound', 'bluetooth', 'input'].includes(menu.menuId)) : [],
+      getView: id => legacyMenuViews.get(id),
+      available: () => foreground && representedMacMenuOwner() && sharedMenusAvailable(),
+      settle: async () => { await tick(); await tick(); },
+      captureFocus: captureSessionDesktop, restoreFocus: restoreSessionDesktop,
+      preparePresentation: () => clearSwitchingPresentations(false, true), restorePresentation: restoreSwitchingPresentations,
+      captureAction: captureMenuAction,
+      invoke: ({ command, target = {}, payload = {} }) => handlers[command](target, payload),
+      registerLifecycle: lifecycle => { legacyMenuLifecycle = lifecycle; },
+    });
+    for (const [name, operation] of Object.entries(menuHandlers)) {
+      const fallback = handlers[name];
+      handlers[name] = (target, payload) => representedMacMenuOwner() || legacyMessagesMenu.menuId
+        ? operation(target, payload)
+        : fallback ? fallback(target, payload) : rejected('unavailable', 'An installed represented Mac application owns these native menus.');
+    }
+  }
+  $effect(() => {
+    if (!hasMenuBar && legacyMessagesMenu.menuId && (!representedMacMenuOwner() || !foreground || !sharedMenusAvailable())) legacyMenuLifecycle?.clear();
+    if (hasWindowMenu && activeAppId === 'messages' && desktopState.windowMenuOpen) {
+      desktopState.windowMenuOpen = false; desktopState.windowMenuItem = null; desktopState.windowMenuScrollTop = 0;
+    }
+  });
   for (const name of Object.keys(handlers)) {
     if (!Object.hasOwn(commandCatalog, name)) throw new Error(`Missing native command descriptor: ${name}`);
   }
   const sceneCatalog = Object.fromEntries(Object.entries(commandCatalog).filter(([name, descriptor]) =>
     descriptor.profiles.includes(profile.id) && !descriptor.capability.startsWith('session.')
     && !['scene.seed', 'scene.saved-session', 'shell.menu-bar'].includes(descriptor.capability)
-    && !(hasMenuBar && (name.startsWith('menu.') || name.startsWith('app.menu.') || name === 'desktop.scroll'))));
+    && !(hasMenuBar && (name.startsWith('menu.') || name.startsWith('app.menu.') || name.startsWith('app.commandMenu.') || name === 'desktop.scroll'))));
   // Composite callbacks capture this binding, so they use the same sealed,
   // capability-guarded registry after native profile selection.
   handlers = Object.fromEntries(Object.entries(handlers).filter(([name]) => Object.hasOwn(sceneCatalog, name)));
@@ -1397,26 +1617,30 @@
       ...(hasLaunchpad ? { launchpad: launchpadState } : {}),
       ...(hasDashboard ? { dashboard: dashboardState } : {}),
       ...(hasAppearance ? { appearance: appearanceState } : {}),
-      ...(notesState ? { notes: notesState, notesView: notesViewState } : {}),
+      notes: notesWorkspacePublicProjection(notesState),
       ...(messagesState ? { messages: messagesState } : {}),
+      browser: browserState, mail: mailState, contacts: contactsState, calendar: calendarState,
+      calls: callsState, reminders: remindersState, ...nativeApplications,
+      sceneTime: sharedClockWriter.getSceneTime(),
+      ...(hasMessages ? { messagesBrowsing: messagesController.targets() } : {}),
       ...(hasServices ? { communications: communicationsState, services: services.targets() } : {}),
-      ...(hasAppleMenu ? { system: systemState } : {}),
+      system: systemState,
       ...(hasAppleMenu ? { storageManagement: { inventory: storageManagement, confirmation: storageConfirmation, error: storageMaintenanceError } } : {}),
       ...(hasWifi ? { wifi: wifiController.targets() } : {}),
       ...(hasBattery ? { battery: batteryController.targets() } : {}),
       ...(hasClock ? { clock: clockController.targets() } : {}),
-      ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
+      ...(hasSound ? { sound: soundController.targets() } : {}),
       ...(hasBluetooth ? { bluetooth: bluetoothController.targets() } : {}),
       ...(hasInput ? { input: inputController.targets() } : {}),
       ...(hasSpotlight ? { spotlight: spotlightController.summary() } : {}),
       ...(hasNotifications ? { notifications: notificationController.summary() } : {}),
       ...(hasWidgets ? { widgets: widgetController.summary() } : {}),
-      ...(macFiles ? { files: macFiles.files } : {}),
+      files: desktopFileStore.files,
       ...(hasFileWorkflows ? { printing: printingState, fileDialog: fileDialogState.current } : {}),
       ...(hasEditWorkflows ? { editing: editingTargets(), textTools: textTools.targets() } : {}),
       ...(hasViewWorkflows ? { viewing, viewPresentation: viewingTargets() } : {}),
       ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
-      ...(hasHelpWorkflows ? { helpViewer: helpViewer.targets() } : {}),
+      ...(hasHelpViewer ? { helpViewer: helpViewer.targets() } : {}),
       ...(nativeState ? { native: nativeState } : {}),
       ...(hasRetention ? { retention: { closedWindows, automaticPersistence: false, reopen: 'last-ordinary-window-current-desktop' } } : {}),
     }),
@@ -1425,7 +1649,7 @@
       ...(hasWifi ? { wifi: wifiController.targets() } : {}),
       ...(hasBattery ? { battery: batteryController.targets() } : {}),
       ...(hasClock ? { clock: clockController.targets() } : {}),
-      ...(hasSound ? { sound: soundController.targets(), soundMedia: soundMediaController.targets() } : {}),
+      ...(hasSound ? { sound: soundController.targets() } : {}),
       ...(hasBluetooth ? { bluetooth: bluetoothController.targets() } : {}),
       ...(hasNotifications ? { notifications: notificationController.targets() } : {}),
       ...(hasWidgets ? { widgets: widgetController.targets() } : {}),
@@ -1570,12 +1794,9 @@
           && !window.minimized && !window[expandedProperty] && windowInteractionsAvailable(), edges: resizeEdges, minimumSize: windowApplication(window).minimumSize },
       })),
       ...(hasWindowMenu ? { menus: [{ menuId: 'window', itemIds: ['close', 'minimize', 'zoom', ...windows.map(({ id }) => `window:${id}`)] }] } : {}),
-      ...(notesState ? { notes: {
-        records: notesState.notes.map(({ id, deleted }) => ({ noteId: id, deleted })),
-        eligibleIds: visibleNotes(notesState).map(({ id }) => id),
-      } } : {}),
-      ...(hasApplicationMenu ? { applicationMenu: applicationMenuTargets() } : {}),
-      ...(hasFileWorkflows ? { fileDialog: $state.snapshot(fileDialogController.targets()), printing: {
+      notes: domainControllers.get('notes').targets(),
+      ...(hasApplicationMenu || macDesktop && hasMessages ? { applicationMenu: applicationMenuTargets() } : {}),
+      ...(hasFileWorkflows ? { printing: {
         printerId: 'studio-printer', printerName: 'Studio Printer', fictional: true,
         jobs: printingState.jobs.map(({ id, title, status, copies, pageCount, pageFrom, pageTo, printedPages }) =>
           ({ jobId: id, title, status, copies, pageCount, pageFrom, pageTo, printedPages })),
@@ -1583,8 +1804,9 @@
       ...(hasEditWorkflows ? { editing: editingTargets() } : {}),
       ...(hasViewWorkflows ? { viewing: viewingTargets() } : {}),
       ...(hasWindowExtensions ? { windowExtensions: windowExtensions.targets() } : {}),
-      ...(hasHelpWorkflows ? { helpViewer: helpViewer.targets() } : {}),
+      ...(hasHelpViewer ? { helpViewer: helpViewer.targets() } : {}),
       ...(hasServices ? { services: services.targets() } : {}),
+      ...(hasMessages ? { messages: messagesController.targets() } : {}),
       ...(hasSpotlight ? { spotlight: { ...spotlightController.targets(),
         preferences: spotlightPreferencesController.summary(), folders: spotlightPrivacyFolders() } } : {}),
       ...(hasAppleMenu ? { system: systemTargets() } : {}),
@@ -1592,8 +1814,10 @@
     }), () => profile, commandCatalog);
 
   async function settleCommands() {
+    await clockPumpWork;
     if (hasAppleMenu) { runStorageMaintenance(); reconcileStorageViews(); }
     if (hasNotifications) retireUnavailableNotificationSources();
+    sceneRuntime.synchronize();
     await tick();
     if (!disposed && desktopView && area.width && area.height) {
       const positionsChanged = reconcileDesktopPositions(area);
@@ -1641,6 +1865,8 @@
 
   function registerDesktopView(view) {
     desktopView = view;
+    // Child desktop mount can report layout before the scene root binding exists.
+    void tick().then(() => { if (!disposed && desktopView === view && sceneRoot?.isConnected) measureStageArea(); });
     return () => { if (desktopView === view) desktopView = null; };
   }
 
@@ -1649,20 +1875,29 @@
     return () => { if (notesView === view) notesView = null; };
   }
 
+  function registerMessagesView(windowId, view, original) {
+    if (view) messagesViews.set(windowId, view);
+    else if (messagesViews.get(windowId) === original) messagesViews.delete(windowId);
+    messagesViewEpoch++;
+  }
   function registerApplicationView(windowId, view) {
     applicationViews.set(windowId, view);
     return () => { if (applicationViews.get(windowId) === view) applicationViews.delete(windowId); };
   }
-  function registerSoundMediaView(windowId, view) {
-    soundMediaViews.set(windowId, view); soundMediaRevision++;
-    soundMediaController.syncSound();
-    return () => {
-      if (soundMediaViews.get(windowId) !== view) return;
-      const original = menuBarState?.menuId === 'sound' ? getMenuReturnFocus?.() : undefined;
-      soundMediaViews.delete(windowId); soundMediaRevision++;
-      if (menuBarState?.menuId === 'sound' && systemState.sound.showWhen === 'when-active'
-        && !soundMediaController.targets().players.some(player => player.paused === false)) void retireStatusMenu('sound', original);
-    };
+  function getNativeSoundPlayers() {
+    soundMediaRevision;
+    return ['media', 'dvd'].flatMap(key => nativeDomainDefinitions[key].sessions(nativeApplications[key])
+      .map(session => ({ windowId: session.windowId, appId: session.nativeAppId ?? 'dvd-player', paused: !session.playing })));
+  }
+  function syncNativeSound() {
+    soundMediaRevision++;
+    for (const [id, view] of domainViews) {
+      const original = windows.find(window => window.id === id);
+      if (nativeDomainForWindow(profile, original)?.key === 'media') view.setSound(systemState.sound);
+    }
+    if (menuBarState?.menuId === 'sound' && systemState.sound.showWhen === 'when-active'
+      && !getNativeSoundPlayers().some(player => player.paused === false))
+      void retireStatusMenu('sound', getMenuReturnFocus?.());
   }
   async function retireStatusMenu(menuId, original) {
     if (menuBarState?.menuId !== menuId) return;
@@ -1696,6 +1931,622 @@
   }
   function windowInteractionsAvailable() {
     return sceneInteractionsAvailable() && !desktopState.dock?.appWindows && !spaceState.overview && !launchpadState.view && !dashboardOpen;
+  }
+  function domainControllerForWindow(window) {
+    return window ? ['document-print', 'document-picker', 'document-share'].includes(window.utilityKind)
+      ? destinationCommands : nativeControllers.get(nativeDomainForWindow(profile, window)?.key)
+        ?? domainControllers.get(window.utilityKind ?? window.appId) : null;
+  }
+  function getNativeShared(name) {
+    if (name === 'system') return systemState;
+    if (name === 'session') return session ?? standaloneSession;
+    if (name === 'appearance') return appearanceState;
+    if (name === 'dock') return desktopState.dock;
+    if (name === 'messages') return messagesState;
+    if (name === 'browser') return browserState;
+    if (name === 'files') return desktopFileStore;
+    if (name === 'power') return systemState.battery;
+    if (name === 'accessibility') return nativeApplications.preferences.configuration.accessibility;
+    if (name === 'audiomidi') return systemState.sound.audioMidi;
+    return nativeApplications[name] ?? domainGraphs[name] ?? systemState[name];
+  }
+  function nativeSharedSources() {
+    return Object.fromEntries(['system', 'appearance', 'dock', 'session', 'notifications', 'widgets',
+      'sound', 'wifi', 'bluetooth', 'input', 'power', 'clock', 'preferences', 'accessibility', 'fonts',
+      'fontbook', 'audiomidi', 'backup'].map(name => [name, getNativeShared(name)]));
+  }
+  function resolveNativeContacts(query, ownership = {}) {
+    const source = contactsState, cards = source.contacts, accounts = source.accounts, preferences = source.preferences;
+    const guard = ownership.guard ?? (() => !disposed);
+    if (!guard()) return rejected('stale_target', 'The original contact request is unavailable.');
+    const originalCards = cards.map(card => [card, JSON.stringify(card)]);
+    const originalAccounts = accounts.map(account => [account, JSON.stringify(account)]);
+    const preferenceSignature = JSON.stringify(preferences);
+    const isCurrent = () => guard() && contactsState === source && source.contacts === cards && source.accounts === accounts
+      && source.preferences === preferences && JSON.stringify(preferences) === preferenceSignature
+      && cards.length === originalCards.length && originalCards.every(([card, signature], index) => cards[index] === card && JSON.stringify(card) === signature)
+      && accounts.length === originalAccounts.length && originalAccounts.every(([account, signature], index) => accounts[index] === account && JSON.stringify(account) === signature);
+    const rows = resolveCanonicalContacts(source, query);
+    if (ownership.selectedEndpoint) {
+      const { contactId, address } = ownership.selectedEndpoint;
+      const row = rows.find(row => row.id === contactId), card = linkedContact(source, contactId);
+      const identity = recipientIdentity(address);
+      const phone = card?.phones.find(endpoint => recipientIdentity(endpoint.value) === identity);
+      const email = card?.emails.find(endpoint => recipientIdentity(endpoint.value) === identity);
+      if (!row || !identity || !phone && !email || !isCurrent())
+        return rejected('stale_target', 'The selected address no longer belongs to the original enabled contact.');
+      if (phone) row.phone = phone.value;
+      else row.email = email.value;
+    }
+    return isCurrent() ? { status: 'applied', contacts: rows, isCurrent }
+      : rejected('stale_target', 'The original Contacts records or endpoint changed.');
+  }
+  function captureMessageContactEndpoints() {
+    const original = resolveNativeContacts('', { guard: () => !disposed });
+    if (original.status !== 'applied') return null;
+    const endpoints = messageRecipientChoices().map(row => row.address);
+    return original.isCurrent() ? { endpoints, current: original.isCurrent } : null;
+  }
+  function setCanonicalAccount(values, ownership) {
+    return mutateNativeShared('messages', candidate => { Object.assign(candidate.account, values); }, ownership);
+  }
+  function setCanonicalBlockedAddresses(addresses, ownership) {
+    if (!Array.isArray(addresses) || typeof ownership?.guard !== 'function'
+      || ownership.guard() !== true || disposed) return rejected('stale_target', 'The original blocked-endpoint owner is unavailable.');
+    const original = messagesState, before = JSON.stringify(original), candidate = copyCanonicalData(original);
+    candidate.blockedAddresses = addresses.map(recipientIdentity);
+    const validation = validateMessagesState(candidate, profile);
+    if (!validation.ok) return rejected('invalid_arguments', validation.message);
+    const current = () => !disposed && messagesState === original && JSON.stringify(original) === before
+      && ownership.guard() === true;
+    const calls = domainControllers.get(macDesktop ? 'facetime' : 'teams-call');
+    const callPlan = ownership.onCommit ? null : calls.prepareBlockedAddressEffects(candidate.blockedAddresses, { guard: current });
+    if (!ownership.onCommit && (!callPlan || !callPlan.current()))
+      return rejected('stale_target', 'The original incoming-call block effects could not be prepared.');
+    const actorDelta = callPlan?.delta ?? ownership.reserveTextUnits ?? 0;
+    const delta = canonicalStringUnits(candidate) - canonicalStringUnits(original);
+    if (!Number.isSafeInteger(actorDelta) || completeSceneStringUnits() + delta + actorDelta > 4 * 1024 * 1024)
+      return rejected('limit_exceeded', 'The complete blocked-endpoint transaction exceeds the scene string budget.');
+    const ids = callPlan?.notificationsToDismiss ?? ownership.notificationsToDismiss ?? [];
+    const commit = () => {
+      if (!current() || callPlan && !callPlan.current()) return false;
+      sharedMutationReserve += delta;
+      let accepted;
+      try { accepted = callPlan ? callPlan.commit() === true : ownership.onCommit() === true; }
+      finally { sharedMutationReserve -= delta; }
+      if (!accepted || messagesState !== original || JSON.stringify(original) !== before) return false;
+      applyCanonicalData(original, candidate);
+      return true;
+    };
+    if (ids.length) {
+      return notificationBridges.updateNotifications(ids, {
+        dismissed: true, reserveTextUnits: delta + actorDelta,
+        onCommit: actualIds => actualIds.length === ids.length && actualIds.every((id, index) => id === ids[index]) && commit(),
+      }, { guard: current, ...(ownership.windowId ? { windowId: ownership.windowId } : {}) });
+    }
+    return commit() ? { status: 'applied' }
+      : rejected('stale_target', 'The original Messages and Calls owners refused the paired blocked-endpoint mutation.');
+  }
+  function startCanonicalCall(spec, ownership) {
+    return domainControllers.get(macDesktop ? 'facetime' : 'teams-call').startCall(spec, ownership);
+  }
+  function mutateNativeShared(name, mutator, ownership = {}) {
+    const original = getNativeShared(name), guard = ownership.guard ?? (() => !disposed);
+    if (!original || typeof mutator !== 'function' || guard() !== true)
+      return rejected('stale_target', 'Use the original canonical shared source.');
+    const systemKey = name === 'power' ? 'battery' : name === 'audiomidi' ? 'sound' : name;
+    const owner = name === 'accessibility' ? nativeApplications.preferences
+      : name === 'audiomidi' || Object.hasOwn(systemState, systemKey) && name !== 'system' ? systemState : original;
+    const before = JSON.stringify(owner), candidate = copyCanonicalData(owner);
+    const part = name === 'accessibility' ? candidate.configuration.accessibility
+      : name === 'audiomidi' ? candidate.sound.audioMidi
+        : owner === systemState && name !== 'system' ? candidate[systemKey] : candidate;
+    const mutation = mutator(part);
+    if (mutation?.status === 'rejected') return mutation;
+    if (mutation === false) return rejected('invalid_arguments', 'The shared mutation was refused.');
+    const validation = owner === systemState ? validateSystemState(candidate, profile)
+      : name === 'messages' ? validateMessagesState(candidate, profile)
+        : name === 'contacts' ? validateContactsState(candidate, profile)
+          : name === 'mail' ? validateMailState(candidate, profile)
+            : name === 'calendar' ? validateCalendarState(candidate, profile)
+              : nativeDomainDefinitions[name === 'accessibility' ? 'preferences' : name]?.validate?.(candidate, profile);
+    if (validation !== undefined && validation !== true && validation?.ok !== true)
+      return rejected('invalid_arguments', validation?.message ?? `The canonical ${name} graph is invalid.`);
+    const delta = canonicalStringUnits(candidate) - canonicalStringUnits(owner);
+    const reserve = ownership.reserveTextUnits ?? 0;
+    if (!Number.isSafeInteger(reserve) || completeSceneStringUnits() + delta + reserve > 4 * 1024 * 1024)
+      return rejected('limit_exceeded', 'The complete scene string budget would be exceeded.');
+    if (getNativeShared(name) !== original || JSON.stringify(owner) !== before || guard() !== true)
+      return rejected('stale_target', 'The original canonical shared source changed.');
+    sharedMutationReserve += delta;
+    let accepted;
+    try { accepted = ownership.onCommit ? ownership.onCommit(part) === true : true; }
+    finally { sharedMutationReserve -= delta; }
+    if (!accepted || getNativeShared(name) !== original || JSON.stringify(owner) !== before)
+      return rejected('stale_target', 'The paired actor or original shared source refused publication.');
+    applyCanonicalData(owner, candidate);
+    return { status: 'applied' };
+  }
+  async function executeNativeOwned(packet, ownership = {}) {
+    if (ownership.guard && !ownership.guard()) return rejected('stale_target', 'The original native command source changed.');
+    const id = packet?.target?.windowId;
+    const original = typeof id === 'string' ? windows.find(window => window.id === id) : null;
+    const lease = original && typeof ownership.guard === 'function' && ownership.windowId !== id
+      ? { original, guard: ownership.guard } : null;
+    if (lease) {
+      let leases = ownedNativeTargets.get(id);
+      if (!leases) ownedNativeTargets.set(id, leases = new Set());
+      leases.add(lease);
+    }
+    try {
+      return await commands.execute(packet, ownership);
+    } finally {
+      if (lease) {
+        const leases = ownedNativeTargets.get(id);
+        leases?.delete(lease);
+        if (leases?.size === 0) ownedNativeTargets.delete(id);
+      }
+    }
+  }
+  function nativeOwnedTargetCurrent(window) {
+    const leases = ownedNativeTargets.get(window.id);
+    if (leases) for (const lease of leases) if (lease.original !== window || !lease.guard()) return false;
+    return true;
+  }
+  async function mergeCanonicalBrowserWindows(spec) {
+    const destination = windows.find(window => window.id === spec.destinationWindowId);
+    const ids = spec.sourceWindowIds;
+    if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length
+      || ids.includes(destination?.id) || typeof spec.isCurrent !== 'function' || typeof spec.onCommit !== 'function')
+      return rejected('invalid_arguments', 'Use distinct original browser windows and an owned canonical merge commit.');
+    const sources = ids.map(id => windows.find(window => window.id === id));
+    const originals = [destination, ...sources];
+    const views = originals.map(window => window && domainViews.get(window.id));
+    const current = () => !disposed && activeWindowId === destination?.id && sharedMenusAvailable()
+      && originals.every((window, index) => window && window.appId === 'safari' && !window.utilityKind
+        && !window.fullScreen && !window.minimized && !isAppHidden(window.appId)
+        && !pendingQuitAppIds.includes(window.appId) && windows.find(row => row.id === window.id) === window
+        && domainViews.get(window.id) === views[index] && views[index]?.available() === true);
+    if (!current() || spec.isCurrent() !== true) return rejected('stale_target', 'The original browser merge actors are unavailable.');
+    if (spec.onCommit() !== true) return rejected('stale_target', 'The canonical browser merge refused publication.');
+    // The synchronous canonical commit has already consumed these exact domain
+    // records. Only its original Roots may bypass duplicate domain retirement.
+    for (const window of sources) browserMergeRetirements.add(window);
+    for (const window of sources) await closeWindow(window.id, {
+      guard: () => !disposed && windows.find(row => row.id === window.id) === window });
+    return { status: 'applied', target: { windowId: destination.id }, windowId: destination.id, droppedWindowIds: ids };
+  }
+  async function createCanonicalMailDraft(spec, ownership) {
+    const guard = typeof ownership === 'function' ? ownership : ownership?.guard;
+    if (typeof guard !== 'function' || guard() !== true) return rejected('stale_target', 'The original Mail draft producer retired.');
+    let draftId;
+    const result = mutateNativeShared('mail', candidate => {
+      const draft = createMailServiceDraft(candidate, {
+        to: Array.isArray(spec.to) ? spec.to.join(', ') : spec.to ?? '',
+        subject: spec.subject ?? '', body: spec.body ?? '',
+      });
+      if (!draft) return rejected('limit_exceeded', 'The actual Mail draft exceeds its bound.');
+      for (const source of spec.attachments ?? []) {
+        const id = mailNewId(candidate, 'mail-attachment');
+        if (!id) return rejected('limit_exceeded', 'Mail attachment identities are exhausted.');
+        draft.attachments.push({ id, fileId: null, name: source.name,
+          mime: source.mimeType ?? source.mime, text: source.content ?? source.text });
+      }
+      draftId = draft.id;
+      return true;
+    }, { guard, reserveTextUnits: spec.reserveTextUnits ?? 0,
+      ...(spec.onCommit ? { onCommit: () => spec.onCommit(draftId) === true } : {}) });
+    if (result.status !== 'applied') return result;
+    const draft = mailState.drafts.find(row => row.id === draftId);
+    const signature = JSON.stringify({ ...draft, windowId: null });
+    const current = () => !disposed && mailState.drafts.find(row => row.id === draftId) === draft
+      && JSON.stringify({ ...draft, windowId: null }) === signature;
+    const windowId = openWindow('mail', draft.subject || 'New Message', true, undefined,
+      { mailKind: 'compose', mailDraftId: draftId, isCurrent: current });
+    await tick(); await tick();
+    return { status: 'applied', draftId, target: { appId: 'mail', recordId: draftId, ...(windowId ? { windowId } : {}) },
+      presentationAvailable: Boolean(windowId && current() && domainViews.get(windowId)?.available()) };
+  }
+  function createCanonicalContact(spec, ownership) {
+    let contactId;
+    const result = mutateNativeShared('contacts', candidate => {
+      const created = createContact(candidate, { name: spec.name, email: spec.email }, { time: sharedClockWriter.getSceneTime() });
+      if (created.status !== 'applied') return rejected(created.code, created.message);
+      contactId = created.contactId;
+      return true;
+    }, ownership);
+    return result.status === 'applied' ? { ...result, contactId } : result;
+  }
+  function respondCanonicalInvitation(spec, ownership) {
+    const message = mailState.messages.find(row => row.id === spec.source?.messageId);
+    if (!message || message.invitation?.id !== spec.invitationId || ownership.guard() !== true)
+      return rejected('stale_target', 'The original Mail invitation is unavailable.');
+    let eventId;
+    const result = mutateNativeShared('calendar', candidate => {
+      let invitation = candidate.invitations.find(row => row.eventId === spec.eventId);
+      if (!invitation) {
+        if (spec.eventId) return rejected('stale_target', 'The original Calendar invitation retired.');
+        const created = createCalendarInvitation(candidate, { sender: message.from.email,
+          event: { title: spec.title, start: spec.start, end: spec.end, location: spec.location },
+          icalUid: `${spec.invitationId}@jester.local` });
+        if (!created.ok) return rejected('invalid_arguments', created.message);
+        invitation = candidate.invitations.find(row => row.id === created.invitationId);
+      }
+      const response = acceptCalendarInvitation(candidate, { invitationId: invitation.id, response: spec.response });
+      if (!response.ok) return rejected('stale_target', response.message);
+      eventId = response.eventId;
+      return true;
+    }, ownership);
+    return result.status === 'applied' ? { ...result, eventId } : result;
+  }
+  async function playCanonicalMailSound(spec, ownership) {
+    const view = domainViews.get(ownership.windowId);
+    if (ownership.guard() !== true || typeof view?.playSound !== 'function')
+      return rejected('unavailable', 'The original mounted Mail sound preview is unavailable.');
+    const played = await view.playSound(spec, ownership.guard);
+    return played === true && ownership.guard() === true
+      ? { status: 'applied' } : rejected('unavailable', 'The original authored Mail sound could not play.');
+  }
+  async function revealCanonicalFile(fileId, ownership) {
+    const file = applicationFiles.getFile(fileId), signature = file && JSON.stringify(file);
+    const guard = () => !disposed && ownership.guard() === true
+      && applicationFiles.getFile(fileId) === file && JSON.stringify(file) === signature;
+    if (!file || !guard()) return rejected('stale_target', 'The original Files reveal source retired.');
+    const result = await handlers['desktop.open']({ fileId: file.parentId }, {});
+    if (result.status !== 'applied' || !guard()) return result.status === 'rejected' ? result : rejected('stale_target', 'The original Files reveal changed.');
+    const windowId = result.target.windowId;
+    const selected = await executeNativeOwned(macDesktop
+      ? { command: 'finder.selection.set', target: { windowId }, payload: { fileIds: [fileId] } }
+      : { command: 'win11.explorer.select', target: { windowId, fileId }, payload: {} },
+      { ...ownership, guard });
+    return selected.status === 'applied' ? { ...selected, fileId, target: { windowId, fileId } } : selected;
+  }
+  function createNativeContext(definition) {
+    return {
+      profile, getState: () => nativeApplications[definition.key], alive: () => !disposed,
+      ...notificationPorts,
+      getShared: getNativeShared, mutateShared: mutateNativeShared,
+      executeOwned: executeNativeOwned,
+      getWindow: id => windows.find(window => window.id === id) ?? null,
+      getWindows: () => windows.filter(window => nativeDomainForWindow(profile, window) === definition),
+      getView: id => domainViews.get(id),
+      available: value => domainWindowAvailable(typeof value === 'string' ? windows.find(window => window.id === value) : value),
+      setSceneTime: setClockSceneTime,
+      tick, getSceneTime: sharedClockWriter.getSceneTime, focusWindow,
+      resolveContacts: resolveNativeContacts,
+      startCall: startCanonicalCall,
+      forwardCall: (name, target, payload, ownership) => domainControllers.get(macDesktop ? 'facetime' : 'teams-call')
+        .forwardCommand(name, target, payload, ownership),
+      setAccount: setCanonicalAccount,
+      getBlockedAddresses: () => messagesState.blockedAddresses,
+      setBlockedAddresses: setCanonicalBlockedAddresses,
+      canCommit: delta => completeSceneStringUnits() + delta <= 4 * 1024 * 1024,
+      reserve: (delta, callback) => { sharedMutationReserve += delta; try { return callback(); } finally { sharedMutationReserve -= delta; } },
+      createWindow: (appId, options = {}) => {
+        if (options.isCurrent && options.isCurrent() !== true
+          || options.ownership?.guard && options.ownership.guard() !== true) return null;
+        return openWindow(appId, options.title, true, options.utilityKind, options);
+      },
+      closeWindow: (id, ownership) => closeWindow(id, ownership),
+      appQuit: (appId, ownership = {}) => ownership.guard && ownership.guard() !== true
+        ? rejected('stale_target', 'The original application quit source changed.') : quitApplication(appId, false, ownership),
+      quitApplication: (appId, ownership = {}) => ownership.guard && ownership.guard() !== true
+        ? rejected('stale_target', 'The original process quit source changed.') : quitApplication(appId, ownership.force === true, ownership),
+      getInventory: sceneRuntime.getInventory, getSceneEvents: sceneRuntime.getSceneEvents,
+      getFilesStore: () => desktopFileStore, getClipboard: () => clipboardState, clipboard: clipboardState,
+      makeRecord: record => { let original = $state(record); return original; },
+      getRoot: () => sceneRoot,
+      getWindowBounds: id => {
+        const original = windows.find(window => window.id === id);
+        const element = original && managedWindowElement(id);
+        if (!element?.isConnected) return null;
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      },
+      captureFrame: definition.key === 'media' ? async options => (await captureNativeFrame(options)).canvas : captureNativeFrame,
+      printDocument: destinationCommands.printDocument, share: destinationCommands.share,
+      chooseFile: destinationCommands.chooseFile,
+      composeMail: composeCanonicalMail, composeMessage: composeCanonicalMessage,
+      getAccount: () => messagesState.account,
+      getDiskController: () => nativeControllers.get('disk'),
+      getBackupController: () => nativeControllers.get('backup'),
+      getMigrationController: () => nativeControllers.get('migration'),
+      getPreferencesUpdateHost: id => nativeControllers.get('store')?.getSystemUpdateHost(id),
+      getPreferencesUpdateSettingsHost: id => nativeControllers.get('store')?.getSystemUpdateSettingsHost(id),
+      ...applicationFiles,
+    };
+  }
+  function domainWindowAvailable(window) {
+    return Boolean(window && !disposed && windows.includes(window)
+      && nativeOwnedTargetCurrent(window)
+      && domainControllerForWindow(window) && windowInteractionsAvailable()
+      && !window.minimized && !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId)
+      && windowPresented(window) && !switching.switcher && !presentation.pairing);
+  }
+  function registerDomainView(windowId, view, original) {
+    if (view) domainViews.set(windowId, view);
+    else if (domainViews.get(windowId) === original) domainViews.delete(windowId);
+  }
+  async function prepareDomainWindow(appId, guard = () => true) {
+    if (!guard() || disposed) return null;
+    const id = openWindow(appId, undefined, false, undefined, { isCurrent: guard });
+    if (!id) return null;
+    const original = windows.find(window => window.id === id);
+    await tick(); await tick();
+    return guard() && windows.includes(original) && domainWindowAvailable(original)
+      && domainViews.get(id)?.available() ? original : null;
+  }
+  async function setCanonicalReminderCompleted(reminderId, completed, owner) {
+    const original = remindersState.tasks.find(task => task.id === reminderId), revision = original?.revision;
+    const guard = () => owner.guard() && remindersState.tasks.find(task => task.id === reminderId) === original && original?.revision === revision;
+    const window = await prepareDomainWindow('reminders', guard);
+    if (!window || !guard()) return rejected('stale_target', 'The original reminder or native destination changed.');
+    return executeNativeOwned({ command: 'reminders.task.setCompleted', target: { windowId: window.id },
+      payload: { reminderId, completed } }, { guard });
+  }
+  async function composeCanonicalMail(spec, ownership = spec) {
+    const guard = typeof ownership === 'function' ? ownership : ownership.guard;
+    if (typeof guard !== 'function' || !guard()) return rejected('stale_target', 'The original Mail source changed.');
+    const to = typeof spec.to === 'string' ? spec.to : (spec.to ?? []).map(row => typeof row === 'string' ? row : row.name ? `${row.name} <${row.email}>` : row.email).join(', ');
+    const id = openWindow('mail', 'New Message', true, undefined, {
+      isCurrent: guard, mailDraftFields: { to, subject: spec.subject ?? '', body: spec.body ?? '' },
+    });
+    if (!id) return rejected('limit_exceeded', 'The native composer could not be committed within the complete scene budget.');
+    const original = windows.find(window => window.id === id);
+    const draft = mailState.drafts.find(row => row.windowId === id);
+    await tick(); await tick();
+    return { status: 'applied', target: { appId: 'mail', windowId: id, recordId: draft.id },
+      draftId: draft.id, presentationAvailable: windows.includes(original) && domainViews.get(id)?.available() === true };
+  }
+  async function composeCanonicalMessage(spec) {
+    const guard = spec.guard;
+    if (typeof guard !== 'function' || !guard()) return rejected('stale_target', 'The original message source changed.');
+    const appId = macDesktop ? 'messages' : 'teams';
+    const id = openWindow(appId, undefined, false, undefined, { isCurrent: guard });
+    if (!id) return rejected('unavailable', 'The native Messages destination is unavailable.');
+    const original = windows.find(window => window.id === id);
+    await tick(); await tick();
+    if (!guard() || !windows.includes(original) || !messagesViews.get(id)?.available()) return rejected('stale_target', 'The original message destination changed.');
+    if (!macDesktop) {
+      const result = await handlers['win11.teams.surface.set']({ windowId: id }, { surface: 'full' });
+      if (result.status !== 'applied') return result;
+    }
+    if (!guard()) return rejected('stale_target', 'The original contact source changed.');
+    const recipient = spec.recipient;
+    const result = createMessageDraft(messagesState, { to: recipient.name ? `${recipient.name} <${recipient.address}>` : recipient.address, body: spec.text ?? '' }, {
+      time: sharedClockWriter.getSceneTime(), canCommit: candidate => guard()
+        && completeSceneStringUnits() - canonicalStringUnits(messagesState) + canonicalStringUnits(candidate) <= 4 * 1024 * 1024 && guard(),
+    });
+    if (result.status !== 'applied') return result;
+    sharedClockWriter.onTimeChanged(messagesState.timeBase);
+    await tick();
+    const presentationAvailable = windows.includes(original) && messagesViews.get(id)?.available() === true;
+    if (presentationAvailable) await handlers['messages.focus']({ windowId: id, controlId: 'draft-body' }, {});
+    return { ...result, target: { ...result.target, appId, windowId: id, recordId: result.target.draftId }, presentationAvailable };
+  }
+  function domainWindowControls(window) {
+    return {
+      sceneTime: sharedClockWriter.getSceneTime(),
+      getAccount: () => messagesState.account,
+      getReminders: () => reminderCalendarProjection(remindersState),
+      onclose: () => windowCommand('window.close', window.id),
+      onminimize: () => windowCommand('window.setMinimized', window.id, { minimized: true }),
+      onzoom: () => toggleWindowZoom(window.id),
+      onfullscreen: () => toggleWindowFullScreen(window.id),
+      onsplitbegin: event => beginSplitView(window.id, event),
+      onsplitside: event => changeSplitSide(window.id, event),
+      ongreenmenu: () => windowCommand('window.greenMenu.open', window.id),
+      fullScreen: window.fullScreen, revealedTop: fullScreenStage.topRevealed,
+      modernGreenMenu: modernMac, zoomed: window[expandedProperty],
+    };
+  }
+  function messageRecipientChoices(query = '') {
+    if (disposed || typeof query !== 'string' || query.length > 4096) return [];
+    const needle = recipientFold(query), rows = [];
+    for (const resolved of resolveCanonicalContacts(contactsState, '')) {
+      const contact = linkedContact(contactsState, resolved.id);
+      if (!contact) continue;
+      const name = contactName(contact), nameMatches = !needle || recipientFold(name).includes(needle);
+      const seen = new Set();
+      for (const [kind, entries] of [['phone', contact.phones], ['email', contact.emails]]) {
+        for (const entry of entries) {
+          const identity = recipientIdentity(entry.value);
+          if (seen.has(identity) || !nameMatches && !recipientFold(entry.value).includes(needle)) continue;
+          seen.add(identity);
+          rows.push({ contactId: contact.id, name, address: entry.value, label: entry.label, kind });
+        }
+      }
+    }
+    return rows;
+  }
+  function resolveMessageRecipient(recipient) {
+    const all = messageRecipientChoices(), identity = recipientIdentity(recipient.address);
+    const addressed = all.filter(row => recipientIdentity(row.address) === identity);
+    if (addressed.length) return { name: recipient.name === recipient.address ? addressed[0].name : recipient.name, address: addressed[0].address };
+    const named = all.filter(row => recipientFold(row.name) === recipientFold(recipient.address));
+    if (!named.length) return undefined;
+    if (new Set(named.map(row => row.contactId)).size !== 1) return null;
+    const choice = named.find(row => row.kind === 'phone') ?? named[0];
+    return { name: choice.name, address: choice.address };
+  }
+  async function openLegacySvgFile(fileId, ownership) {
+    const stale = () => rejected('stale_target', 'The original SVG source or native Photos destination retired.');
+    const file = applicationFiles.getFile(fileId);
+    if (profile.family !== 'windows' || !file || ownership?.guard?.() !== true) return stale();
+    const signature = JSON.stringify(file);
+    const sourceCurrent = () => !disposed && ownership.guard() === true
+      && applicationFiles.getFile(fileId) === file && JSON.stringify(file) === signature;
+    const existing = windows.find(entry => entry.appId === 'photos' && entry.utilityKind === 'photos-svg'
+      && adapter.nativeForWindow(nativeState, entry.id)?.apps.photos.selectedId === fileId);
+    const returnWindow = windows.find(entry => entry.id === activeWindowId);
+    const windowId = existing?.id ?? openWindow('photos', file.name, true, 'photos-svg', { isCurrent: sourceCurrent });
+    if (!windowId) return sourceCurrent() ? rejected('unavailable', 'The actual SVG Photos window could not open.') : stale();
+    const window = windows.find(entry => entry.id === windowId);
+    const native = adapter.nativeForWindow(nativeState, windowId);
+    let committed = false;
+    try {
+      await tick(); await tick();
+      const view = applicationViews.get(windowId);
+      const current = () => sourceCurrent() && windows.find(entry => entry.id === windowId) === window
+        && adapter.nativeForWindow(nativeState, windowId) === native && native !== null
+        && view && applicationViews.get(windowId) === view;
+      if (!current()) return stale();
+      const result = await handlers['win11.photos.open']({ fileId, windowId }, {}, { guard: current });
+      committed = result.status === 'applied';
+      return result;
+    } finally {
+      const originalDestination = () => !disposed && windows.find(entry => entry.id === windowId) === window
+        && adapter.nativeForWindow(nativeState, windowId) === native;
+      if (!existing && !committed && originalDestination()) {
+        const restoreFocus = activeWindowId === windowId;
+        await closeWindow(windowId, { guard: originalDestination, discard: true });
+        if (restoreFocus && returnWindow && windows.find(entry => entry.id === returnWindow.id) === returnWindow)
+          focusWindow(returnWindow.id);
+      }
+    }
+  }
+  async function openAssociatedVirtualFile(fileId, _options, ownership) {
+    const stale = () => rejected('stale_target', 'The original source or canonical File retired.');
+    const file = applicationFiles.getFile(fileId);
+    if (!file || ownership?.guard?.() !== true) return stale();
+    const fingerprint = JSON.stringify(file);
+    const guard = () => !disposed && ownership.guard() === true
+      && applicationFiles.getFile(fileId) === file && JSON.stringify(file) === fingerprint;
+    const mime = documentFileMime(file);
+    if (!macDesktop && mime === 'image/svg+xml')
+      return openLegacySvgFile(fileId, { ...ownership, guard });
+    if (macDesktop && mime === 'image/svg+xml') {
+      const destination = await prepareDomainWindow('safari', guard);
+      if (!destination || !guard()) return stale();
+      const result = await executeNativeOwned({ command: 'browser.file.open',
+        target: { windowId: destination.id }, payload: { fileId } }, { ...ownership, guard });
+      return result.status === 'applied'
+        ? { ...result, fileId, windowId: destination.id, target: { ...result.target, appId: 'safari' } } : result;
+    }
+    const image = ['image/png', 'image/jpeg', 'image/webp'].includes(mime);
+    if (image && (!macDesktop || file.appId === 'photos'))
+      return nativeControllers.get('photos').openFile(fileId, { ...ownership, guard });
+    const pdf = mime === 'application/pdf', preview = pdf || image;
+    const text = typeof mime === 'string' && (mime.startsWith('text/') || mime === 'application/rtf');
+    if (!preview && !text) return rejected('unsupported_content', 'This original File MIME has no registered native document destination.');
+    if (text) return nativeControllers.get('textedit').openFile(fileId, { ...ownership, guard });
+    const appId = macDesktop ? 'preview' : 'edge', utilityKind = pdf && !macDesktop ? 'edge-pdf' : undefined;
+    const previewState = nativeApplications.preview;
+    const existingDocument = previewState.documents.find(document => document.fileId === file.id
+      && document.fileRevision === file.revision && document.content === file.content && document.mime === mime);
+    const existingSession = existingDocument && previewState.windows.find(session => session.selectedId === existingDocument.id);
+    const existingWindow = existingSession && windows.find(entry => entry.id === existingSession.windowId
+      && entry.appId === appId && entry.utilityKind === utilityKind);
+    if (existingWindow && guard()) {
+      focusWindow(existingWindow.id);
+      await tick();
+      if (!guard() || windows.find(entry => entry.id === existingWindow.id) !== existingWindow
+        || previewState.documents.find(document => document.id === existingDocument.id) !== existingDocument
+        || previewState.windows.find(session => session.windowId === existingWindow.id) !== existingSession
+        || existingSession.selectedId !== existingDocument.id) return stale();
+      return { status: 'applied', target: { windowId: existingWindow.id }, windowId: existingWindow.id,
+        documentId: existingDocument.id, fileId, appId };
+    }
+    const returnWindow = windows.find(entry => entry.id === activeWindowId);
+    const windowId = openWindow(appId, file.name, true, utilityKind, { isCurrent: guard });
+    if (!windowId) return guard() ? rejected('unavailable', 'The actual native document window could not open.') : stale();
+    const window = windows.find(entry => entry.id === windowId);
+    const session = previewState.windows.find(entry => entry.windowId === windowId);
+    const current = () => guard() && windows.find(entry => entry.id === windowId) === window;
+    let committed = false;
+    try {
+      await tick();
+      if (!current()) return stale();
+      const result = await executeNativeOwned({ command: 'preview.open',
+        target: { windowId }, payload: { fileId } }, { ...ownership, guard: current });
+      committed = result.status === 'applied';
+      return committed ? { ...result, windowId, fileId, appId } : result;
+    } finally {
+      const emptyDestination = () => !disposed && windows.find(entry => entry.id === windowId) === window
+        && previewState.windows.find(entry => entry.windowId === windowId) === session
+        && session?.documentIds.length === 0;
+      if (!committed && emptyDestination()) {
+        const restoreFocus = activeWindowId === windowId;
+        await closeWindow(windowId, { guard: emptyDestination, discard: true });
+        if (restoreFocus && returnWindow && windows.find(entry => entry.id === returnWindow.id) === returnWindow)
+          focusWindow(returnWindow.id);
+      }
+    }
+  }
+  async function openSharedMessageContent(spec, ownership) {
+    const stale = () => rejected('stale_target', 'The original shared Messages content or destination changed.');
+    const guard = () => !disposed && ownership?.guard?.() === true;
+    if (!guard()) return stale();
+    if (spec.appId === 'safari' && typeof spec.url === 'string') {
+      const windowId = openWindow('safari', applications.safari.name, true, undefined, { isCurrent: guard });
+      if (!windowId) return guard() ? rejected('unavailable', 'The original native Safari window could not open.') : stale();
+      const window = windows.find(row => row.id === windowId);
+      await tick();
+      if (!guard() || windows.find(row => row.id === windowId) !== window) return stale();
+      const session = browserState.windows.find(row => row.id === windowId);
+      const tab = session?.tabs.find(row => row.id === session.activeTabId);
+      if (!tab) return rejected('unavailable', 'The original shared local Safari tab is unavailable.');
+      return handlers['browser.navigate']({ windowId, tabId: tab.id }, { address: spec.url });
+    }
+    const attachment = spec.attachment;
+    if (!attachment || !['photos', 'finder'].includes(spec.appId))
+      return rejected('unsupported_content', 'Choose original locally supported shared content.');
+    const content = attachmentContent(attachment);
+    if (content === null) return rejected('unsupported_content', 'The original attachment bytes cannot be saved losslessly.');
+    let file = attachment.originalFileId && applicationFiles.getFile(attachment.originalFileId);
+    if (!file || file.revision !== attachment.originalRevision || file.content !== content
+      || (file.mime ?? documentFileMime(file)) !== attachment.mime || file.name !== attachment.name) {
+      const saved = await destinationCommands.saveFile({ name: attachment.name, mime: attachment.mime, text: content },
+        { ...ownership, guard });
+      if (saved.status !== 'applied') return saved;
+      if (!guard()) return stale();
+      file = applicationFiles.getFile(saved.fileId);
+    }
+    if (!file || file.content !== content || (file.mime ?? documentFileMime(file)) !== attachment.mime || !guard()) return stale();
+    const original = file, signature = JSON.stringify(file);
+    const current = () => guard() && applicationFiles.getFile(original.id) === original && JSON.stringify(original) === signature;
+    if (ownership?.windowId && activeWindowId !== ownership.windowId)
+      return { status: 'applied', fileId: original.id, presentation: { opened: false, reason: 'focus_changed' } };
+    if (spec.appId === 'photos')
+      return nativeControllers.get('photos').openFile(original.id, { ...ownership, guard: current });
+    const opened = await handlers['desktop.open']({ fileId: original.parentId }, {});
+    if (opened.status !== 'applied') return opened;
+    const destination = windows.find(window => window.id === opened.target.windowId);
+    if (!current() || !destination || destination.appId !== 'finder' || destination.utilityKind
+      || destination.folderId !== original.parentId) return stale();
+    const selected = await handlers['finder.selection.set']({ windowId: destination.id }, { fileIds: [original.id] });
+    return selected.status === 'applied' && current() && windows.find(window => window.id === destination.id) === destination
+      ? { status: 'applied', fileId: original.id, windowId: destination.id, appId: 'finder' } : selected.status === 'applied' ? stale() : selected;
+  }
+  function messageWindow(windowId) {
+    return disposed ? null : windows.find(window => window.id === windowId && !window.utilityKind
+      && (window.appId === 'messages' || applications[window.appId]?.messaging === true)) ?? null;
+  }
+  function messageWindowAvailable(window) {
+    return hasMessages && messageWindow(window?.id) === window && windowInteractionsAvailable()
+      && !window.minimized && !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId)
+      && windowPresented(window) && !switching.switcher && !presentation.pairing
+      && !(hasServices && window.appId === 'messages'
+        && (servicePending?.windowId === window.id || communicationsState.selected.messages !== null));
+  }
+  function destinationWindowAvailable(window) {
+    return messageWindow(window?.id) === window
+      ? messageWindowAvailable(window) : domainWindowAvailable(window);
+  }
+  function captureMenuAction(request) {
+    const windowId = request?.target?.windowId;
+    if (typeof windowId !== 'string') return () => !disposed && foreground;
+    const window = windows.find(entry => entry.id === windowId);
+    const messageAction = request.command.startsWith('messages.');
+    const sourceState = messagesState, sourceView = messagesViews.get(windowId);
+    return () => !disposed && foreground && Boolean(window)
+      && windows.find(entry => entry.id === windowId) === window
+      && (!messageAction || messagesState === sourceState && messagesViews.get(windowId) === sourceView
+        && messageWindowAvailable(window) && sourceView?.available() === true);
+  }
+  function sampleMessageRevision() {
+    const conversation = selectedMessageConversation(messagesState);
+    return conversation ? `${conversation.id}:${conversation.timestamp}` : '';
   }
 
   function transientInteractionsAvailable() {
@@ -1972,7 +2823,43 @@
   }
 
   function notificationSources() {
-    return { notes: notesState, files: macFiles, communications: communicationsState, widgets: systemState.widgets };
+    return { notes: notesState, files: desktopFileStore, messages: messagesState, mail: mailState,
+      contacts: contactsState, calendar: calendarState, reminders: remindersState, calls: callsState,
+      stocks: nativeApplications.stocks, news: nativeApplications.news, clockApp: nativeApplications.clockApp };
+  }
+  function prepareCanonicalNotificationDismissals(notificationIds, ownership) {
+    if (disposed || ownership?.guard?.() !== true) return null;
+    const entries = notificationIds.map(id => systemState.notifications.entries.find(entry => entry.id === id));
+    if (entries.some(entry => !entry)) return null;
+    const controllers = new Set();
+    for (const entry of entries) {
+      const kind = entry.destination?.kind;
+      const controller = kind === 'call' ? domainControllers.get(macDesktop ? 'facetime' : 'teams-call')
+        : kind === 'event' ? domainControllers.get('calendar')
+          : kind === 'reminder' ? domainControllers.get('reminders')
+            : kind?.startsWith('stocks-') ? nativeControllers.get('stocks')
+              : kind === 'news-story' ? nativeControllers.get('news')
+                : kind === 'clock' ? nativeControllers.get('clockApp') : null;
+      if (controller) controllers.add(controller);
+    }
+    const plans = [];
+    let delta = 0, committed = false;
+    for (const controller of controllers) {
+      const plan = controller.prepareNotificationDismissals?.(notificationIds, ownership);
+      if (!plan || typeof plan.current !== 'function' || typeof plan.commit !== 'function'
+        || !Number.isSafeInteger(plan.delta) || plan.current() !== true) return null;
+      plans.push(plan); delta += plan.delta;
+    }
+    if (!Number.isSafeInteger(delta)) return null;
+    const current = () => !committed && !disposed && ownership.guard() === true
+      && entries.every(entry => systemState.notifications.entries.includes(entry))
+      && plans.every(plan => plan.current() === true);
+    return { current, delta, commit() {
+      if (!current() || completeSceneStringUnits() + delta > 4 * 1024 * 1024 || !current()) return false;
+      for (const plan of plans) if (plan.commit() !== true) return false;
+      committed = true;
+      return true;
+    } };
   }
   function retireUnavailableNotificationSources() {
     if (disposed) return;
@@ -2001,37 +2888,27 @@
     const { source } = lease;
     const stale = () => rejected('stale_target', 'The original notification source or native app destination has retired.');
     if (!guard()) return stale();
-    if (source.kind === 'event' || source.kind === 'reminder') {
-      const state = systemState.widgets;
-      const result = await openSelectedSceneData({ appId: source.appId }, guard, () => {
-        if (!guard() || systemState.widgets !== state) return stale();
-        const selected = { ...state.selected, ...(source.kind === 'event'
-          ? { calendarEventId: source.recordId } : { reminderListId: source.record.listId }) };
-        if (!validateWidgetsState({ ...state, selected }, profile).ok
-          || workflowTextSize() + persistentStringUnits(selected) - persistentStringUnits(state.selected) > 4 * 1024 * 1024)
-          return rejected('limit_exceeded', 'The original notification data selection exceeds the complete scene budget.');
-        if (!guard()) return stale();
-        state.selected = selected;
-        return { status: 'applied', target: { appId: source.appId } };
-      });
-      return result.status === 'applied' ? { status: 'applied', target: { ...result.target, recordId: source.recordId } } : result;
+    if (source.kind === 'call') {
+      const result = await domainControllers.get(macDesktop ? 'facetime' : 'teams-call')
+        .notificationAction(source.recordId, 'show', { guard });
+      return result.status === 'applied' ? { ...result,
+        target: { ...result.target, appId: source.appId, recordId: source.recordId } } : result;
     }
     if (source.kind === 'file') {
-      const result = await handlers['desktop.open']({ fileId: source.recordId }, {});
+      const result = await executeNativeOwned({ command: 'desktop.open', target: { fileId: source.recordId } }, { guard });
       return result.status === 'applied' ? { status: 'applied', target: {
         appId: source.appId, windowId: result.target.windowId ?? null, recordId: source.recordId,
       } } : result;
     }
     if (source.kind === 'app') {
-      const result = await handlers['app.open']({ appId: source.appId }, {});
+      const result = await executeNativeOwned({ command: 'app.open', target: { appId: source.appId } }, { guard });
       return result.status === 'applied' ? { status: 'applied', target: {
         appId: source.appId, windowId: result.target.windowId ?? null, recordId: null,
       } } : result;
     }
     const invoke = async (command, target, payload = {}) => {
       if (!guard()) return stale();
-      const result = await handlers[command](target, payload);
-      return guard() ? result : stale();
+      return executeNativeOwned({ command, target, payload }, { guard });
     };
     let result = await invoke('app.open', { appId: source.appId });
     if (result.status !== 'applied') return result;
@@ -2043,16 +2920,63 @@
       result = await invoke('notes.selectFolder', { folder: 'notes' });
       if (result.status !== 'applied') return result;
       result = await invoke('notes.view.openNote', { windowId, noteId: source.recordId });
+    } else if (source.kind === 'event') {
+      result = await invoke('calendar.view.set', { windowId }, { view: 'day',
+        date: calendarDateString(source.record.start, source.record.timeZone === 'floating'
+          ? calendarState.preferences.timeZone : source.record.timeZone) });
+      if (result.status === 'applied') result = await invoke('calendar.event.select', { windowId }, { eventId: source.recordId });
+    } else if (source.kind === 'reminder') {
+      result = await invoke('reminders.view.set', { windowId }, { listId: source.record.listId, view: 'list', query: '' });
+      if (result.status === 'applied') result = await invoke('reminders.task.select', { windowId }, { reminderId: source.recordId });
+    } else if (source.kind === 'message') {
+      result = await invoke('messages.search', { windowId }, { query: '' });
+      if (result.status === 'applied') result = await invoke('messages.conversation.select',
+        { windowId, conversationId: source.recordId });
+    } else if (source.kind === 'mail') {
+      result = await invoke('mail.mailbox.select', { windowId }, { mailboxId: source.record.mailboxId });
+      if (result.status === 'applied') result = await invoke('mail.message.select', { windowId }, { messageId: source.recordId });
+    } else if (source.kind === 'contact') {
+      result = await invoke('contacts.search', { windowId }, { query: '' });
+      if (result.status === 'applied') result = await invoke('contacts.group.select', { windowId }, { groupId: null });
+      if (result.status === 'applied') result = await invoke('contacts.select', { windowId }, { contactIds: [source.recordId] });
+    } else if (source.kind === 'stocks-price' || source.kind === 'stocks-story' || source.kind === 'news-story') {
+      const controller = nativeControllers.get(source.kind === 'news-story' ? 'news' : 'stocks');
+      const plan = controller.prepareNotificationOpen(source.kind, source.recordId, { windowId, guard });
+      if (!plan?.current() || completeSceneStringUnits() + plan.delta > 4 * 1024 * 1024 || !plan.current()) return stale();
+      result = plan.commit() === true ? { status: 'applied' } : stale();
+    } else if (source.kind === 'clock') {
+      result = await invoke('clockApp.page', { windowId }, { page: source.record.kind === 'alarm' ? 'alarms' : 'timers' });
     } else {
-      result = await invoke('services.provider.select', { appId: source.appId, windowId }, { entryId: source.recordId });
-      if (result.status === 'applied') result = await invoke('services.panel.focus', { appId: source.appId, windowId, control: 'panel' });
+      return rejected('unsupported_destination', 'This original notification has no native application selection route.');
     }
     return result.status === 'applied' ? { status: 'applied', target: { appId: source.appId, windowId, recordId: source.recordId } } : result;
   }
   function completeNotificationDestination(lease, guard) {
     if (!guard() || lease.source.kind !== 'reminder') return rejected('stale_target', 'The original reminder source is unavailable.');
-    return setWidgetReminderCompleted(systemState.widgets, lease.source.recordId, true,
-      delta => guard() && workflowTextSize() + delta <= 4 * 1024 * 1024 && guard());
+    return setCanonicalReminderCompleted(lease.source.recordId, true, { guard });
+  }
+  async function snoozeNotificationDestination(lease, minutes, guard, entry) {
+    if (!guard()) return rejected('stale_target', 'The original notification snooze source changed.');
+    const { source } = lease;
+    const window = await prepareDomainWindow(source.appId, guard);
+    if (!window || !guard()) return rejected('stale_target', 'The original native alert window is unavailable.');
+    let command, target = { windowId: window.id }, payload, delivery;
+    if (source.kind === 'event') {
+      delivery = calendarState.alertDeliveries.find(row => row.notificationId === entry.id && row.eventId === source.recordId);
+      command = 'calendar.alert.action'; payload = { deliveryId: delivery?.id, action: 'snooze', minutes };
+    } else if (source.kind === 'reminder') {
+      delivery = remindersState.alerts.find(row => row.notificationId === entry.id && row.reminderId === source.recordId);
+      command = 'reminders.alert.snooze'; payload = { alertId: delivery?.id, minutes };
+    } else if (source.kind === 'clock') {
+      delivery = source.record;
+      if (minutes !== nativeApplications.clockApp.preferences.snoozeMinutes)
+        return rejected('stale_target', 'The original configured Clock snooze duration changed.');
+      command = 'clockApp.alert'; target.recordId = source.recordId; payload = { action: 'snooze' };
+    } else return rejected('unsupported_destination', 'Only original Calendar, Reminders and Clock alerts can be snoozed.');
+    if (!delivery) return rejected('stale_target', 'The exact original delivery ledger retired.');
+    const result = await executeNativeOwned({ command, target, payload }, { guard });
+    return result.status === 'applied' ? { ...result,
+      snoozedUntil: delivery.snoozeUntil ?? delivery.snoozeAt } : result;
   }
   function replyNotificationDestination(lease, body, guard) {
     if (!guard() || !['message', 'mail'].includes(lease.source.kind))
@@ -2089,11 +3013,15 @@
     return hasRetention ? element.contains(document.activeElement) : document.activeElement === element;
   }
   function createMacSceneFiles() {
-    const sceneTime = initialData.files?.sceneTime ?? initialData.notes.timeBase + 42 * 60_000;
+    const sceneTime = initialData.files?.sceneTime ?? Math.max(Date.parse(profile.defaults.sceneTime), ...initialData.notes.notes.map(note => note.updatedAt));
     const store = initialData.files ?? createMacDesktopFileStore(profile, sceneTime);
     const catalog = createMacApplicationFiles(profile, sceneTime);
     if (savedScene) for (const file of catalog) Object.assign(file, savedScene.catalogTimes[file.id]);
     store.files.push(...catalog);
+    if (savedScene) {
+      const records = new Map(store.files.map(file => [file.id, file]));
+      store.files.splice(0, store.files.length, ...savedScene.fileOrder.map(id => records.get(id)));
+    }
     return store;
   }
   function getDockMenuItems() {
@@ -2470,13 +3398,13 @@
     const window = windows.find(entry => entry.id === windowId && !entry.utilityKind && !entry.minimized
       && !isAppHidden(entry.appId) && !pendingQuitAppIds.includes(entry.appId));
     const element = window && managedWindowElement(windowId);
-    if (!window || !element?.isConnected || requireForeground && (activeWindowId !== windowId
-      || activeAppId !== window.appId || !windowPresented(window) || element.closest('[inert]') || !element.getClientRects().length)) return null;
+    if (!window || !windowPresented(window) || !element?.isConnected || element.closest('[inert]') || !element.getClientRects().length
+      || requireForeground && (activeWindowId !== windowId || activeAppId !== window.appId)) return null;
     return { window, element };
   }
   function serviceSampleAvailable(windowId) {
     return Boolean(hasServices && getServiceFrame(windowId, false)?.window.appId === 'messages'
-      && communicationsState.selected.messages === null);
+      && communicationsState.selected.messages === null && selectedMessageConversation(messagesState));
   }
   function sampleServiceView(windowId) {
     const history = () => getServiceFrame(windowId, true)?.element.querySelector('.golden-gate-messages-history');
@@ -2495,13 +3423,21 @@
     return sampleServiceViews.get(windowId);
   }
   function getServiceProvider(windowId) {
-    const frame = getServiceFrame(windowId, true);
+    const frame = getServiceFrame(windowId, false);
     if (!frame || !['contacts', 'mail', 'messages'].includes(frame.window.appId)) return null;
-    const appId = frame.window.appId, pending = servicePending?.windowId === windowId ? servicePending : null;
-    const entry = pending?.entry ?? communicationEntry(communicationsState, appId);
-    const view = serviceViews.get(windowId) ?? (appId === 'messages' && serviceSampleAvailable(windowId) ? sampleServiceView(windowId) : null);
-    return view ? { appId, windowId, entry, view, pending: Boolean(pending),
-      editable: Boolean(entry && communicationsState.drafts.some(draft => draft.id === entry.id)) } : null;
+    const appId = frame.window.appId, view = appId === 'messages' ? messagesViews.get(windowId) : domainViews.get(windowId);
+    const state = appId === 'contacts' ? contactsState : appId === 'mail' ? mailState : messagesState;
+    const session = appId === 'contacts' ? contactsWindow(state, windowId) : appId === 'mail' ? mailWindow(state, windowId) : null;
+    const recordFor = () => appId === 'contacts' ? state.contacts.find(row => row.id === session?.selectedIds[0]) ?? null
+      : appId === 'mail' ? state.drafts.find(row => row.id === session?.draftId) ?? state.messages.find(row => row.id === session?.selectedIds[0]) ?? null
+        : state.drafts.find(row => row.id === state.selectedDraftId) ?? selectedMessageConversation(state);
+    const record = recordFor(), recordValue = JSON.stringify(record), sessionValue = JSON.stringify(session);
+    if (!view?.available()) return null;
+    return { appId, windowId, window: frame.window, session, record, view,
+      isCurrent: () => getServiceFrame(windowId, false)?.window === frame.window
+        && (appId === 'messages' ? messagesViews.get(windowId) : domainViews.get(windowId)) === view && view.available()
+        && (appId === 'contacts' ? contactsWindow(state, windowId) : appId === 'mail' ? mailWindow(state, windowId) : null) === session
+        && recordFor() === record && JSON.stringify(record) === recordValue && JSON.stringify(session) === sessionValue };
   }
   function registerServiceView(windowId, view, original) {
     if (view) { serviceViews.set(windowId, view); serviceEpoch++; return () => {
@@ -2532,14 +3468,8 @@
   function describeServiceProviders() {
     return windows.filter(window => ['contacts', 'mail', 'messages'].includes(window.appId) && !window.utilityKind).map(window => {
       const provider = getServiceProvider(window.id);
-      return { appId: window.appId, windowId: window.id, available: Boolean(provider), entryId: communicationsState.selected[window.appId],
-        ...(provider ? provider.view.describe() : {}) };
+      return { appId: window.appId, windowId: window.id, available: Boolean(provider), recordId: provider?.record?.id ?? null };
     });
-  }
-  function describeSampleMessages() {
-    const window = windows.find(window => window.appId === 'messages' && !window.utilityKind && serviceSampleAvailable(window.id));
-    return window ? messagesState.thread.items.flatMap((item, itemIndex) => item.kind === 'text'
-      ? [{ windowId: window.id, itemIndex, valueLength: item.text.length, readOnly: true }] : []) : [];
   }
   function serviceSelectedFiles(windowId, requireForeground = true) {
     if (!servicesAvailable() || requireForeground && (activeAppId !== 'finder' || activeWindowId !== windowId)) return null;
@@ -2552,23 +3482,94 @@
     const values = ids.map(fileId => {
       const file = liveFile(macFiles, fileId), info = getDesktopFileInfo(fileId);
       return file && info && !info.deleted ? { fileId, name: file.name, kind: file.kind, revision: file.revision,
-        content: file.content ?? '', path: `${info.path} / ${file.name}` } : null;
+        path: `${info.path} / ${file.name}` } : null;
     });
     return values.every(Boolean) ? values : null;
   }
-  function canCommitServiceCommunications(candidate) {
-    return workflowTextSize() - persistentStringUnits(communicationsState) + persistentStringUnits(candidate) <= 4 * 1024 * 1024;
+  function getContactServiceSource() {
+    if (activeAppId !== 'contacts') return null;
+    const provider = getServiceProvider(activeWindowId), record = provider?.record;
+    if (!record || provider.session.editor) return null;
+    const projection = () => {
+      const unified = linkedContact(contactsState, record.id);
+      return unified ? { id: record.id, name: contactName(unified, contactsState.preferences),
+        email: unified.emails[0]?.value ?? '', phone: unified.phones[0]?.value ?? '' } : null;
+    };
+    const contact = projection(), value = JSON.stringify(contact);
+    return { kind: 'contact', appId: 'contacts', windowId: provider.windowId, window: provider.window,
+      recordId: record.id, revision: record.revision, contact,
+      isCurrent: () => provider.isCurrent() && JSON.stringify(projection()) === value };
   }
-  function canCreateServiceDraft(preview) {
-    const candidate = $state.snapshot(communicationsState);
-    candidate.drafts.push(preview); candidate.nextId++; candidate.timeBase = preview.updatedAt;
-    candidate.selected[preview.kind === 'contact' ? 'contacts' : preview.kind === 'message' ? 'messages' : 'mail'] = preview.id;
-    return canCommitServiceCommunications(candidate);
+  function getPhysicalServiceSource() {
+    const appId = activeAppId, windowId = activeWindowId;
+    if (appId === 'finder') {
+      const files = serviceSelectedFiles(windowId), frame = windowId === null ? null : getServiceFrame(windowId, false);
+      if (!files?.length) return null;
+      const signature = JSON.stringify(files), originals = files.map(file => applicationFiles.getFile(file.fileId)), originalDesktop = desktopView;
+      return { kind: 'files', appId, windowId, window: frame?.window, files,
+        isCurrent: () => (windowId !== null || desktopView === originalDesktop) && originals.every((file, index) => applicationFiles.getFile(files[index].fileId) === file)
+          && JSON.stringify(serviceSelectedFiles(windowId, false)) === signature };
+    }
+    const frame = getServiceFrame(windowId, false);
+    if (!frame) return null;
+    const token = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null, node = token?.node ?? document.activeElement;
+    if (appId === 'notes') {
+      const view = domainViews.get(windowId), source = notesWorkspaceTextSource(notesState, windowId, view);
+      if (!source || source.selection.start === source.selection.end) return null;
+      const native = view.captureSelection(), session = notesWorkspaceWindow(notesState, windowId);
+      const sessionValue = JSON.stringify(session), revision = source.revision, value = source.value;
+      const selection = document.getSelection(), range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : token?.domSelection;
+      if (!range) return null;
+      const text = value.slice(source.selection.start, source.selection.end);
+      return { kind: 'text', appId, windowId, window: frame.window, node, noteId: source.note.id,
+        control: 'editor', revision, value, start: source.selection.start, end: source.selection.end, text,
+        isCurrent: () => domainViews.get(windowId) === view && view.available() && view.ownsNote(source.note)
+          && source.note.revision === revision && noteWorkspaceText(source.note) === value
+          && notesWorkspaceWindow(notesState, windowId) === session && JSON.stringify(session) === sessionValue
+          && range?.startContainer.isConnected && range.endContainer.isConnected && range.toString() === text
+          && (activeWindowId !== windowId || !frame.element.contains(document.activeElement)
+            || JSON.stringify(view.captureSelection()) === JSON.stringify(native)) };
+    }
+    const provider = getServiceProvider(windowId);
+    if (provider && node?.isConnected && frame.element.contains(node) && typeof node.value === 'string' && typeof node.selectionStart === 'number') {
+      const selected = token?.node === node ? token.selection : { start: node.selectionStart, end: node.selectionEnd };
+      if (selected && selected.start < selected.end) {
+        const value = node.value;
+        return { kind: 'text', appId, windowId, window: frame.window, node, recordId: provider.record?.id,
+          control: node.dataset.mailControl ?? node.dataset.contactsControl ?? node.dataset.messagesControl,
+          revision: provider.record?.revision, value, start: selected.start, end: selected.end, text: value.slice(selected.start, selected.end),
+          isCurrent: () => provider.isCurrent() && node.isConnected && node.value === value
+            && node.selectionStart === selected.start && node.selectionEnd === selected.end };
+      }
+    }
+    if (appId === 'messages') {
+      const selected = document.getSelection(), anchor = selected?.anchorNode;
+      const element = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('p[data-messages-control^="message:"]');
+      const conversation = selectedMessageConversation(messagesState), item = conversation?.items.find(row => `message:${row.id}` === element?.dataset.messagesControl);
+      if (item?.kind === 'text' && element && frame.element.contains(element) && selected.rangeCount === 1 && element.contains(selected.focusNode)) {
+        const originalRange = selected.getRangeAt(0).cloneRange(), prefix = originalRange.cloneRange();
+        prefix.selectNodeContents(element); prefix.setEnd(originalRange.startContainer, originalRange.startOffset);
+        const start = prefix.toString().length, text = originalRange.toString(), fingerprint = JSON.stringify(item);
+        if (text.length) return { kind: 'text', appId, windowId, window: frame.window, node: element, recordId: item.id,
+          control: element.dataset.messagesControl, value: item.text, start, end: start + text.length, text,
+          isCurrent: () => messagesViews.get(windowId)?.available() && selectedMessageConversation(messagesState) === conversation
+            && conversation.items.includes(item) && JSON.stringify(item) === fingerprint && element.isConnected
+            && element.textContent === item.text && originalRange.startContainer.isConnected && originalRange.endContainer.isConnected && originalRange.toString() === text };
+      }
+    }
+    return getContactServiceSource();
   }
-  function canCreateServiceNote(text, sceneTime = hasClock ? macFiles.sceneTime : undefined) {
-    if (notesState.notes.length >= 1024 || text.length > 1024 * 1024 || nextNoteTimestamp(notesState, sceneTime) === null) return false;
-    const candidate = $state.snapshot(notesState); createNote(candidate, text, sceneTime);
-    return workflowTextSize() - persistentStringUnits(notesState) + persistentStringUnits(candidate) <= 4 * 1024 * 1024;
+  async function setProviderSelection(provider, control, range, owner) {
+    if (!owner.guard() || !provider.isCurrent()) return false;
+    if (provider.appId === 'mail') return provider.view.setSelection(control, range.start, range.end, owner.guard);
+    if (provider.appId === 'contacts') return provider.view.setSelection(control, range, owner.guard);
+    if (control === 'draft-body' && provider.record?.kind === 'message')
+      return provider.view.restoreDraftSelection(provider.record.id, { ...range, direction: range.direction ?? 'none' }, owner.guard);
+    if (await provider.view.focus(control, owner.guard) !== true || !owner.guard()) return false;
+    const node = Array.from(managedWindowElement(provider.windowId)?.querySelectorAll('[data-messages-control]') ?? [])
+      .find(node => node.dataset.messagesControl === control);
+    if (!node || typeof node.setSelectionRange !== 'function' || range.end > node.value.length) return false;
+    return selectNativeText(node, range) && owner.guard();
   }
   function captureWindowPreparation() {
     return { windows: $state.snapshot(windows), switching: $state.snapshot(switching), running: [...runningAppIds],
@@ -2576,40 +3577,80 @@
       dock: $state.snapshot(desktopState.dock), spaces: $state.snapshot(spaceState), returnFocus: captureSessionDesktop(),
       system: hasAppleMenu ? $state.snapshot(systemState) : null };
   }
-  async function prepareServiceDestination(appId, entry, source) {
-    const snapshot = captureWindowPreparation(), previousIds = new Set(windows.map(window => window.id));
-    const windowId = openWindow(appId), window = windows.find(window => window.id === windowId);
-    const preparation = { appId, windowId, entry, snapshot, createdIds: previousIds.has(windowId) ? [] : [windowId], source };
-    servicePreparation = preparation;
-    if (!window) return preparation;
-    if (appId === 'notes' && hasViewWorkflows) window.notesPresentation.documentVisible = true;
-    if (entry) servicePending = { ...preparation, entry };
+  async function prepareServiceDestination(appId, spec, ownership) {
+    if (!ownership.guard()) return rejected('stale_target', 'The original Services source changed.');
+    const previous = new Set(windows.map(window => window.id)), snapshot = captureSessionDesktop();
+    const id = openWindow(appId, appId === 'mail' ? 'New Message' : undefined, appId === 'mail', undefined, { isCurrent: ownership.guard });
+    const window = windows.find(window => window.id === id);
+    if (!window) return rejected('unavailable', 'The actual native Services destination could not open.');
     await tick(); await tick();
-    const focused = appId === 'notes' ? await focusApplicationServiceBody(windowId)
-      : await serviceViews.get(windowId)?.focus(entry.kind === 'contact' ? 'name' : 'to');
-    preparation.focused = focused === true;
-    preparation.stale = activeWindowId !== windowId || activeAppId !== appId || disposed;
+    const view = appId === 'messages' ? messagesViews.get(id) : domainViews.get(id);
+    if (!ownership.guard() || !windows.includes(window) || !view?.available()) return rejected('stale_target', 'The original Services preparation changed.');
+    const state = appId === 'notes' ? notesState : appId === 'contacts' ? contactsState : appId === 'mail' ? mailState : messagesState;
+    const session = appId === 'notes' ? notesWorkspaceWindow(state, id) : appId === 'contacts' ? contactsWindow(state, id)
+      : appId === 'mail' ? mailWindow(state, id) : null;
+    const preparation = { appId, windowId: id, window, view, state, session, snapshot, created: !previous.has(id),
+      baseline: JSON.stringify(state), time: sharedClockWriter.getSceneTime(), committed: false };
+    if (appId === 'notes') return preparation;
+    const candidate = copyCanonicalData(state);
+    let recordId, timestamp = preparation.time;
+    if (appId === 'contacts') {
+      const result = createContact(candidate, spec.fields, { time: timestamp });
+      if (result.status !== 'applied') return rejected(result.code, result.message);
+      recordId = result.contactId;
+      const destination = contactsWindow(candidate, id);
+      destination.selectedIds = [recordId]; destination.query = ''; destination.groupId = null; destination.editor = null; destination.editingId = null;
+    } else if (appId === 'mail') {
+      const draft = createMailServiceDraft(candidate, { to: spec.to.map(row => row.name ? `${row.name} <${row.email}>` : row.email).join(', '), subject: spec.subject, body: spec.body });
+      if (!draft) return rejected('limit_exceeded', 'The canonical Mail draft exceeds a bound.');
+      for (const reference of spec.attachments) {
+        const file = applicationFiles.getFile(reference.fileId), content = applicationFiles.readFile(reference.fileId, ownership);
+        if (!file || file.revision !== reference.revision || content.status !== 'applied') return rejected('stale_target', 'An original attachment file changed.');
+        const attachmentId = mailNewId(candidate, 'mail-attachment');
+        if (!attachmentId) return rejected('limit_exceeded', 'Mail attachment identity capacity is exhausted.');
+        draft.attachments.push({ id: attachmentId, fileId: file.id, name: file.name, mime: content.mime, text: content.text });
+      }
+      const at = candidate.windows.findIndex(row => row.windowId === id);
+      candidate.windows[at] = createMailWindow(candidate, id, 'compose', draft.id); draft.windowId = id;
+      if (!validateMailState(candidate, profile)) return rejected('invalid_arguments', 'The requested real Mail draft or attachments violate its bounded schema.');
+      recordId = draft.id;
+    } else {
+      const recipient = spec.recipient;
+      const result = createMessageDraft(candidate, { to: recipient ? recipient.name ? `${recipient.name} <${recipient.address}>` : recipient.address : '', body: spec.text }, { time: timestamp });
+      if (result.status !== 'applied') return result;
+      recordId = result.target.draftId; timestamp = candidate.timeBase;
+    }
+    preparation.transition = { status: 'prepared', candidate, recordId, timestamp,
+      deltaTextUnits: canonicalStringUnits(candidate) - canonicalStringUnits(state) };
     return preparation;
   }
   function serviceDestinationCurrent(preparation) {
-    if (!preparation?.focused || !getServiceFrame(preparation.windowId, true) || activeAppId !== preparation.appId) return false;
-    if (!preparation.entry) return document.activeElement?.dataset.notesControl === 'body'
-      && document.activeElement.closest('[data-window-id]')?.dataset.windowId === preparation.windowId;
-    const field = preparation.entry.kind === 'contact' ? 'name' : 'to', node = serviceViews.get(preparation.windowId)?.fieldNode(field);
-    return servicePending?.windowId === preparation.windowId && servicePending.entry === preparation.entry
-      && document.activeElement === node && node?.dataset.serviceEntryId === preparation.entry.id && node.value === preparation.entry.fields[field];
+    return Boolean(preparation && !preparation.committed && windows.includes(preparation.window)
+      && getServiceFrame(preparation.windowId, false)?.window === preparation.window
+      && (preparation.appId === 'messages' ? messagesViews.get(preparation.windowId) : domainViews.get(preparation.windowId)) === preparation.view
+      && preparation.view.available() && sharedClockWriter.getSceneTime() === preparation.time
+      && JSON.stringify(preparation.state) === preparation.baseline);
   }
-  function finishServiceDestination(preparation) {
-    if (servicePreparation === preparation) servicePreparation = null;
-    if (servicePending?.windowId === preparation.windowId) servicePending = null;
-    pendingWindowViews.delete(preparation.windowId); serviceErrors[preparation.windowId] = null;
+  function commitServiceTransition(spec, ownership) {
+    const { preparation } = spec, transition = spec.transition;
+    const delta = spec.provider === 'notes' ? spec.deltaTextUnits : transition.deltaTextUnits;
+    const timestamp = spec.provider === 'notes' ? spec.timestamp : transition.timestamp;
+    if (!ownership.guard() || !serviceDestinationCurrent(preparation)) return rejected('stale_target', 'The original Services domain, source or clock changed.');
+    if (completeSceneStringUnits() + delta > 4 * 1024 * 1024) return rejected('limit_exceeded', 'The complete scene text budget is exhausted.');
+    if (!ownership.guard() || !serviceDestinationCurrent(preparation)) return rejected('stale_target', 'The original Services commit changed.');
+    if (spec.provider === 'notes') {
+      if (spec.onCommit() !== true) return rejected('stale_target', 'The original Notes creation refused the shared commit.');
+    } else applyCanonicalData(preparation.state, transition.candidate);
+    preparation.committed = true;
+    sharedClockWriter.onTimeChanged(timestamp);
+    serviceEpoch++;
+    return { status: 'applied', target: { recordId: transition?.recordId } };
   }
   async function rollbackServiceDestination(preparation, source) {
-    if (servicePreparation === preparation) servicePreparation = null;
-    if (servicePending?.windowId === preparation.windowId) servicePending = null;
-    await rollbackWindowPreparation(preparation, () => serviceSources.current(source)
-      && activeAppId === source.appId && activeWindowId === source.windowId);
-    serviceEpoch++;
+    if (!preparation || preparation.committed || !serviceDestinationCurrent(preparation)) return;
+    const ownedFocus = activeWindowId === preparation.windowId;
+    if (preparation.created) closeWindow(preparation.windowId);
+    if (ownedFocus && serviceSources.current(source)) await restoreSessionDesktop(preparation.snapshot);
   }
   async function rollbackWindowPreparation(preparation, sourceCurrent = null) {
     if (disposed) return;
@@ -2676,13 +3717,16 @@
     return result;
   }
   async function selectServiceSampleMessage(target, payload) {
-    const frame = getServiceFrame(target.windowId, true), item = messagesState.thread.items[target.itemIndex];
+    const frame = getServiceFrame(target.windowId, true), conversation = selectedMessageConversation(messagesState),
+      item = conversation?.items[target.itemIndex], revision = sampleMessageRevision();
     if (frame?.window.appId !== 'messages' || !serviceSampleAvailable(target.windowId) || servicePending?.appId === 'messages')
       return rejected('stale_target', 'The requested sample text is not in the original foreground Messages window.');
     if (item?.kind !== 'text' || payload.end > item.text.length) return rejected('invalid_arguments', 'Use the actual sample text UTF-16 range.');
     await tick();
     const node = frame.element.querySelector(`[data-service-message-index="${target.itemIndex}"]`);
-    if (!node?.isConnected || node.textContent !== item.text || !getServiceFrame(target.windowId, true)) return rejected('unavailable', 'The sample text is not rendered.');
+    if (!node?.isConnected || node.textContent !== item.text || !getServiceFrame(target.windowId, true)
+      || selectedMessageConversation(messagesState) !== conversation || sampleMessageRevision() !== revision)
+      return rejected('unavailable', 'The original sample text is not rendered.');
     node.focus({ preventScroll: true });
     const selection = globalThis.getSelection(), text = node.firstChild;
     if (!text || text.nodeType !== Node.TEXT_NODE) return rejected('unavailable', 'The sample text has no native text node.');
@@ -2693,7 +3737,11 @@
   function retainedWindowOptions(window, extra = {}) {
     const entry = hasServices && !window.utilityKind && ['contacts', 'mail', 'messages'].includes(window.appId)
       ? communicationEntry(communicationsState, window.appId) : null;
-    return { noteId: notesState.selectedId, recordId: entry?.id ?? null, fields: entry?.fields ?? null,
+    const messageWindow = hasMessages && !window.utilityKind && ['messages', 'teams'].includes(window.appId);
+    return { recordId: entry?.id ?? null, fields: entry?.fields ?? null,
+      messageConversationId: messageWindow ? messagesState.selectedConversationId : null,
+      messageQuery: messageWindow ? messagesState.query : null,
+      messageDraft: messageWindow ? messagesState.drafts.find(draft => draft.id === messagesState.selectedDraftId) ?? null : null,
       widgetScope: hasWidgets && !window.utilityKind && widgetDataApps.includes(window.appId)
         ? widgetDataScope(window.appId, systemState.widgets.selected) : null,
       computerName: hasAppleMenu && !window.utilityKind && window.appId === 'settings' && window.settingsPane === 'about'
@@ -2834,10 +3882,12 @@
       && !window.minimized && (!requireForeground || windowPresented(window))) ?? null;
   }
   function ownedTextDocument(target, requireForeground = true) {
-    const window = ownedNotesWindow(target.windowId, requireForeground);
-    if (hasViewWorkflows && window?.notesPresentation?.mode === 'gallery' && !window.notesPresentation.documentVisible) return null;
-    const note = window && visibleNotes(notesState).find(note => note.id === target.noteId && note.id === notesState.selectedId);
-    return note ? { window, note } : null;
+    const window = ownedNotesWindow(target.windowId, requireForeground), session = notesWorkspaceWindow(notesState, target.windowId);
+    const note = window && session && visibleWorkspaceNotes(notesState, session).find(note => note.id === target.noteId && note.id === session.selectedId);
+    const view = domainViews.get(target.windowId);
+    return note && view?.available() && view.ownsNote(note) ? { window, note, session, view,
+      revision: note.revision, value: noteWorkspaceText(note),
+      readOnly: note.deletedAt !== null || note.lock && !note.lock.unlocked || note.collaboration.enabled && note.collaboration.permission === 'view' } : null;
   }
   function inputInteractionsAvailable() {
     return hasInput && windowInteractionsAvailable() && !utilityPreparation && !servicePreparation
@@ -2960,45 +4010,32 @@
     return { result, original, editor: captureInputEditor(original) };
   }
   function ownedTextSource(target, requireForeground = true) {
-    if (!ownedNotesWindow(target.windowId, requireForeground) || !['title', 'body', 'search'].includes(target.control)) return null;
-    const note = target.control === 'search' ? null : ownedTextDocument(target, requireForeground)?.note;
-    if (target.control !== 'search' && !note) return null;
-    const node = managedWindowElement(target.windowId)?.querySelector(`[data-notes-control="${target.control}"]`);
-    const value = target.control === 'search' ? notesState.search.replace(/[\r\n]/g, '') : noteTextControlValue(note, target.control);
-    if (!node?.isConnected || node.disabled || requireForeground && (node.closest('[inert]') || !node.getClientRects().length)
-      || node.value !== value || (note && node.dataset.noteId !== note.id)) return null;
-    return { note: note ?? undefined, value, readOnly: Boolean(node.readOnly || note?.deleted),
-      selection: { start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection ?? 'none' } };
+    if (!ownedNotesWindow(target.windowId, requireForeground) || target.control !== 'editor') return null;
+    const source = notesWorkspaceTextSource(notesState, target.windowId, domainViews.get(target.windowId));
+    return source && (!target.noteId || source.note.id === target.noteId) ? source : null;
   }
   async function prepareOwnedText(target) {
     if (!ownedTextSource(target)) return false;
-    const node = managedWindowElement(target.windowId).querySelector(`[data-notes-control="${target.control}"]`);
-    node.focus({ preventScroll: true });
-    return document.activeElement === node && Boolean(ownedTextSource(target));
+    const view = domainViews.get(target.windowId);
+    return view.focus('editor') === true && Boolean(ownedTextSource(target));
   }
   async function finishOwnedTextSelection(target, range, revision) {
     await tick(); await tick();
     const source = ownedTextSource(target);
-    if (!source || (source.note ? source.note.updatedAt : textEditing.targets().searchRevision) !== revision) return false;
-    const node = managedWindowElement(target.windowId).querySelector(`[data-notes-control="${target.control}"]`);
-    return selectNativeText(node, range);
+    if (!source || source.revision !== revision) return false;
+    const native = notesPlaintextNativeSelection(source.note.document, range.start, range.end);
+    return Boolean(native && domainViews.get(target.windowId).restoreSelection({ ...native, direction: range.direction ?? 'none' }));
   }
   function textSelectionTarget() {
     const token = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus : null;
     const node = token?.node ?? document.activeElement;
-    const control = node?.dataset?.notesControl;
-    if (!['title', 'body', 'search'].includes(control)) return null;
-    const windowId = node.closest('[data-window-id]')?.dataset.windowId;
-    const noteId = control === 'search' ? undefined : token?.noteId ?? node.dataset.noteId;
-    if (control !== 'search' && noteId !== node.dataset.noteId) return null;
-    const source = ownedTextSource({ windowId, control, ...(noteId ? { noteId } : {}) });
-    if (!source) return null;
-    if (token && (token.noteRevision !== (source.note?.updatedAt ?? textEditing.targets().searchRevision) || token.sourceValue !== source.value)) return null;
-    const range = token?.selection ?? source.selection;
-    if (!Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end) || range.start < 0
-      || range.start > range.end || range.end > source.value.length) return null;
-    return { windowId, control, ...(noteId ? { noteId } : {}), revision: source.note?.updatedAt ?? textEditing.targets().searchRevision,
-      start: range.start, end: range.end };
+    const windowId = node?.closest('[data-window-id]')?.dataset.windowId;
+    if (!node?.isContentEditable) return null;
+    const source = ownedTextSource({ windowId, control: 'editor' });
+    if (!source || token && token.noteRevision !== source.revision) return null;
+    const range = source.selection;
+    if (!range || !Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end)) return null;
+    return { windowId, control: 'editor', noteId: source.note.id, revision: source.revision, start: range.start, end: range.end };
   }
   function ownedToolInput(target) {
     if (!ownedNotesWindow(target.windowId)) return null;
@@ -3049,9 +4086,7 @@
   async function revealNoteMatch(target, range) {
     const source = ownedTextDocument(target);
     if (!source) return false;
-    const revision = source.note.updatedAt;
-    const field = documentControlRange(source.note.text, range.start, range.end);
-    return finishOwnedTextSelection({ windowId: target.windowId, noteId: target.noteId, control: field.control }, field, revision);
+    return finishOwnedTextSelection({ windowId: target.windowId, noteId: target.noteId, control: 'editor' }, range, source.revision);
   }
   function editingTargets() {
     editingEpoch;
@@ -3060,7 +4095,7 @@
     const tools = textTools.targets(), tool = nativeToolTarget(), native = nativeDraftTarget();
     const draftKey = tool ? tool.control === 'word' ? 'spelling:replacement' : `find:${tool.control}` : null;
     const draft = draftKey && tools.drafts.find(history => history.key === draftKey);
-    const body = ownedTextSource({ windowId: activeWindowId, noteId: notesState.selectedId, control: 'body' });
+    const body = ownedTextSource({ windowId: activeWindowId, control: 'editor' });
     return $state.snapshot({ preferences: editingPreferences, ...textEditing.targets(), selection,
       selectionValueLength: source?.value.length ?? 0, selectionReadOnly: source?.readOnly ?? true,
       documentReadOnly: body?.readOnly ?? true, documentAvailable: Boolean(body), dictionaryStatus,
@@ -3079,11 +4114,8 @@
   }
   function documentSelectionTarget(owner) {
     const selected = textSelectionTarget();
-    if (!selected || !['title', 'body'].includes(selected.control) || selected.windowId !== owner.windowId || selected.noteId !== owner.noteId) return null;
-    const source = ownedTextDocument(owner);
-    return source ? { ...owner, revision: source.note.updatedAt,
-      start: controlDocumentOffset(source.note.text, selected.control, selected.start),
-      end: controlDocumentOffset(source.note.text, selected.control, selected.end) } : null;
+    if (!selected || selected.control !== 'editor' || selected.windowId !== owner.windowId || selected.noteId !== owner.noteId) return null;
+    return { ...owner, revision: selected.revision, start: selected.start, end: selected.end };
   }
   async function restoreTextToolReturn(token, target, revision, guard = () => true) {
     await tick(); await tick();
@@ -3122,9 +4154,10 @@
   });
   $effect(() => {
     if (!hasEditWorkflows || dictionaryStatus !== 'ready' || !editingPreferences.checkSpellingWhileTyping || !ownedNotesWindow(activeWindowId)) return;
-    const note = visibleNotes(notesState).find(note => note.id === notesState.selectedId);
-    if (!note) return;
-    const owner = { windowId: activeWindowId, noteId: note.id, revision: note.updatedAt };
+    const session = notesWorkspaceWindow(notesState, activeWindowId);
+    const note = session && notesState.notes.find(note => note.id === session.selectedId);
+    if (!note || note.lock && !note.lock.unlocked) return;
+    const owner = { windowId: activeWindowId, noteId: note.id, revision: note.revision };
     const learned = editingPreferences.learnedWords;
     learned.length;
     textToolsState.spellingEpoch;
@@ -3204,57 +4237,6 @@
       const selection = documentSelectionTarget({ windowId: panel.windowId, noteId: panel.noteId });
       if (selection) panel.selection = selection;
     }
-  }
-  async function editNativeText(event, windowId, control) {
-    const node = event.currentTarget;
-    if (!ownedNotesWindow(windowId) || !['title', 'body', 'search'].includes(control)) return;
-    const noteId = control === 'search' ? undefined : node.dataset.noteId;
-    const note = noteId && ownedTextDocument({ windowId, noteId })?.note;
-    if (control !== 'search' && (!note || note.deleted)) return;
-    const before = control === 'search' ? notesState.search.replace(/[\r\n]/g, '') : noteTextControlValue(note, control);
-    const entered = node.value, cursor = node.selectionEnd;
-    if (event.isComposing) {
-      const first = note?.text.split('\n', 1)[0], newline = note?.text.indexOf('\n');
-      const body = newline >= 0 ? note.text.slice(newline + 1) : '';
-      if (control === 'search') await commands.execute({ command: 'notes.search', payload: { query: entered } });
-      else {
-        const previous = textInputSelections.get(node);
-        const saved = previous?.value === before ? previous : { start: Math.min(cursor, before.length), end: Math.min(cursor, before.length), direction: 'none' };
-        textEditing.editDocument(noteId, control === 'title' ? entered + (newline >= 0 ? `\n${body}` : '') : `${first}\n${entered}`, 'typing',
-          { control, before: { start: saved.start, end: saved.end, direction: saved.direction },
-            after: { start: node.selectionStart, end: node.selectionEnd, direction: node.selectionDirection ?? 'none' } });
-      }
-      return;
-    }
-    const previous = textInputSelections.get(node);
-    let start = 0, suffix = 0;
-    while (start < before.length && start < entered.length && before[start] === entered[start]) start++;
-    while (suffix < before.length - start && suffix < entered.length - start
-      && before[before.length - suffix - 1] === entered[entered.length - suffix - 1]) suffix++;
-    const oldRange = previous?.value === before ? previous : { start, end: before.length - suffix, direction: 'none' };
-    node.value = before; node.setSelectionRange(oldRange.start, oldRange.end, oldRange.direction);
-    if (entered === before) return;
-    const revision = note?.updatedAt ?? textEditing.targets().searchRevision;
-    const owner = { windowId, control, ...(noteId ? { noteId } : {}), revision };
-    const preferences = { ...editingPreferences }, preferenceRevision = editingPreferenceRevision;
-    let corrected;
-    try { corrected = control === 'search' ? { text: entered, cursor, changed: false }
-      : await textAssistance.correctInput(entered, cursor, preferences, preferences.learnedWords); }
-    catch { textToolsState.error = 'The bundled English spelling dictionary could not be loaded. Your text was not changed.'; return; }
-    if (control === 'body' ? corrected.text.includes('\r') : /[\r\n]/u.test(corrected.text)) {
-      const normalize = value => control === 'body' ? value.replace(/\r\n?/g, '\n') : value.replace(/[\r\n]/g, '');
-      corrected = { ...corrected, text: normalize(corrected.text), cursor: normalize(corrected.text.slice(0, corrected.cursor)).length };
-    }
-    const current = ownedTextSource(owner);
-    if (!current || editingPreferenceRevision !== preferenceRevision || (current.note?.updatedAt ?? textEditing.targets().searchRevision) !== revision
-      || current.value !== before || current.selection.start !== oldRange.start || current.selection.end !== oldRange.end) return;
-    start = 0; suffix = 0;
-    while (start < before.length && start < corrected.text.length && before[start] === corrected.text[start]) start++;
-    while (suffix < before.length - start && suffix < corrected.text.length - start
-      && before[before.length - suffix - 1] === corrected.text[corrected.text.length - suffix - 1]) suffix++;
-    const result = await commands.execute({ command: 'text.replace', target: { ...owner, start, end: before.length - suffix },
-      payload: { text: corrected.text.slice(start, corrected.text.length - suffix), label: 'typing', cursor: corrected.cursor } });
-    textToolsState.error = result.status === 'rejected' ? result.error.message : null;
   }
   function applicationMenuTargets() {
     return { preferences: { notes: { ...notesState.preferences } },
@@ -3403,15 +4385,58 @@
     return { status: 'applied', target: { confirmationId: pending.confirmationId, windowId: pending.windowId,
       accepted: true, fileIds: result.target.fileIds } };
   }
-  function setClockSceneTime(sceneTime) {
+  function queueClockPumps(sceneTime) {
+    clockPumpWork = clockPumpWork.then(async () => {
+      if (disposed || sharedClockWriter.getSceneTime() !== sceneTime) return;
+      const run = async (key, controller, method) => {
+        if (typeof controller?.[method] !== 'function' || disposed) return;
+        let result;
+        try {
+          const actual = await controller[method](sceneTime);
+          result = actual?.status ? actual : { status: actual?.ok === false ? 'rejected' : 'applied' };
+        } catch (cause) {
+          result = rejected('unavailable', cause?.message ?? 'The original authored clock source failed.');
+        }
+        if (!disposed) sceneRuntime.record(`${key}.${method}`, result, { appId: key === 'calls'
+          ? macDesktop ? 'facetime' : 'teams' : nativeDomainDefinitions[key]?.appIds(profile)[0] ?? key });
+      };
+      await run('calls', domainControllers.get(macDesktop ? 'facetime' : 'teams-call'), 'advance');
+      await run('calendar', domainControllers.get('calendar'), 'clockChanged');
+      await run('reminders', domainControllers.get('reminders'), 'clockChanged');
+      await run('mail', domainControllers.get('mail'), 'pulse');
+      for (const key of ['clockApp', 'stocks', 'home']) await run(key, nativeControllers.get(key), 'clockChanged');
+      await run('backup', nativeControllers.get('backup'), 'onTimeChanged');
+    });
+  }
+  function setCanonicalSceneDate(date, guard) {
+    const now = sharedClockWriter.getSceneTime(), zone = calendarState.preferences.timeZone;
+    const sceneTime = calendarTimestamp(`${date}T${calendarLocalString(now, zone).slice(11)}`, zone) + now % 60000;
+    return setClockSceneTime(sceneTime, { guard }).status === 'applied';
+  }
+  function setClockSceneTime(sceneTime, ownership = {}) {
     if (!Number.isSafeInteger(sceneTime) || sceneTime < 0 || sceneTime > 8_640_000_000_000_000 - 1)
-      return rejected('invalid_arguments', 'Use a bounded explicit virtual scene timestamp.');
-    if (sceneTime < macFiles.sceneTime) return rejected('invalid_arguments', 'The virtual scene clock cannot rewind existing record and storage histories.');
-    return storageTransaction((store, preferences) => {
-      store.sceneTime = sceneTime;
-      const changes = maintainStorage(store, preferences);
-      return { status: 'applied', target: { sceneTime: store.sceneTime, ...changes } };
-    }, true);
+      return rejected('invalid_arguments', 'Use a bounded explicit authored scene timestamp.');
+    const guard = ownership.guard ?? (() => !disposed), original = sharedClockWriter.getSceneTime();
+    const reserve = ownership.reserveTextUnits ?? 0;
+    if (guard() !== true) return rejected('stale_target', 'The original scene clock owner changed.');
+    if (sceneTime < original) return rejected('stale_time', 'The authored application timeline cannot rewind.');
+    if (!Number.isSafeInteger(reserve) || completeSceneStringUnits() + reserve > 4 * 1024 * 1024)
+      return rejected('limit_exceeded', 'The paired clock transaction exceeds the complete scene budget.');
+    if (sharedClockWriter.getSceneTime() !== original || guard() !== true)
+      return rejected('stale_target', 'The original authored scene time changed.');
+    if (ownership.onCommit && ownership.onCommit(sceneTime) !== true)
+      return rejected('stale_target', 'The paired actor refused the authored clock update.');
+    if (messagesState && profile.family !== 'windows' && messagesState.preferences.keepMessages !== 'forever') {
+      const candidate = copyCanonicalData(messagesState);
+      expireMessages(candidate, sceneTime);
+      const validation = validateMessagesState(candidate, profile);
+      if (!validation.ok) throw new Error(`The authored Messages expiry produced invalid state: ${validation.message}`);
+      applyCanonicalData(messagesState, candidate);
+    }
+    if (macDesktop) macFiles.sceneTime = sceneTime;
+    else { windowsSceneTime = sceneTime; desktopFileStore.sceneTime = sceneTime; }
+    queueClockPumps(sceneTime);
+    return { status: 'applied', target: { sceneTime } };
   }
   function storageTransaction(operation, maintenanceIncluded = false) {
     const before = macFiles.files, originalIds = new Set(before.map(file => file.id));
@@ -3767,9 +4792,9 @@
           || original?.dataset.serviceEntryId !== token.serviceEntryId || original.value !== token.sourceValue) return false;
       }
       if (token?.serviceSample) {
-        const saved = token.serviceSample, item = messagesState.thread.items[saved.itemIndex];
+        const saved = token.serviceSample, item = selectedMessageConversation(messagesState)?.items[saved.itemIndex];
         if (!hasServices || activeWindowId !== token.windowId || item?.kind !== 'text' || item.text !== saved.value
-          || messagesState.thread.timestamp !== saved.revision) return false;
+          || sampleMessageRevision() !== saved.revision) return false;
         const result = await selectServiceSampleMessage({ windowId: token.windowId, itemIndex: saved.itemIndex },
           { start: saved.start, end: saved.end, direction: saved.direction });
         return result.status === 'applied';
@@ -3859,13 +4884,10 @@
       if (power && power.checked !== systemState.bluetooth.powered
         || visible && visible.checked !== systemState.bluetooth.showInMenuBar) return false;
     }
-    for (const node of sceneRoot.querySelectorAll('[data-system-computer-name], [data-notes-control="title"], [data-notes-control="body"], [data-service-field]')) {
+    for (const node of sceneRoot.querySelectorAll('[data-system-computer-name], [data-service-field]')) {
       if (node.disabled || node.readOnly) continue;
       if (node.hasAttribute('data-system-computer-name')) {
         if (node.value !== systemState.computerName) return false;
-      } else if (node.dataset.notesControl) {
-        const note = notesState.notes.find(note => note.id === node.dataset.noteId);
-        if (!note || node.value !== noteTextControlValue(note, node.dataset.notesControl)) return false;
       } else {
         const entry = communicationsState.drafts.find(entry => entry.id === node.dataset.serviceEntryId);
         if (!entry) return false;
@@ -3886,7 +4908,6 @@
     batteryController?.clear();
     clockController?.clear();
     soundController?.clear();
-    soundMediaController?.clear();
     bluetoothController?.clear();
     inputController?.clear();
     spotlightController?.clear();
@@ -3917,28 +4938,35 @@
   }
   function persistentDockData() {
     const dock = desktopState.dock;
+    if (!hasDockContext) return initialData.dock;
     return { pinnedAppIds: dock.pinnedAppIds, recentHistory: dock.recentHistory, usageSequence: dock.usageSequence,
       preferences: dock.preferences, folderFileIds: dock.folderFileIds, folderPreferences: dock.folderPreferences,
       mainOrderAppIds: dock.mainOrderAppIds.filter(id => dock.pinnedAppIds.includes(id)),
       secondaryOrderItemIds: dock.secondaryOrderItemIds.filter(id => dock.folderFileIds.some(fileId => dockFolderItemId(fileId) === id)) };
   }
-  function persistentStringUnits(value) {
-    if (typeof value === 'string') return value.length;
-    if (!value || typeof value !== 'object') return 0;
-    let total = 0;
-    for (const key of Object.keys(value)) total += key.length + persistentStringUnits(value[key]);
-    return total;
+  const persistentStringUnits = canonicalStringUnits;
+  function completeSceneStringUnits() {
+    return sharedMutationReserve + persistentStringUnits({ notes: notesState, messages: messagesState, browser: browserState,
+      mail: mailState, contacts: contactsState, calendar: calendarState,
+      calls: callsState, reminders: remindersState, nativeApplications,
+      files: { files: desktopFileStore.files.filter(file => !file.readOnly), nextFileId: desktopFileStore.nextFileId,
+        sceneTime: sharedClockWriter.getSceneTime() },
+      clipboard: clipboardState, printing: printingState, editing: editingPreferences, viewing, communications: communicationsState,
+      system: systemState, appearance: appearanceState, dock: desktopState.dock ?? null,
+      windows, runningAppIds, pendingQuitAppIds, activeWindowId, activeAppId, switching, presentation,
+      desktop: { ...desktopState, dock: null }, spaces: spaceState, closedWindows,
+      documentDestinations, sceneEvents: sceneRuntime?.getSceneEvents() });
   }
   function fileWorkflowOtherTextSize() {
     return persistentStringUnits({ version: 1, notes: null, files: null, printing: null,
       editing: editingPreferences, viewing, messages: messagesState, ...(hasServices ? { communications: communicationsState } : {}),
+      browser: browserState, mail: mailState, contacts: contactsState, calendar: calendarState,
+      calls: callsState, reminders: remindersState,
       ...(hasAppleMenu ? { system: systemState } : {}),
       appearance: appearanceState, dock: persistentDockData() });
   }
   function workflowTextSize() {
-    return fileWorkflowOtherTextSize() + persistentStringUnits(notesState) + persistentStringUnits(printingState)
-      + persistentStringUnits({ files: macFiles.files.filter(file => !file.readOnly),
-        nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime });
+    return completeSceneStringUnits();
   }
   function canAddWorkflowFiles(records) {
     const count = macFiles.files.reduce((total, file) => total + (file.readOnly ? 0 : 1), 0);
@@ -3971,8 +4999,6 @@
   function viewingTargets() {
     return {
       ...viewWorkflows.targets(),
-      notesWindows: windows.filter(window => window.appId === 'notes' && !window.utilityKind)
-        .map(window => viewWorkflows.notesForWindow(window.id)),
       finderWindows: windows.filter(window => window.appId === 'finder' && !window.utilityKind)
         .map(window => viewWorkflows.finderForWindow(window.id)).filter(Boolean),
     };
@@ -4049,10 +5075,41 @@
     event.preventDefault(); event.stopImmediatePropagation();
     if (!event.repeat) void performViewRequest(request);
   }
+  function messagesMenuKeydown(event) {
+    if (!macDesktop || !hasMessages || activeAppId !== 'messages' || !foreground || disposed
+      || event.defaultPrevented || event.isComposing || !event.metaKey) return;
+    if ((event.key === 'a' || event.key === 'A') && !event.shiftKey && !event.altKey && !event.ctrlKey
+      && selectNativeEditableAll(event)) return;
+    const key = event.key.toLowerCase();
+    if (key === '0' && !event.altKey && !event.ctrlKey && !event.shiftKey) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (!event.repeat) void performEditRequest({ command: 'app.open', target: { appId: 'messages' }, payload: {} });
+      return;
+    }
+    const window = messageWindow(activeWindowId);
+    if (!window || !messageWindowAvailable(window)) return;
+    const node = event.target;
+    if (node?.closest?.('.messages-rich-panel, .messages-rich-confirmation')) return;
+    const request = messagesMenuShortcut(event, sharedMenuProviders());
+    if (!request) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (!event.repeat) void performEditRequest(request);
+  }
+  function selectNativeEditableAll(event) {
+    const node = event.target;
+    if (!(node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement)
+      || document.activeElement !== node || node.disabled || node.readOnly
+      || typeof node.selectionStart !== 'number' || !sceneRoot?.contains(node)) return false;
+    event.preventDefault(); event.stopImmediatePropagation();
+    node.setSelectionRange(0, node.value.length, 'forward');
+    return true;
+  }
   function editingKeydown(event) {
     if (!hasEditWorkflows || !foreground || disposed || event.defaultPrevented || event.isComposing) return;
     const original = menuBarState?.menuId ? getMenuReturnFocus?.()?.focus?.node : null;
     if (!sceneRoot?.contains(event.target) && !sceneRoot?.contains(original)) return;
+    if (event.target?.closest?.('.notes-workspace') && !event.target.closest('[data-text-panel-kind]')) return;
+    if (event.target?.closest?.('.messages-rich-panel, .messages-rich-confirmation')) return;
     const key = event.key.toLowerCase(), command = event.metaKey || event.ctrlKey;
     const pane = event.target?.closest?.('[data-text-panel-kind]');
     if (pane && (key === 'escape' || command && key === 'w') && !event.altKey) {
@@ -4071,11 +5128,15 @@
       : key === 'g' ? event.shiftKey ? 'find-previous' : 'find-next' : key === 'e' ? 'use-selection-find'
       : key === 'j' ? 'jump-selection' : key === ':' || key === ';' ? key === ':' || event.shiftKey ? 'show-spelling' : 'check-spelling' : null;
     if (!itemId || event.altKey && !['search-notes', 'paste-match-style'].includes(itemId)) return;
+    if (itemId === 'select-all' && selectNativeEditableAll(event)) return;
+    const request = editMenuRequest(itemId);
+    if (!request) return;
     event.preventDefault(); event.stopImmediatePropagation();
-    if (!event.repeat) void performEditRequest(editMenuRequest(itemId));
+    if (!event.repeat) void performEditRequest(request);
   }
   function editingClipboardEvent(event) {
     if (!hasEditWorkflows || !foreground || disposed || event.defaultPrevented || !sceneRoot?.contains(event.target)) return;
+    if (event.target.closest('.notes-workspace')) return;
     event.preventDefault(); event.stopImmediatePropagation();
     void performEditRequest(editMenuRequest(event.type));
   }
@@ -4088,6 +5149,7 @@
     const key = event.key.toLowerCase();
     const window = windows.find(window => window.id === activeWindowId);
     let request;
+    if (window?.appId === 'notes' && !window.utilityKind) return;
     if (key === 'n' && !event.shiftKey && activeAppId === 'notes') request = { command: 'notes.document.create' };
     else if (key === 'n' && event.shiftKey && activeAppId === 'finder') request = window && !window.utilityKind
       ? { command: 'finder.folder.create', target: { windowId: window.id } } : activeWindowId === null ? { command: 'desktop.folder.create' } : null;
@@ -4125,6 +5187,7 @@
       && (fullScreenStage.mode === 'normal' || fullScreenStage.topRevealed);
   }
   function sharedMenuProviders() {
+    messagesViewEpoch;
     const appId = activeAppId, app = applications[appId];
     const active = windows.find(window => window.id === activeWindowId);
     const managedOrdinary = Boolean(active && !active.utilityKind && !active.minimized && !isAppHidden(active.appId));
@@ -4144,44 +5207,72 @@
     const finderDesktop = appId === 'finder' && !active;
     const finderFolder = finderWindow ? liveFile(macFiles, finderWindow.folderId) : finderDesktop ? liveFile(macFiles, 'desktop') : null;
     const finderIds = finderWindow?.finderSelectedFileIds ?? (finderDesktop ? desktopState.selectedFileIds : []);
-    const commandMenus = appCommandMenuProviders({ profile, appId, enabled, activeWindow: active,
+    const nativeMenuGroups = appId === 'safari' && active && !active.utilityKind
+      ? browserMenuProvider({ state: browserState, profile, windowId: active.id, view: domainViews.get(active.id) })
+      : appId === 'mail' && active
+        ? mailMenuProvider({ state: mailState, profile, windowId: active.id, services: services?.menuItems() ?? [] })
+        : appId === 'contacts' && active
+          ? [['contacts', 'Contacts'], ['file', 'File'], ['edit', 'Edit'], ['view', 'View'], ['card', 'Card'], ['window', 'Window'], ['help', 'Help']]
+            .map(([id, label]) => ({ id, label, items: contactsMenuProvider({ state: contactsState, profile, windowId: active.id, menuId: id }) }))
+          : appId === 'calendar' && active
+            ? calendarMenuProvider({ state: calendarState, profile, windowId: active.id, services: services?.menuItems() ?? [],
+              edits: domainViews.get(active.id)?.editAvailability?.(), history: domainViews.get(active.id)?.editAvailability?.() })
+            : null;
+    const nativeMenus = nativeMenuGroups?.map(group => {
+      const menuId = ['app', 'mail', 'contacts', 'calendar'].includes(group.id) ? 'application' : group.id;
+      return { menuId, kind: menuId, label: group.label, appId, enabled, items: group.items };
+    });
+    const commandMenus = appId === 'messages' && hasMessages ? messagesAppMenuProviders({
+      profile, state: messagesState, windowId: active?.id,
+      available: Boolean(enabled && active && messageWindowAvailable(active) && messagesViews.get(active.id)?.available()),
+      editing: active ? messagesController.editingAvailability(active.id) : null, clipboard: clipboardState,
+    }) : nativeMenus ?? appCommandMenuProviders({ profile, appId, enabled, activeWindow: active,
       ...(hasEditWorkflows ? { editing: editingTargets() } : {}),
       ...(hasViewWorkflows ? { viewing: {
-        notes: active?.appId === 'notes' && viewWindowAvailable(active.id) ? viewWorkflows.notesForWindow(active.id) : null,
         finder: finderWindow && viewWindowAvailable(finderWindow.id) ? viewWorkflows.finderForWindow(finderWindow.id) : null,
         desktop: { available: appId === 'finder' && (!active || active.utilityKind === 'desktop-view-options'),
           sortBy: desktopState.sortBy, stacks: desktopState.stacks,
           optionsWindowId: windows.find(window => window.utilityKind === 'desktop-view-options')?.id ?? null },
       } } : {}),
-      notes: appId === 'notes' ? { available: Boolean(notesView && appWindows.some(window => !window.utilityKind && !window.minimized && windowPresented(window))),
-        documentAvailable: Boolean(active?.appId === 'notes' && !active.utilityKind && !active.minimized && windowPresented(active)),
-        selected: visibleNotes(notesState).find(note => note.id === notesState.selectedId),
-        sidebarVisible: notesState.sidebarVisible, textControl, hasText: Boolean(textControl && original.value.length) } : null,
+      notes: appId === 'notes' ? notesState : null,
       finder: appId === 'finder' ? { windowId: finderWindow?.id ?? null, folderId: finderFolder?.id ?? null,
         writable: Boolean(finderFolder && !finderFolder.readOnly && finderFolder.id !== 'trash'),
         childIds: finderFolder ? liveMacFileRecords(macFiles).filter(file => file.parentId === finderFolder.id || finderDesktop && file.id === 'disk').map(file => file.id) : [],
         selected: finderFolder ? liveMacFileRecords(macFiles).filter(file => finderIds.includes(file.id)
           && (file.parentId === finderFolder.id || finderDesktop && file.id === 'disk')) : [] } : null });
     if (fileDraftMenusAvailable()) for (const menu of commandMenus) menu.enabled = menu.menuId === 'edit' && running;
-    return [
+    const representedApplicationMenu = commandMenus.find(menu => menu.menuId === 'application' || menu.menuId === appId);
+    const applicationItems = goldenApplicationMenuItems({ state: switching, profile, appId, runningAppIds, pendingQuitAppIds,
+      services: services?.menuItems() ?? [] });
+    const representedWindowItems = commandMenus.find(menu => menu.menuId === 'window')?.items ?? [];
+    const representedWindowItem = id => representedWindowItems.find(item => item.id === id);
+    const providers = [
       { menuId: 'application', kind: 'application', label: app?.name ?? '', appId,
         enabled,
-        items: goldenApplicationMenuItems({ state: switching, profile, appId, runningAppIds, pendingQuitAppIds,
-          services: services?.menuItems() ?? [] }) },
-      ...commandMenus.filter(menu => menu.menuId !== 'help'),
+        items: representedApplicationMenu?.enabled
+          ? appId === 'messages'
+            ? [...representedApplicationMenu.items,
+              ...applicationItems.filter(item => !['about', 'preferences'].includes(item.id))]
+            : [...representedApplicationMenu.items, ...applicationItems.filter(item =>
+              (appId === 'safari' ? !['about', 'preferences', 'quit', 'separator-quit'].includes(item.id)
+                : appId === 'contacts' ? !['about', 'preferences'].includes(item.id) : item.id === 'services')
+              && !representedApplicationMenu.items.some(row => row.id === item.id))]
+          : applicationItems },
+      ...commandMenus.filter(menu => !['application', 'help', 'window', appId].includes(menu.menuId)),
       { menuId: 'window', kind: 'window', label: 'Window', appId, enabled, items: [
-        { id: 'close', label: 'Close', shortcut: '⌘W', enabled: Boolean(active), request: request('window.close') },
-        { id: 'minimize', label: 'Minimize', shortcut: '⌘M', enabled: ordinary,
+        ...representedWindowItems.filter(item => !['close', 'minimize', 'zoom'].includes(item.id) && item.request?.command !== 'window.focus'),
+        representedWindowItem('close') ?? { id: 'close', label: 'Close', shortcut: '⌘W', enabled: Boolean(active), request: request('window.close') },
+        representedWindowItem('minimize') ?? { id: 'minimize', label: 'Minimize', shortcut: '⌘M', enabled: ordinary,
           request: request('window.setMinimized', active, { minimized: true }) },
-        { id: 'zoom', label: 'Zoom', enabled: ordinary,
+        representedWindowItem('zoom') ?? { id: 'zoom', label: 'Zoom', enabled: ordinary,
           request: request('window.setZoomed', active, { zoomed: !active?.zoomed }) },
-        { id: 'move-resize', label: 'Move & Resize', enabled: ordinary, children: [
+        ...(profile.renderer === 'golden-gate' ? [{ id: 'move-resize', label: 'Move & Resize', enabled: ordinary, children: [
           { id: 'fill', label: 'Fill', shortcut: 'fn ⌃F', enabled: ordinary && !active?.zoomed,
             request: request('window.setZoomed', active, { zoomed: true }) },
           { id: 'restore', label: 'Return to Previous Size', shortcut: 'fn ⌃R', enabled: ordinary && Boolean(active?.zoomed),
             request: request('window.setZoomed', active, { zoomed: false }) },
-        ] },
-        { id: 'full-screen-tile', label: 'Full Screen Tile', enabled: managedOrdinary, children: [
+        ] }] : []),
+        ...(profile.renderer === 'golden-gate' ? [{ id: 'full-screen-tile', label: 'Full Screen Tile', enabled: managedOrdinary, children: [
           { id: 'entire-screen', label: 'Entire Screen', enabled: ordinary,
             request: request('window.setFullScreen', active, { fullScreen: true }) },
           { id: 'left-screen', label: 'Left of Screen', enabled: managedOrdinary,
@@ -4190,7 +5281,7 @@
             request: request('window.splitView.begin', active, { side: 'right' }) },
           { id: 'exit-full-screen', label: 'Exit Full Screen', enabled: managedOrdinary && active.fullScreen,
             request: request('window.setFullScreen', active, { fullScreen: false }) },
-        ] },
+        ] }] : []),
         ...(hasWindowExtensions ? [
           { id: 'next-document-window', label: 'Next Window', shortcut: '⌘`', enabled: documentWindows.length > 1,
             request: { command: 'window.cycle', target: {}, payload: { direction: 'next' } } },
@@ -4222,6 +5313,7 @@
         && !servicePreparation && !servicePending && !switching.switcher && !presentation.pairing)] : []),
       ...(hasInput ? [inputController.menuProvider(inputInteractionsAvailable())] : []),
     ];
+    return hasMenuBar ? providers : helpMenuProviders(providers, legacyMessagesMenu, profile);
   }
   function captureSwitchingFocus() {
     switchingReturnFocus = captureNativeFocus();
@@ -4549,7 +5641,12 @@
 
   onMount(() => {
     if (hasAppleMenu) { runStorageMaintenance(); reconcileStorageViews(); }
-    const unregister = registerCommands(commands);
+    async function sceneReady() {
+      await tick();
+      const result = await startup;
+      return !disposed && initialized && result?.status === 'applied';
+    }
+    const unregister = registerCommands({ ...commands, ready: sceneReady });
     const unregisterSession = registerSessionScene?.({
       persist: captureSavedScene,
       canSave: () => !disposed && !presentation.pairing && !fileDialogState.current && pendingQuitAppIds.length === 0,
@@ -4557,8 +5654,9 @@
       clock: () => clockContext,
       capture: captureSessionDesktop, restore: restoreSessionDesktop,
       menuProviders: sharedMenuProviders, menusAvailable: sharedMenusAvailable, appleMenuContext,
+      captureMenuAction,
       prepareMenus: () => clearSwitchingPresentations(false, true), restoreMenus: restoreSwitchingPresentations,
-      ready: async () => { await tick(); const result = await startup; return !disposed && initialized && result?.status === 'applied'; },
+      ready: sceneReady,
     });
     const stopScene = adapter.startScene?.(nativeState, commands.execute);
     // Retained scenes keep their DOM, but only the foreground desktop receives
@@ -4575,6 +5673,7 @@
       return () => target.removeEventListener(type, listener, capture);
     }
     const stopListeners = [
+      listen(window, 'keydown', messagesMenuKeydown, true),
       listen(window, 'keydown', spotlightKeydown, true),
       listen(document, 'pointerdown', spotlightOutside, true),
       listen(document, 'pointerdown', notificationOutside, true),
@@ -4596,7 +5695,8 @@
       listen(sceneRoot, 'copy', editingClipboardEvent, true),
       listen(sceneRoot, 'cut', editingClipboardEvent, true),
       listen(sceneRoot, 'paste', editingClipboardEvent, true),
-      listen(window, 'keydown', fileWorkflowKeydown, true),
+      // Application handlers consume their own Save/Open/Print chords first.
+      listen(window, 'keydown', fileWorkflowKeydown),
       listen(document, 'pointermove', stagePointerMove, true),
       listen(document, 'pointerdown', stagePointerDown, true),
       listen(document, 'pointerup', stagePointerUp, true),
@@ -4629,7 +5729,6 @@
       batteryController?.clear();
       clockController?.clear();
       soundController?.clear();
-      soundMediaController?.clear();
       bluetoothController?.clear();
       inputController?.dispose();
       spotlightController?.dispose(); spotlightViews.clear();
@@ -4680,29 +5779,29 @@
     if ((window.appId !== 'notes' || window.utilityKind) && notesViewState) clearNotesPresentation();
   }
 
-  function openWindow(appId, title, fresh = false, utilityKind) {
+  function openWindow(appId, title, fresh = false, utilityKind, options = {}) {
     const app = utilityKind && Object.hasOwn(WINDOW_UTILITY_SIZES, utilityKind)
       ? { ...applications[appId], ...WINDOW_UTILITY_SIZES[utilityKind] } : applications[appId];
-    unhideApplication(appId);
-    if (fresh || !windows.some(window => window.appId === appId && !window.utilityKind)) cancelPairingForActivation(null);
-    switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
+    if (!app || options.isCurrent && options.isCurrent() !== true) return null;
     const existing = !fresh && !utilityKind && windows.findLast(window => window.appId === appId && !window.utilityKind);
     if (existing) {
+      unhideApplication(appId);
+      if (fresh || !windows.some(window => window.appId === appId && !window.utilityKind)) cancelPairingForActivation(null);
+      switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
       if (title !== undefined) existing.title = title;
       focusWindow(existing.id);
       if (hasDockContext) recordMacAppUse(desktopState.dock, appId);
       if (hasAppleMenu) recordSystemRecent(systemState, 'applications', appId);
       return existing.id;
     }
-    const id = windowNamespace + (nextWindowId === 1 && appId === profile.defaults.startupAppId
+    if (options.isCurrent && options.isCurrent() !== true) return null;
+    const id = options.restoreWindowId ?? windowNamespace + (nextWindowId === 1 && appId === profile.defaults.startupAppId
       ? appId : `${appId}-window-${nextWindowId}`);
-    nextWindowId++;
-    adapter.createWindow?.(nativeState, id, appId, { fresh });
+    if (windows.some(window => window.id === id)) return null;
     const remembered = hasRetention && !fresh && !utilityKind ? closedWindows[appId] : null;
-    if (hasRetention && !utilityKind) delete closedWindows[appId];
     const retainedBounds = remembered && (remembered.window.restoreBounds ?? remembered.window.bounds);
-    const normal = retainedBounds ? fitRetainedBounds(retainedBounds, app, area, Math.min(.9, retainedBounds.scale)) : null;
-    windows.push({
+    const normal = retainedBounds ? fitRetainedBounds(retainedBounds, app, area, retainedBounds.scale) : null;
+    let newWindow = $state({
       ...(remembered?.window ?? {}),
       id, appId, title: title ?? remembered?.window.title ?? app.name,
       ...(utilityKind ? { utilityKind } : {}),
@@ -4719,9 +5818,20 @@
         ? { finderPresentation: remembered?.window.finderPresentation ?? finderPresentationDefaults(),
           finderBrowseMode: remembered?.window.finderBrowseMode
             ?? viewing.finder.folderViews[remembered?.window.folderId ?? 'desktop']?.mode ?? 'icons' } : {}),
-      ...(hasViewWorkflows && !utilityKind && appId === 'notes'
-        ? { notesPresentation: remembered?.window.notesPresentation ?? notesPresentationDefaults(viewing.notes.mode) } : {}),
     });
+    const controller = domainControllerForWindow(newWindow);
+    windows.push(newWindow);
+    if (controller && controller.windowOpened(newWindow, options) === false) {
+      const ownedIndex = windows.indexOf(newWindow);
+      if (ownedIndex >= 0) windows.splice(ownedIndex, 1);
+      return null;
+    }
+    unhideApplication(appId);
+    cancelPairingForActivation(null);
+    switching.switcher = null; if (!hasMenuBar) switching.appMenu = null;
+    if (!options.restoreWindowId) nextWindowId++;
+    if (!controller) adapter.createWindow?.(nativeState, id, appId, { fresh });
+    if (hasRetention && !utilityKind) delete closedWindows[appId];
     if (remembered) pendingWindowViews.set(id, remembered.view);
     if (!runningAppIds.includes(appId)) {
       runningAppIds.push(appId);
@@ -4767,10 +5877,16 @@
     await closeWindow(id);
   }
 
-  async function closeWindow(id) {
+  async function closeWindow(id, ownership = {}) {
     const index = windows.findIndex(window => window.id === id);
     if (index < 0) return;
+    const guard = ownership.guard ?? ownership.isCurrent;
+    if (guard && guard() !== true) return false;
+    const originalWindow = windows[index];
     const appId = windows[index].appId;
+    const controller = domainControllerForWindow(windows[index]);
+    const mergedBrowser = browserMergeRetirements.delete(originalWindow);
+    if (!mergedBrowser && controller !== destinationCommands && controller?.windowClosed(originalWindow, ownership) === false) return false;
     const wasActive = activeWindowId === id, returnFocus = utilityReturnFocus.get(id);
     cancelForceQuitConfirmation(id);
     const appUtility = Object.hasOwn(WINDOW_UTILITY_SIZES, windows[index].utilityKind);
@@ -4780,7 +5896,9 @@
       if (!closed.utilityKind && !windows.some(window => window.id !== id && window.appId === appId && !window.utilityKind)) {
         closedWindows[appId] = {
           window: { ...$state.snapshot(closed), minimized: false, fullScreen: false },
-          view: captureRetainedView(managedWindowElement(id), retainedWindowOptions(closed)),
+          view: captureRetainedView(managedWindowElement(id), retainedWindowOptions(closed, {
+            focusElement: messagesViews.get(id)?.editSelection?.()?.node ?? document.activeElement,
+          })),
         };
       }
       pendingWindowViews.delete(id);
@@ -4790,12 +5908,19 @@
     const partner = windows.find(window => window.id === partnerId && window.fullScreen
       && !window.minimized && !isAppHidden(window.appId) && !pendingQuitAppIds.includes(window.appId));
     windows.splice(index, 1);
+    const destinationReturnFocus = destinationCommands.windowClosed(originalWindow);
     adapter.releaseWindow?.(nativeState, id, appId);
     if (!adapter.closeKeepsRunning && !windows.some(window => window.appId === appId)) {
-      runningAppIds = runningAppIds.filter(entry => entry !== appId);
+      const runningIndex = runningAppIds.indexOf(appId);
+      if (runningIndex >= 0) runningAppIds.splice(runningIndex, 1);
     }
     if (activeWindowId === id) {
-      if (partner) await focusFullScreenWindow(partner.id);
+      const sourceFocus = ownership.returnFocus ?? destinationReturnFocus;
+      const sourceWindow = sourceFocus?.window;
+      if (sourceWindow && typeof sourceFocus.guard === 'function' && sourceFocus.guard() === true
+        && windows.find(window => window.id === sourceWindow.id) === sourceWindow && destinationWindowAvailable(sourceWindow))
+        focusWindow(sourceWindow.id);
+      else if (partner) await focusFullScreenWindow(partner.id);
       else focusRemaining();
     }
     if (hasWindowMenu) {
@@ -4806,13 +5931,14 @@
     if (!disposed && pendingQuitAppIds.includes(appId) && !quitInFlight.has(appId)) {
       await handlers['app.quit']({ appId }, {});
     }
-    if (wasActive && appUtility && sceneInteractionsAvailable() && !pendingQuitAppIds.includes(appId)) {
+    if (wasActive && appUtility && controller !== destinationCommands && sceneInteractionsAvailable() && !pendingQuitAppIds.includes(appId)) {
       const sourceWindow = returnFocus?.focus?.windowId;
       const sameNote = !returnFocus?.focus?.noteId || returnFocus.focus.noteId === notesState.selectedId;
       if (returnFocus && sameNote && (!sourceWindow || sourceWindow === activeWindowId)) await restoreSessionDesktop(returnFocus);
       else if (activeWindowId) await focusKeyboardWindow(activeWindowId);
       else await focusSceneWorkspace();
     }
+    return true;
   }
 
   function cancelAppQuit(appId) {
@@ -4884,7 +6010,9 @@
     return { status: 'applied', target: outcome };
   }
 
-  async function quitApplication(appId, force = false) {
+  async function quitApplication(appId, force = false, ownership = {}) {
+    if (ownership.guard && ownership.guard() !== true)
+      return rejected('stale_target', 'The original application quit owner changed.');
     if (quitInFlight.has(appId)) return rejected('unavailable', 'Application quit is already being processed.');
     if (!pendingQuitAppIds.includes(appId)) pendingQuitAppIds.push(appId);
     quitInFlight.add(appId);
@@ -4893,7 +6021,9 @@
       let window;
       while (!disposed && (window = windows.findLast(entry => force
         ? forceQuitWindowTarget(entry, appId, forceAction) : entry.appId === appId))) {
-        const result = force ? (await closeWindow(window.id), { status: 'applied' })
+        if (ownership.guard && ownership.guard() !== true)
+          return rejected('stale_target', 'The original application quit owner changed.');
+        const result = force ? (await closeWindow(window.id, { ...ownership, discard: true }), { status: 'applied' })
           : await handlers['window.close']({ windowId: window.id }, {});
         if (result?.status === 'rejected') {
           cancelAppQuit(appId);
@@ -4906,7 +6036,8 @@
       }
       if (disposed) return rejected('unavailable', 'The outgoing scene has been disposed.');
       if (!(force && appId === profile.defaults.desktopAppId)) {
-        runningAppIds = runningAppIds.filter(entry => entry !== appId);
+        const runningIndex = runningAppIds.indexOf(appId);
+        if (runningIndex >= 0) runningAppIds.splice(runningIndex, 1);
         if (hasAppleMenu) applicationLifetimes.set(appId, null);
       }
       switching.hiddenAppIds = switching.hiddenAppIds.filter(id => id !== appId);
@@ -4993,7 +6124,7 @@
     for (const window of windows) {
       const previous = window[expandedProperty] ? window.restoreBounds : window.bounds;
       const normal = savedScene && !initialized
-        ? fitRetainedBounds(previous, windowApplication(window), area, Math.min(.9, previous.scale))
+        ? fitRetainedBounds(previous, windowApplication(window), area, previous.scale)
         : adapter.fitNormalBounds(previous, windowApplication(window), area);
       if (window[expandedProperty]) {
         window.restoreBounds = normal;
@@ -5012,7 +6143,8 @@
   async function restoreSavedViews() {
     await tick();
     for (const window of windows) restoreRetainedView(managedWindowElement(window.id), pendingWindowViews.get(window.id),
-      retainedWindowOptions(window));
+      retainedWindowOptions(window, { focus: foreground && !disposed && window.id === activeWindowId
+        && document.activeElement === document.body }));
     return { status: 'applied', target: {} };
   }
 
@@ -5023,23 +6155,30 @@
     const { activationAppIds, activationWindowIds, creationWindowIds, hiddenAppIds } = switching;
     const { desktops, order, activeSpaceId, lastDesktopId, nextDesktopId } = spaceState;
     const { selectedFileIds, selectionAnchorId, positions, sortBy, viewOptions } = desktopState;
-    const { enabled, groupBy, sortBy: stackSort, expandedStackIds, topFileIds } = desktopState.stacks;
+    const stacks = desktopState.stacks;
     return $state.snapshot({
-      seed: { version: 1, notes: notesState, files: { files: macFiles.files.filter(file => !file.readOnly),
-        nextFileId: macFiles.nextFileId, sceneTime: macFiles.sceneTime }, messages: messagesState, appearance: appearanceState,
-        printing: printingState, editing: editingPreferences, viewing, communications: communicationsState, system: systemState, dock: persistentDockData() },
-      catalogTimes: Object.fromEntries(macFiles.files.filter(file => file.readOnly).map(file =>
-        [file.id, { createdAt: file.createdAt, modifiedAt: file.modifiedAt, addedAt: file.addedAt, lastOpenedAt: file.lastOpenedAt }])),
-      dockOrder: { mainOrderAppIds: dock.mainOrderAppIds, secondaryOrderItemIds: dock.secondaryOrderItemIds },
+      seed: { ...nativeApplications, version: 1, notes: notesState,
+        files: { files: desktopFileStore.files.filter(file => !file.readOnly),
+          nextFileId: desktopFileStore.nextFileId, sceneTime: sharedClockWriter.getSceneTime() },
+        messages: messagesState, appearance: appearanceState ?? initialData.appearance,
+        browser: browserSessionSnapshot(browserState), mail: mailState, contacts: contactsState, calendar: calendarState,
+        calls: callsState, reminders: remindersState,
+        printing: printingState, editing: editingPreferences ?? initialData.editing, viewing: viewing ?? initialData.viewing,
+        communications: communicationsState ?? initialData.communications, system: systemState, dock: persistentDockData() },
+      catalogTimes: macDesktop ? Object.fromEntries(macFiles.files.filter(file => file.readOnly).map(file =>
+        [file.id, { createdAt: file.createdAt, modifiedAt: file.modifiedAt, addedAt: file.addedAt, lastOpenedAt: file.lastOpenedAt }])) : {},
+      fileOrder: desktopFileStore.files.map(file => file.id),
+      dockOrder: { mainOrderAppIds: dock?.mainOrderAppIds ?? [], secondaryOrderItemIds: dock?.secondaryOrderItemIds ?? [] },
       windows, closedWindows,
+      ...adapter.snapshotWindows?.(nativeState, windows, profile),
       views: Object.fromEntries(windows.map(window => [window.id, captureRetainedView(managedWindowElement(window.id),
         retainedWindowOptions(window, { focusElement }))])),
       nextWindowId, activeWindowId, activeAppId, runningAppIds,
       switching: { activationAppIds, activationWindowIds, creationWindowIds, hiddenAppIds },
       spaces: { desktops, order, activeSpaceId, lastDesktopId, nextDesktopId }, splitViews: presentation.splitViews,
       desktop: { selectedFileIds, selectionAnchorId, positions, sortBy, viewOptions,
-        stacks: { enabled, groupBy, sortBy: stackSort, expandedStackIds, topFileIds } },
-      notesScroll: notesViewState.scroll,
+        ...(stacks ? { stacks: { enabled: stacks.enabled, groupBy: stacks.groupBy, sortBy: stacks.sortBy,
+          expandedStackIds: stacks.expandedStackIds, topFileIds: stacks.topFileIds } } : {}) },
     });
   }
 </script>
@@ -5052,6 +6191,8 @@
         {presentationBounds}
         {interactive}
         {visible}
+        nativeChrome={macDesktop && !window.utilityKind && domainControllers.has(window.appId) ? 'application'
+          : profile.family === 'windows' && window.appId === 'teams' && !window.utilityKind && nativeState.apps.teams.ui.surface === 'mini' ? 'teams-mini' : 'standard'}
         fullScreen={window.fullScreen}
         revealedTop={fullScreenStage.topRevealed}
         modernGreenMenu={modernMac}
@@ -5063,7 +6204,9 @@
         onclose={() => windowCommand('window.close', window.id)}
         onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
         onzoom={() => toggleWindowZoom(window.id)}
-        onmaximize={() => toggleWindowMaximize(window.id)}
+        onmaximize={() => profile.family === 'windows' && window.appId === 'teams' && nativeState.apps.teams.ui.surface === 'mini'
+          ? commands.execute({ command: 'win11.teams.surface.set', target: { windowId: window.id }, payload: { surface: 'full' } })
+          : toggleWindowMaximize(window.id)}
         onmove={(x, y) => windowCommand('window.move', window.id, { x, y })}
         resizable={interactive && hasWindowResize && !window[expandedProperty] && windowInteractionsAvailable()}
         onresize={(edge, coordinates) => windowCommand('window.resize', window.id, { edge, ...coordinates })}
@@ -5104,10 +6247,20 @@
         {:else if hasNotifications && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'notifications'}
           <GoldenGateNotificationSettings {profile} {window} preferences={systemState.notifications.preferences}
             selectedAppId={window.notificationAppId ?? 'messages'} execute={commands.execute} registerView={registerApplicationView} />
-        {:else if hasSound && !window.utilityKind && ['music', 'quicktime'].includes(window.appId)}
-          <GoldenGateAudioPlayer {profile} {window} sound={soundController.summary()} {foreground} {preview}
-            playback={preview ? soundController.targets().media.find(player => player.windowId === window.id) ?? null : null}
-            execute={commands.execute} registerView={registerSoundMediaView} />
+        {:else if nativeDomainForWindow(profile, window)}
+          {@const definition = nativeDomainForWindow(profile, window)}
+          {@const NativeView = nativeDomainComponents[definition.componentForWindow?.(profile, window) ?? definition.component]}
+          {@const context = nativeContexts.get(definition.key)}
+          <NativeView state={definition.key === 'browser' ? browserState : nativeApplications[definition.key]}
+            controller={nativeControllers.get(definition.key)}
+            listFiles={context.listFiles} getFile={context.getFile} getShared={context.getShared}
+            {profile} {window} windowId={window.id} available={!preview && domainWindowAvailable(window)}
+            active={active && interactive} controls={domainWindowControls(window)}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(id, view, original) => { if (!preview) registerDomainView(id, view, original); }}
+            {...definition.extraProps?.({ context, controller: nativeControllers.get(definition.key),
+              shared: nativeSharedSources(), executeEnvelope: commands.execute,
+              registerView: (id, view, original) => { if (!preview) registerDomainView(id, view, original); } })} />
         {:else if hasWifi && window.appId === 'settings' && !window.utilityKind && window.settingsPane === 'wifi'}
           <GoldenGateWifiSettings {profile} {window} wifi={systemState.wifi}
             execute={commands.execute} registerView={registerApplicationView} />
@@ -5122,64 +6275,70 @@
           <GoldenGateAboutApp application={applications[window.appId]} {profile} windowId={window.id} execute={commands.execute} />
         {:else if window.utilityKind === 'application-settings'}
           <GoldenGateNotesSettings preferences={notesState.preferences} windowId={window.id} execute={commands.execute} />
-        {:else if hasFileWorkflows && window.appId === 'printcenter'}
-          <GoldenGatePrintCenter printing={printingState} execute={commands.execute} />
-        {:else if hasServices && (window.appId === 'mail' || window.appId === 'contacts')}
-          <GoldenGateServiceProvider appId={window.appId} windowId={window.id} model={serviceProviderModel(window.appId, window.id)}
-            execute={executeServicePresentation} registerView={registerServiceView} active={active && interactive}
-            available={id => Boolean(getServiceFrame(id, true))} />
+        {:else if ['document-print', 'document-picker', 'document-share'].includes(window.utilityKind)}
+          <NativeDocumentDestination panel={documentDestinations.panels.find(panel => panel.windowId === window.id)}
+            {profile} files={desktopFileStore.files} printing={printingState}
+            execute={commands.execute}
+            renderPage={destinationCommands.renderPage}
+            registerView={(id, view, original) => { if (!preview) registerDomainView(id, view, original); }} />
+        {:else if !window.utilityKind && window.appId === 'notes'}
+          <NotesApp state={notesState} {profile} windowId={window.id} available={!preview && domainWindowAvailable(window)}
+            getShared={getNativeShared} getFile={applicationFiles.getFile}
+            active={active && interactive} controls={{ ...domainWindowControls(window), dark: appearanceState?.mode === 'dark', readFile: applicationFiles.readFile }}
+            execute={commands.execute}
+            registerView={(id, view, original) => { if (!preview) registerDomainView(id, view, original); }} />
+        {:else if window.appId === 'facetime' && !window.utilityKind || window.utilityKind === 'teams-call'}
+          <CallsApp state={callsState} {profile} windowId={window.id} available={!preview && domainWindowAvailable(window)}
+            active={active && interactive} controls={domainWindowControls(window)}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(id, view, original) => { if (!preview) registerDomainView(id, view, original); }} />
+        {:else if !window.utilityKind && window.appId === 'reminders'}
+          <RemindersApp state={remindersState} {profile} windowId={window.id} available={!preview && domainWindowAvailable(window)}
+            active={active && interactive} controls={domainWindowControls(window)}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(id, view, original) => { if (!preview) registerDomainView(id, view, original); }} />
+        {:else if !window.utilityKind && (window.appId === 'safari' || window.appId === 'edge')}
+          <BrowserApp state={browserState} {profile} windowId={window.id} getFile={applicationFiles.getFile} available={!preview && domainWindowAvailable(window)}
+            active={active && interactive} controls={domainWindowControls(window)} embeddedMenus={!macDesktop}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(id, view, original) => { if (!preview) registerDomainView(id, view, original); }}
+            fullScreen={window.fullScreen} revealedTop={fullScreenStage.topRevealed} modernGreenMenu={modernMac} zoomed={window[expandedProperty]} />
+        {:else if !window.utilityKind && window.appId === 'mail'}
+          <MailApp state={mailState} {profile} windowId={window.id} available={!preview && domainWindowAvailable(window)}
+            active={active && interactive} controls={domainWindowControls(window)} showLocalMenus={!macDesktop}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(view, original) => { if (!preview) registerDomainView(window.id, view, original); }} />
+        {:else if !window.utilityKind && window.appId === 'contacts'}
+          <ContactsApp state={contactsState} {profile} windowId={window.id} available={!preview && domainWindowAvailable(window)}
+            active={active && interactive} controls={domainWindowControls(window)} showLocalMenus={!macDesktop}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(id, view, original) => { if (!preview) registerDomainView(id, view, original); }} />
+        {:else if !window.utilityKind && window.appId === 'calendar'}
+          <CalendarApp state={calendarState} {profile} windowId={window.id} available={!preview && domainWindowAvailable(window)}
+            active={active && interactive} controls={domainWindowControls(window)} showLocalMenus={!macDesktop}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(view, original) => { if (!preview) registerDomainView(window.id, view, original); }} />
         {:else if hasWidgets && !window.utilityKind && widgetDataApps.includes(window.appId)}
           <GoldenGateWidgetData windowId={window.id} appId={window.appId} state={systemState.widgets} clock={clockContext}
             foreground={!preview && widgetDataAvailable(window)} execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
             registerView={view => { if (!preview) { if (view) widgetDataViews.set(window.id, view); else widgetDataViews.delete(window.id); } }} />
+        {:else if profile.family === 'windows' && window.appId === 'teams'}
+          <Windows11Teams state={messagesState} native={nativeState.apps.teams} {profile} windowId={window.id}
+            available={!preview && messageWindowAvailable(window)} active={active && interactive}
+            resolveRecipients={messageRecipientChoices} resolveRecipient={resolveMessageRecipient}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(view, original) => { if (!preview) registerMessagesView(window.id, view, original); }}
+            registerApplicationView={(id, view) => preview ? undefined : registerApplicationView(id, view)} />
         {:else if Applications}
           <Applications appId={window.appId} windowId={window.id} {profile} native={adapter.nativeForWindow(nativeState, window.id)} execute={commands.execute} registerView={registerApplicationView} />
         {:else if window.appId === 'messages'}
-          <div style:display={hasServices && (servicePending?.windowId === window.id || communicationsState.selected.messages !== null) ? 'none' : 'contents'}>
           <MessagesWindow
-            {...(hasClock ? { clockContext } : {})}
-            {...(messagesState ? { scene: messagesState } : {})}
-            {...(hasServices ? { onservices: () => commands.execute({ command: 'services.provider.select', target: { appId: 'messages', windowId: window.id },
-              payload: { entryId: communicationEntries(communicationsState, 'messages')[0]?.id ?? null } }),
-              servicesEntryId: communicationEntries(communicationsState, 'messages')[0]?.id ?? null } : {})}
+            {clockContext}
+            state={messagesState} {profile} windowId={window.id} available={!preview && messageWindowAvailable(window)}
+            resolveRecipients={messageRecipientChoices} resolveRecipient={resolveMessageRecipient}
+            execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
+            registerView={(view, original) => { if (!preview) registerMessagesView(window.id, view, original); }}
             assets={profile.assets}
-            active={active && interactive}
-            zoomed={window.zoomed}
-            fullScreen={window.fullScreen}
-            revealedTop={fullScreenStage.topRevealed}
-            modernGreenMenu={modernMac}
-            onfullscreen={() => toggleWindowFullScreen(window.id)}
-            onsplitbegin={event => beginSplitView(window.id, event)}
-            onsplitside={event => changeSplitSide(window.id, event)}
-            ongreenmenu={() => windowCommand('window.greenMenu.open', window.id)}
-            onclose={() => windowCommand('window.close', window.id)}
-            onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })}
-            onzoom={() => toggleWindowZoom(window.id)}
-          />
-          </div>
-          {#if hasServices && (servicePending?.windowId === window.id || communicationsState.selected.messages !== null)}
-            {#snippet serviceChrome()}
-              <WindowControls active={active && interactive} zoomed={window.zoomed} fullScreen={window.fullScreen} revealedTop={fullScreenStage.topRevealed}
-                modernGreenMenu={modernMac} onfullscreen={() => toggleWindowFullScreen(window.id)}
-                onsplitbegin={event => beginSplitView(window.id, event)} onsplitside={event => changeSplitSide(window.id, event)}
-                ongreenmenu={() => windowCommand('window.greenMenu.open', window.id)} onclose={() => windowCommand('window.close', window.id)}
-                onminimize={() => windowCommand('window.setMinimized', window.id, { minimized: true })} onzoom={() => toggleWindowZoom(window.id)} />
-            {/snippet}
-            <GoldenGateServiceProvider appId="messages" windowId={window.id} model={serviceProviderModel('messages', window.id)}
-              execute={executeServicePresentation} registerView={registerServiceView} active={active && interactive}
-              available={id => Boolean(getServiceFrame(id, true))} windowControls={serviceChrome} />
-          {/if}
-        {:else if window.appId === 'notes'}
-          <NotesWindow
-            state={notesState}
-            viewState={notesViewState}
-            execute={commands.execute}
-            registerView={registerNotesView}
-            {...(hasClock ? { clockContext } : {})}
-            {...(hasEditWorkflows ? { windowId: window.id, editing: editingPreferences, dictionaryStatus,
-              textTools: textTools.targets(), ontextinput: editNativeText, ontextbeforeinput: observeTextBeforeInput } : {})}
-            {...(hasViewWorkflows ? { workflowView: viewWorkflows.notesForWindow(window.id), sortedState: notesProjection,
-              onviewoptions: () => executeSession({ command: 'app.commandMenu.open', target: { menuId: 'view', appId: 'notes' }, payload: {} }) } : {})}
             active={active && interactive}
             zoomed={window.zoomed}
             fullScreen={window.fullScreen}
@@ -5240,6 +6399,16 @@
   {/if}
 {/snippet}
 
+{#snippet legacyApplicationMenus()}
+  {#if macDesktop && !hasMenuBar && representedMacMenuOwner()}
+    <GoldenGateMenuBar {profile} menus={sharedMenuProviders()} state={legacyMessagesMenu} execute={commands.execute}
+      {foreground} registerView={view => {
+        for (const id of view.menuIds) legacyMenuViews.set(id, view);
+        return () => { for (const id of view.menuIds) if (legacyMenuViews.get(id) === view) legacyMenuViews.delete(id); };
+      }} />
+  {/if}
+{/snippet}
+
 <div class="scene-root" data-session-scene data-profile-id={profile.id} bind:this={sceneRoot}>
 <div class="desktop-interaction-root" inert={Boolean(wifiPresentation.join || batteryPresentation.options || clockPresentation.options || clockPresentation.editor || bluetoothPresentation.pair)}>
 <Desktop
@@ -5249,6 +6418,7 @@
   {registerSessionView}
   {menuBarState}
   {menuBarMenus}
+  legacyApplicationMenus={representedMacMenuOwner() ? legacyApplicationMenus : undefined}
   foreground={foreground || !initialized}
   {windows}
   switchingState={switching}
@@ -5336,17 +6506,6 @@
     <MacApplicationMenu {profile} app={applications[switching.appMenu.appId]} state={switching.appMenu}
       items={appMenuItems} anchor={applicationMenuAnchor} execute={commands.execute} bind:this={applicationMenuControls} />
   {/if}
-  {#if fileDialogState.current}
-    <div class="file-dialog-backdrop">
-      {#if fileDialogState.current.format === 'print'}
-        <GoldenGatePrintDialog dialog={fileDialogState.current} files={macFiles.files}
-          execute={commands.execute} bind:this={fileDialogControls} />
-      {:else}
-        <GoldenGateFileSheet dialog={fileDialogState.current} files={macFiles.files}
-          execute={commands.execute} bind:this={fileDialogControls} />
-      {/if}
-    </div>
-  {/if}
   {#if serviceLookup}
     <div class="service-lookup-placement">
       <GoldenGateServiceLookup pane={serviceLookup} execute={commands.execute} {area} registerView={registerServiceLookupView}
@@ -5400,9 +6559,11 @@
       style:width={`${Math.max(1, Math.min(360, stageArea.width - 16))}px`}
       style:height={`${Math.max(1, stageArea.height - stageArea.menuHeight - 16)}px`}
       style:visibility={!notificationNativeAvailable() ? 'hidden' : undefined}>
-      <GoldenGateNotificationCenter pane={notificationPane} groups={notificationController.groups()} clock={clockContext}
+      <GoldenGateNotificationCenter {profile} pane={notificationPane} groups={notificationController.groups()} clock={clockContext}
         {...(hasWidgets ? { widgetState: systemState.widgets, widgetUi } : {})}
+        reminderWidgetProjection={reminderWidgetProjection(remindersState)} calendarWidgetProjection={calendarWidgetProjection(calendarState)}
         actionsFor={notificationController.actions} previewFor={notificationController.preview} itemUiFor={notificationController.itemUi}
+        snoozeChoicesFor={notificationController.snoozeChoices}
         foreground={notificationNativeAvailable()} execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
         registerView={view => { if (view) notificationViews.set(centerId, view); else notificationViews.delete(centerId); }} />
     </div>
@@ -5415,8 +6576,9 @@
           style:width={`${Math.max(1, Math.min(360, stageArea.width - 16))}px`}
           style:max-height={`${Math.max(1, stageArea.height - stageArea.menuHeight - 16)}px`}
           style:visibility={!notificationNativeAvailable() || notificationPane ? 'hidden' : undefined}>
-          <GoldenGateNotificationBanner {banner} {entry} app={profile.applications[entry.appId]}
+          <GoldenGateNotificationBanner {profile} {banner} {entry} app={profile.applications[entry.appId]}
             actions={notificationController.actions(entry)} showPreview={notificationController.preview(entry)}
+            snoozeChoices={notificationController.snoozeChoices(entry)}
             itemUi={notificationController.itemUi(entry)} foreground={notificationNativeAvailable() && !notificationPane}
             execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
             registerView={(view, original) => registerNotificationBannerView(banner.bannerId, view, original)} />
@@ -5431,6 +6593,7 @@
       style:width={`${bounds.width}px`} style:height={`${bounds.height}px`}
       style:visibility={!notificationNativeAvailable() ? 'hidden' : undefined}>
       <GoldenGateWidgetGallery editor={widgetUi.editor} state={systemState.widgets} clock={clockContext}
+        reminderWidgetProjection={reminderWidgetProjection(remindersState)} calendarWidgetProjection={calendarWidgetProjection(calendarState)}
         foreground={notificationNativeAvailable()} execute={(command, target = {}, payload = {}) => commands.execute({ command, target, payload })}
         registerView={view => { if (view) widgetEditorViews.set(editorId, view); else widgetEditorViews.delete(editorId); }} />
     </div>
