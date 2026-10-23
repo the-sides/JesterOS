@@ -392,6 +392,9 @@ export async function exportPreviewPdf(documentModel, { guard = ALWAYS, fontLoad
   current(guard);
   let model;
   try { model = copyCanonicalData(documentModel); } catch { fail('invalid_arguments', 'Expected a serializable Preview document model.'); }
+  // Older callers exported an unlocked model before workspace locks were added.
+  // Preserve that bounded API shape while still validating any supplied lock.
+  if (model && model.lock === undefined) model.lock = { enabled: false, password: '' };
   if (!model || typeof model.content !== 'string' || !Array.isArray(model.pageOrder) || !model.pageOrder.length || model.pageOrder.length > PREVIEW_CODEC_LIMITS.pages
     || !Array.isArray(model.marks) || model.marks.length > PREVIEW_CODEC_LIMITS.marks || !model.rotations || !model.formValues || !model.lock
     || typeof model.lock.enabled !== 'boolean' || typeof model.lock.password !== 'string' || model.lock.password.length > 1024

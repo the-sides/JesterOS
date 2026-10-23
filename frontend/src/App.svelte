@@ -5141,7 +5141,7 @@
     void performEditRequest(editMenuRequest(event.type));
   }
   function fileWorkflowKeydown(event) {
-    if (!hasFileWorkflows || event.defaultPrevented || event.isComposing || !(event.metaKey || event.ctrlKey)
+    if (event.defaultPrevented || event.isComposing || !(event.metaKey || event.ctrlKey)
       || event.altKey || !windowInteractionsAvailable()) return;
     const target = event.target;
     if (!(target instanceof Element) || target.closest('[inert], [aria-modal="true"]')
@@ -5149,7 +5149,11 @@
     const key = event.key.toLowerCase();
     const window = windows.find(window => window.id === activeWindowId);
     let request;
-    if (window?.appId === 'notes' && !window.utilityKind) return;
+    if (window?.appId === 'preview' && !window.utilityKind && !event.shiftKey && ['o', 'p', 's'].includes(key)) {
+      request = { command: `preview.${key === 'o' ? 'open.picker' : key === 'p' ? 'print' : 'save'}`,
+        target: { windowId: window.id }, payload: {} };
+    }
+    else if (window?.appId === 'notes' && !window.utilityKind) return;
     if (key === 'n' && !event.shiftKey && activeAppId === 'notes') request = { command: 'notes.document.create' };
     else if (key === 'n' && event.shiftKey && activeAppId === 'finder') request = window && !window.utilityKind
       ? { command: 'finder.folder.create', target: { windowId: window.id } } : activeWindowId === null ? { command: 'desktop.folder.create' } : null;
@@ -5167,7 +5171,7 @@
     else if (!event.shiftKey && key === 'p' && activeAppId === 'notes' && window?.appId === 'notes' && !window.utilityKind)
       request = { command: 'fileDialog.open', target: { windowId: window.id }, payload: { format: 'print' } };
     else if (!event.shiftKey && key === 'w' && window) request = { command: 'window.close', target: { windowId: window.id } };
-    else if (!event.shiftKey && ['d', 'o', 'p', 's'].includes(key)) {
+    else if (!request && !event.shiftKey && ['d', 'o', 'p', 's'].includes(key)) {
       // These belong to this simulated application, never Chrome's host file,
       // print or bookmark UI. Notes autosaves its existing local model.
       event.preventDefault(); event.stopPropagation(); return;
