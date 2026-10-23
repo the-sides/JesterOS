@@ -5,6 +5,7 @@ use axum::{
     http::{StatusCode, header},
     routing::{any, get, get_service},
 };
+mod control;
 use clap::Parser;
 use serde::Serialize;
 use tower_http::services::ServeDir;
@@ -46,11 +47,13 @@ struct ApiError {
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let mut app = Router::new()
+        .route("/api/control", get(control::connect))
         .route("/api/health", get(health))
         .route("/api", any(not_found))
         .route("/api/", any(not_found))
         .route("/api/{*path}", any(not_found))
-        .method_not_allowed_fallback(method_not_allowed);
+        .method_not_allowed_fallback(method_not_allowed)
+        .with_state(control::Hub::default());
 
     if args.api_only {
         app = app.fallback(not_found);
