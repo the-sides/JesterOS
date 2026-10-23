@@ -4,7 +4,7 @@
 
 JesterOS defaults to immutable **macOS27 Golden Gate27.0.1**, exposing453 commands and independently authored native-informed shell/window/Notes/Messages presentation. Source-verified current macOS is the only new-feature target. Completed High Sierra10.13/Mojave10.14/Sonoma14.0/Windows11 23H2 build22631.2428 profiles remain installed with170/178/163/190 commands respectively. Detached discovery follows fresh profile selection behind a stable public interface; unsupported setup has no substitute. The [conditional Linux research](ubuntu-24.04-profile.md) does not install another profile.
 
-Build the actor-facing pseudo-OS first. **Implement feature command interfaces as part of that work; defer the Rust controller, WebSocket transport, server state and server/controller persistence.** Golden Gate supports only optional explicit browser-local saved sessions. Deferring transport must not mean burying feature behavior in click handlers that later require a second implementation.
+October 22 controller milestone: the separate `/?controller` operator UI now pairs with a puppet screen through `/api/control`, a Rust WebSocket relay. It forwards only Messages cues and detached conversation updates; the browser retains canonical scene ownership. `messages.incoming.cue` reuses the existing atomic incoming-message policy and notification transaction. Pairing and transport state are ephemeral; server/controller persistence remains deferred. Golden Gate supports optional explicit browser-local saved sessions. Deferring transport must not mean burying feature behavior in click handlers that later require a second implementation.
 
 ## OS profiles
 

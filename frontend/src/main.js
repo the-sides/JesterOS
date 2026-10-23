@@ -1,5 +1,7 @@
 import { mount, unmount, tick } from 'svelte';
 import App from './App.svelte';
+import Controller from './Controller.svelte';
+import { startPuppetControl } from './remote-control.js';
 import SessionHost from './SessionHost.svelte';
 import UnsupportedProfile from './UnsupportedProfile.svelte';
 import { DEFAULT_PROFILE_ID, getOSProfile, listOSProfiles } from './os-profiles.js';
@@ -156,9 +158,12 @@ async function selectProfile(profile) {
   history.replaceState(history.state, '', url);
 }
 
-if (profile) {
+if (location.pathname === '/controller.html' || new URLSearchParams(location.search).has('controller')) {
+  mount(Controller, { target });
+} else if (profile) {
   globalThis.jesteros = publicCommands;
   void mountScene(profile);
+  startPuppetControl(publicCommands);
 } else {
   mount(UnsupportedProfile, { target, props: { requestedId, profiles: listOSProfiles() } });
 }

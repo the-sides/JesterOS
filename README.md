@@ -696,3 +696,28 @@ Verification:662 tests/11,627 assertions/55 files;681 modules, zero Svelte warni
 
 Primary source: [Get notifications on Mac27](https://support.apple.com/guide/mac-help/get-notifications-mchle7f8a9b0/27/mac/27). Presentation geometry, six-second lifetime, scene DND quick control and bounded source actions are explicit simulation policies, not factory timing/pixels, a full native notification inventory or host delivery.
 
+
+## Paired Messages controller (first milestone)
+
+Build with `bun run build`, then run `bun run start --bind 0.0.0.0:3000`.
+On the local network, both devices must use the server computer's LAN address
+(for example, `http://192.168.1.20:3000`), rather than `localhost`.
+
+1. On the filming device open `/`, leave Messages open, and click **Connect controller**.
+2. On the operator device open `/?controller`, enter the displayed ten-character code, and pair.
+3. Choose an existing conversation, type an incoming message, and press **Send cue**.
+   “Cue delivered” means the puppet's canonical Messages transaction acknowledged completion.
+   Incoming cues follow that conversation's existing account, blocking, notification and sound preferences.
+4. The console follows conversation changes, including actor replies, while connected.
+   The setup badge hides during the paired session; **Disconnect** in the console reveals it again.
+
+The Rust WebSocket relay owns only live pairing and routing; scene data stays in the
+puppet browser. One operator controls one paired screen. Reloading a screen generates
+a new pairing code; reconnect explicitly. No cue is automatically replayed after a
+connection loss or timeout: delivery may be unknown, so check the screen before retrying.
+Duplicate request IDs are remembered for the last 256 cues in that puppet page.
+Pairing/state are ephemeral, and there is no cloud service, take recording, saved cue
+list or automatic scene restore. Keep this initial deployment on a trusted set network.
+
+Verification: `bun test tools/messages-rich-commands.test.mjs` and, with the backend
+running, `JESTEROS_CONTROL_TEST_URL=ws://127.0.0.1:3000/api/control bun test tools/controller-transport.test.mjs`.

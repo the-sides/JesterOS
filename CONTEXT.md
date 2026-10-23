@@ -2,7 +2,7 @@
 
 JesterOS simulates operating-system desktops and applications for actors to use as film and television screen props.
 
-**Active implementation target:** finish every remaining backlog item from **Messages onward across all five installed profiles**: High Sierra10.13, Mojave10.14, Sonoma14.0, Golden Gate27.0.1, and Windows11 Pro23H2 build22631.2428. Golden Gate remains the default, not the exclusive extension target. Research each release's native application/counterpart, menus, settings, and geometry; distinguish measured primary-source pixels from authored approximations and missing fonts. Conditional Ubuntu research is not an installed runtime or an additional claimed implementation.
+**Active implementation target (October 22, 2026):** pause sequential OS/application expansion and build the separate paired controller. The first milestone is an operator-authored incoming Messages cue, acknowledged by a puppet screen on another device, with live conversation updates back to the console. The initial Rust WebSocket relay, explicit pairing and `/?controller` UI are implemented. Existing OS acceptance counts below remain historical checkpoints; controller work does not complete OS backlog items.
 
 ## Current accepted checkpoint — October15, 2026
 
