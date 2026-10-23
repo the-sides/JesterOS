@@ -126,6 +126,9 @@ export const messagesRichCatalog = Object.fromEntries([
     ['Copy the original message’s literal text, or exact unchanged live attachment File IDs, into the actual scene clipboard. Retained-only binary media and historical illustration labels are not substituted with prose. No navigator/host clipboard.']),
   define('messages.message.delete', messageTarget, object({ confirmed: { const: true } }),
     ['Delete only the exact original local history item after explicit confirmation. This is not remote recall; keep source Files and repair selectedMessageId.'], ['messages.conversations.items', 'messages.selectedMessageId']),
+  define('messages.incoming.cue', conversationTarget, object({ text: { type: 'string', minLength: 1, maxLength: 4096 } }),
+    ['Receive operator-authored text through the same canonical incoming-message transaction.'], ['messages.conversations', 'notifications.items'],
+    object({ windowId: identity, conversationId: identity, messageId: identity })),
   define('messages.incoming.receive', conversationTarget, object({ fixtureId: choice(...MESSAGE_INCOMING_FIXTURES.map(row => row.id)) }),
     ['Consume one deterministic original authored fixture into this conversation and atomically acknowledge its real shared notification. DND receives without a notification; signed-out/blocked/left refuses. Replay never duplicates a message or notification.'], ['messages.conversations', 'messages.incomingFixtures', 'messages.timeBase', 'messages.nextId', 'notifications.items'],
     object({ windowId: identity, conversationId: identity, messageId: identity })),
@@ -1009,9 +1012,11 @@ export function createMessagesRichCommands(ctx) {
       return external({ ...lease, current: guard, ownership: { guard, windowId: intent.windowId } }, 'setClipboard',
         [{ kind: 'files', text: '', fileIds: [...new Set(sources.map(({ file }) => file.id))] }], intent);
     },
-    'messages.incoming.receive': async (rawTarget, rawPayload) => {
-      const intent = target(rawTarget, ['windowId', 'conversationId']), payload = literal(rawPayload, ['fixtureId']);
-      const fixture = payload && MESSAGE_INCOMING_FIXTURES.find(row => row.id === payload.fixtureId);
+    'messages.incoming.receive': async (rawTarget, rawPayload, custom = false) => {
+      const intent = target(rawTarget, ['windowId', 'conversationId']), payload = literal(rawPayload, custom ? ['text'] : ['fixtureId']);
+      const fixture = custom && typeof payload.text === 'string' && payload.text.trim() && payload.text.length <= 4096
+        ? { id: `cue-${state.nextId}`, text: payload.text }
+        : payload && !custom && MESSAGE_INCOMING_FIXTURES.find(row => row.id === payload.fixtureId);
       if (!intent || !payload || !fixture) return invalid();
       if (fixture.renderers && !fixture.renderers.includes(ctx.profile.renderer)) return disabled('This authored local fixture is not available in the installed release.');
       const lease = owner(intent.windowId); if (!lease) return missing(intent.windowId);
@@ -1049,7 +1054,7 @@ export function createMessagesRichCommands(ctx) {
       if (policy.spam) item.spam = true;
       if (fixture.effect) item.effect = fixture.effect;
       conversation.items.push(item); conversation.timestamp = time; conversation.timeLabel = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', hour: 'numeric', minute: '2-digit' }).format(time); conversation.unread = true;
-      candidate.timeBase = time; candidate.incomingFixtures.push(fixture.id);
+      candidate.timeBase = time; if (!custom) candidate.incomingFixtures.push(fixture.id);
       const incomingLease = { ...lease, current: policyGuard };
       const check = preflight(incomingLease, candidate); if (check) return check;
       let savedFileId = null, commitError = null;
@@ -1098,6 +1103,7 @@ export function createMessagesRichCommands(ctx) {
       return commitError ?? (policyGuard() ? result?.status === 'rejected' ? result : unavailable('The real notification transaction did not synchronously acknowledge the incoming message.') : stale());
     },
   };
+  handlers['messages.incoming.cue'] = (target, payload) => handlers['messages.incoming.receive'](target, payload, true);
   for (const action of ['leave', 'delete']) handlers[`messages.conversation.${action}`] = async (rawTarget, rawPayload) => {
     const intent = target(rawTarget, ['windowId', 'conversationId']), payload = literal(rawPayload, ['confirmed']);
     if (!intent || !payload || payload.confirmed !== true) return invalid();

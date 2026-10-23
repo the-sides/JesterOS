@@ -740,3 +740,25 @@ test('Quick Look carries the complete original message target when identical att
   expect((await scene.controller.handlers['messages.attachment.quickLook'](target, { open: 'false' })).error.code).toBe('invalid_arguments');
   expect(scene.state).toEqual(before);
 });
+
+test('operator text uses atomic incoming policy on every installed profile without consuming fixtures', async () => {
+  for (const profileId of ['macos-high-sierra-10.13', 'macos-mojave-10.14', 'macos-sonoma-14.0', 'macos-golden-gate-27.0.1', 'windows11-23h2-22631.2428']) {
+    let count = 0;
+    const scene = fixture(profileId, { notifyMessage: async spec => {
+      expect(spec.onCommit(`cue-notification-${++count}`)).toBe(true);
+      return { status: 'applied', notificationId: `cue-notification-${count}` };
+    } });
+    for (const text of ['Action. 🎬', 'Second cue.']) {
+      const result = await scene.controller.handlers['messages.incoming.cue'](scene.conversationTarget, { text });
+      expect(result.status).toBe('applied');
+      expect(scene.conversation.items.at(-1).text).toBe(text);
+      expect(scene.conversation.items.at(-1).direction).toBe('incoming');
+    }
+    expect(scene.state.incomingFixtures).toEqual([]);
+    const before = structuredClone(scene.state);
+    expect((await scene.controller.handlers['messages.incoming.cue'](scene.conversationTarget, { text: ' '.repeat(3) })).status).toBe('rejected');
+    scene.setAllowed(false);
+    expect((await scene.controller.handlers['messages.incoming.cue'](scene.conversationTarget, { text: 'No commit' })).status).toBe('rejected');
+    expect(scene.state).toEqual(before);
+  }
+});
