@@ -210,7 +210,7 @@ Primary-source screenshots, UI observations, implementation decisions, defects/f
 
 ## Feature backlog
 
-[Pseudo-OS feature backlog](docs/pseudo-os-backlog.md) is the durable queue for long-session work: stable IDs, completed versus pending slices, suggested iteration order, and coverage of the desktop, menus, bundled apps, utilities, System Preferences panes, and secondary dialogs. Additional period-compatible production apps are listed separately. The Rust controller remains deferred.
+[Pseudo-OS feature backlog](docs/pseudo-os-backlog.md) is the durable queue for long-session work: stable IDs, completed versus pending slices, suggested iteration order, and coverage of the desktop, menus, bundled apps, utilities, System Preferences panes, and secondary dialogs. Additional period-compatible production apps are listed separately. The paired Messages controller milestone is implemented; see the setup below.
 
 [Multi-OS and feature command requirements](docs/pseudo-os-architecture.md) define the architecture: every feature must expose transport-neutral commands so actor input and a future WebSocket adapter can invoke the same behavior, including menus, dialogs, transient UI state, and incoming events. Installed native profiles and scene switching use that interface. Remaining app/menu capabilities and WebSocket control are not implemented today.
 
@@ -721,3 +721,10 @@ list or automatic scene restore. Keep this initial deployment on a trusted set n
 
 Verification: `bun test tools/messages-rich-commands.test.mjs` and, with the backend
 running, `JESTEROS_CONTROL_TEST_URL=ws://127.0.0.1:3000/api/control bun test tools/controller-transport.test.mjs`.
+
+
+### Offline browser acceptance
+
+`SAF-01` is accepted on High Sierra, Mojave, Sonoma, Golden Gate and Windows 11 (Edge). Address/search entry, local page links, Back/Forward/Reload/Stop and offline errors use the same canonical browser commands. Unmatched searches show explicit feedback; long addresses preserve valid Unicode and the encoded search URL limit. Pages and search results are authored local fixtures.
+
+The browser runner in `tools/browser-navigation.browser.mjs` accepts an existing browser, `baseURL` and `artifactDirectory`; use a Rust-served frontend build for acceptance. See [validation and limitations](docs/browser-navigation-acceptance.md). Next queued item is `SAF-02`.

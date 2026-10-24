@@ -1,6 +1,6 @@
 # JesterOS pseudo-OS feature backlog
 
-The durable queue for JesterOS's actor-facing pseudo-OS. Mojave10.14 was the first implementation; stable IDs preserve the historical app/utility inventory. **Rust controller/WebSocket transport remain deferred; command-addressable behavior is required now.** See [architecture](pseudo-os-architecture.md). Candidates are not claims of researched/implemented interfaces.
+The durable queue for JesterOS's actor-facing pseudo-OS. Mojave10.14 was the first implementation; stable IDs preserve the historical app/utility inventory. **The paired Messages controller/WebSocket milestone is implemented; command-addressable behavior remains required.** See [architecture](pseudo-os-architecture.md). Candidates are not claims of researched/implemented interfaces.
 
 **Resumed active scope:** finish every unchecked item from section6 **Messages** through section18, on **all five installed profiles**: High Sierra10.13, Mojave10.14, Sonoma14.0, Golden Gate27.0.1, and Windows11 Pro23H2 build22631.2428. This supersedes the earlier Golden-only extension policy. Golden Gate remains default. Use each release's real native app/counterpart and feature availability, not a Mac interface relabeled as Windows or retired features imported into a newer release. Ubuntu24.04/GNOME46 remains researched but uninstalled. Research primary screenshots and pursue measured native geometry; disclose source-version gaps, authored adaptations, fonts, and visual differences rather than claiming pixel identity.
 
@@ -153,7 +153,7 @@ Use this order unless a scene requirement changes priority. Section order is a g
 
 ## 6. Messages
 
-Current resumed checkpoint: `MSG-01`–`MSG-10` complete; `MSG-02`–`MSG-10` accepted across all five installed profiles. **69/286 checklist items complete,217 unchecked**. Next is `SAF-01` offline browsing. Wider application code remains unaccepted work in progress; its discovery catalog does not complete backlog items. The earlier 60-item summary above describes the committed October7 checkpoint, not current progress.
+Current resumed checkpoint: `MSG-01`–`MSG-10` and `SAF-01` complete; application acceptance covers all five installed profiles. **70/286 checklist items complete,216 unchecked**. Next is `SAF-02` tabs/window lifecycle. Wider application code remains unaccepted work in progress; its discovery catalog does not complete backlog items. The earlier 60-item summary above describes the committed October7 checkpoint, not current progress.
 
 - [x] `MSG-01` — Researched Mojave light chrome and fixed reference conversation/history with local artwork.
 - [x] `MSG-02` — Select conversations, unread indicators, search conversation/contact/history, and appropriate empty states. **All five installed profiles: actual unread markers/native selection clear the same original record; literal participant/group/history searches and exact history-hit focus; unmatched, Escape-cleared, and zero-conversation surfaces. Windows uses 23H2-era personal Teams names search versus selected-chat Find in chat, not later unified Teams. Four Mac native captures and fresh Rust-served Windows production proof; no native pixel-identity claim.**
@@ -168,7 +168,7 @@ Current resumed checkpoint: `MSG-01`–`MSG-10` complete; `MSG-02`–`MSG-10` ac
 
 ## 7. Safari
 
-- [ ] `SAF-01` — Offline browser: address/search field, local URL resolver, fictional search results, page loading/error states, back/forward/reload/stop, and actual rendered local pages.
+- [x] `SAF-01` — Offline browser: address/search field, local URL resolver, fictional search results, page loading/error states, back/forward/reload/stop, and actual rendered local pages. **All five Rust-served profiles: native address submission/page links, matching and empty search, offline-error recovery, Back/Forward/Reload/Stop, equivalent direct commands, retained closed-window history/last-page reopening, and narrow-viewport address presence. 130 browser checks, no page errors/external requests; 108 focused tests/1,305 assertions. Fixed missing empty-result feedback and Unicode/encoded URL bounds. Authored pages and existing chrome remain qualified simulations, not native pixel identity. See [acceptance notes](browser-navigation-acceptance.md).**
 - [ ] `SAF-02` — Tabs, new windows, close/reopen, tab overview, pinned tabs, private-window state, and session retention.
 - [ ] `SAF-03` — Start/Favorites page, bookmarks bar, bookmark/folder editing, sidebar, Reading List, and history/search/clear history.
 - [ ] `SAF-04` — Downloads popover, progress/cancel/retry, virtual downloaded files, and reveal/open in Finder.
