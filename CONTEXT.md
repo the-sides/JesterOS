@@ -2,9 +2,11 @@
 
 JesterOS simulates operating-system desktops and applications for actors to use as film and television screen props.
 
-**Active implementation target (October 23, 2026):** resume sequential application backlog work after the paired-controller milestone. `SAF-01` offline browsing is now accepted across all five profiles; next is `SAF-02` tabs/window lifecycle. The Rust WebSocket relay, explicit pairing and `/?controller` UI remain implemented. Controller work does not complete OS backlog items.
+**Active implementation target (October 23, 2026):** resume sequential application backlog work after the paired-controller milestone. `SAF-01` offline browsing and `SAF-02` tabs/window lifecycle are accepted across all five profiles; next is `SAF-03` bookmarks/Reading List/history. The Rust WebSocket relay, explicit pairing and `/?controller` UI remain implemented. Controller work does not complete OS backlog items.
 
-Current checklist: **70/286 complete, 216 unchecked**. SAF-01 production acceptance: 130 checks across five profiles, no page errors or external requests; 108 focused browser/Chrome/menu tests pass (1,305 assertions), frontend build passes with existing warnings. Fixed empty search feedback and Unicode/encoded address limits. See [browser navigation notes](docs/browser-navigation-acceptance.md).
+Current checklist: **71/286 complete, 215 unchecked**. SAF-01 production acceptance: 130 checks across five profiles, no page errors or external requests; 108 focused browser/Chrome/menu tests pass (1,305 assertions), frontend build passes with existing warnings. Fixed empty search feedback and Unicode/encoded address limits. See [browser navigation notes](docs/browser-navigation-acceptance.md).
+
+SAF-02: 140 production browser checks; 110 focused tests/1,316 assertions and build pass. New Tab focus/selection and new/reopened-tab Overview dismissal fixed. See [tabs/window notes](docs/browser-tabs-acceptance.md).
 
 ## Historical Messages checkpoint — October15, 2026
 

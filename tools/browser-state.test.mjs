@@ -494,7 +494,9 @@ test('closing and reopening two tabs from one real window keeps distinct retaine
   expect(closedTabs[1].tab).toBe(firstRetainedTab);
   expect(closedTabs.map(row => row.windowId)).toEqual([f.record.id, f.record.id]);
   expect(validateBrowserState(f.state, profile)).toBe(true);
+  f.record.panel = 'overview';
   expect((await f.run('tab.reopen', {}, f.windowTarget)).status).toBe('applied');
+  expect(f.record.panel).toBe('none');
   expect(tabs.map(tab => tab.id)).toEqual([originalTab.id, secondTab.id]);
   expect(closedTabs).toHaveLength(1);
   expect(closedTabs[0].tab.id).toBe(thirdTab.id);
@@ -763,4 +765,30 @@ test('address limits preserve Unicode and exact encoded search URL bounds', () =
     expect(search.url.length).toBeLessThanOrEqual(2048);
     expect(resolveBrowserURL(search.url)).toEqual(search);
   }
+});
+
+
+test('foreground New Tab focuses only its genuine address; background tabs preserve focus', async () => {
+  const f = commandScene();
+  const focused = [];
+  f.record.panel = 'overview';
+  f.view.focus = async (control, guard) => { if (!guard()) return false; focused.push({ control, tabId: f.record.activeTabId }); return true; };
+  const created = await f.run('tab.new', {}, f.windowTarget);
+  expect(created.status).toBe('applied');
+  expect(focused).toEqual([{ control: 'address', tabId: created.tabId }]);
+  expect(f.record.panel).toBe('none');
+  f.state.settings.switchToNewTab = false;
+  expect((await f.run('tab.new', {}, f.windowTarget)).status).toBe('applied');
+  expect(focused).toHaveLength(1);
+});
+
+test('a changed active tab during New Tab flush cannot borrow address focus', async () => {
+  const f = commandScene();
+  let focused = false;
+  f.view.focus = async () => { focused = true; return true; };
+  f.ctx.tick = async () => { f.record.activeTabId = f.tab.id; };
+  const result = await f.run('tab.new', {}, f.windowTarget);
+  expect(result.status).toBe('applied');
+  expect(result.presentationAvailable).toBe(false);
+  expect(focused).toBe(false);
 });

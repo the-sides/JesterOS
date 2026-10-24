@@ -106,6 +106,7 @@ export function createBrowserNativeView({ getRoot, getState, windowId, available
     node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     if (!guarded(guard) || !same(owner) || node !== control(id)) return false;
     node.focus({ preventScroll: true });
+    if (id === 'address' && guarded(guard) && same(owner) && node === control(id)) node.select();
     return guarded(guard) && same(owner) && node === control(id) && node.ownerDocument.activeElement === node;
   }
   async function scroll(id, offsets, guard) {

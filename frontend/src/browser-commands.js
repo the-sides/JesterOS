@@ -99,7 +99,7 @@ export function createBrowserCommands(ctx, { acceptedAppIds = [ctx.profile.id.st
       switch (suffix) {
         case 'address': tab.address = payload.value; return done();
         case 'stop': if (tab.phase !== 'loading') return invalid('This tab is not loading.'); tab.loadToken = browserNextToken(tab.loadToken); tab.pending = null; tab.phase = entry.error ? 'error' : 'idle'; tab.address = entry.url; return done();
-        case 'tab.new': { if (tabs.length >= 32) return limit(); const address = state.settings.newTabs === 'homepage' ? state.settings.homepage : state.settings.newTabs === 'empty' ? 'jester://empty' : state.settings.newTabs === 'last' ? entry.url : 'jester://start'; const row = createBrowserTab(state, address); tabs.push(row); if (state.settings.switchToNewTab) window.activeTabId = row.id; return done({ tabId: row.id }); }
+        case 'tab.new': { if (tabs.length >= 32) return limit(); const address = state.settings.newTabs === 'homepage' ? state.settings.homepage : state.settings.newTabs === 'empty' ? 'jester://empty' : state.settings.newTabs === 'last' ? entry.url : 'jester://start'; const row = createBrowserTab(state, address); tabs.push(row); if (state.settings.switchToNewTab) { window.activeTabId = row.id; window.panel = 'none'; window.menu = null; } return done({ tabId: row.id }); }
         case 'tab.select': window.activeTabId = tab.id; window.panel = 'none'; return done();
         case 'tab.pin': tab.pinned = !tab.pinned; tabs.splice(tabs.indexOf(tab), 1); tabs.splice(tab.pinned ? 0 : tabs.filter(tab => tab.pinned).length, 0, tab); return done();
         case 'tab.close': {
@@ -107,7 +107,7 @@ export function createBrowserCommands(ctx, { acceptedAppIds = [ctx.profile.id.st
           if (!window.private) { const closed = copyCanonicalData(tab); closed.pending = null; closed.loadToken = browserNextToken(closed.loadToken); closed.phase = closed.entries[closed.index].error ? 'error' : 'idle'; state.closedTabs.unshift({ windowId: window.id, tab: closed }); if (state.closedTabs.length > 32) state.closedTabs.pop(); }
           const index = tabs.indexOf(tab); tabs.splice(index, 1); if (window.activeTabId === tab.id) window.activeTabId = tabs[Math.min(index, tabs.length - 1)].id; return done();
         }
-        case 'tab.reopen': { if (window.private) return invalid('Private closed tabs are not retained.'); if (tabs.length >= 32) return limit(); const index = state.closedTabs.findIndex(row => row.windowId === window.id); if (index < 0) return invalid('No closed tab belongs to this window.'); const tab = state.closedTabs.splice(index, 1)[0].tab; tabs.push(tab); window.activeTabId = tab.id; return done({ tabId: tab.id }); }
+        case 'tab.reopen': { if (window.private) return invalid('Private closed tabs are not retained.'); if (tabs.length >= 32) return limit(); const index = state.closedTabs.findIndex(row => row.windowId === window.id); if (index < 0) return invalid('No closed tab belongs to this window.'); const tab = state.closedTabs.splice(index, 1)[0].tab; tabs.push(tab); window.activeTabId = tab.id; window.panel = 'none'; window.menu = null; return done({ tabId: tab.id }); }
         case 'panel': if (['source', 'inspector'].includes(payload.panel) && !state.settings.develop && window.nativeAppId === 'safari') return invalid('Enable the Develop menu in Advanced first.'); window.panel = payload.panel; window.menu = null; return done();
         case 'sidebar': window.sidebar = !window.sidebar; return done();
         case 'bookmarksBar': window.bookmarksBar = !window.bookmarksBar; return done();
@@ -255,6 +255,17 @@ export function createBrowserCommands(ctx, { acceptedAppIds = [ctx.profile.id.st
       return reject('unavailable', 'Finish or cancel the original Clear History sheet first.');
     if (target.tabId && !['tab.select', 'tab.close', 'tab.pin'].includes(suffix) && window.activeTabId !== tab.id) return stale();
     switch (suffix) {
+      case 'tab.new': {
+        const result = local(suffix, target, payload, lease);
+        if (result.status !== 'applied' || window.activeTabId !== result.tabId) return result;
+        // Capture the new active document, not the tab that invoked New Tab.
+        // A competing selection must not receive this delayed focus.
+        const created = owner({ windowId: window.id, tabId: result.tabId });
+        await ctx.tick();
+        const focused = created?.documentCurrent() && typeof view.focus === 'function'
+          && await view.focus('address', created.documentCurrent);
+        return { ...result, presentationAvailable: Boolean(focused) };
+      }
       case 'navigate': return navigate(lease, resolveAddress(payload.address));
       case 'back': return tab.index > 0 ? navigate(lease, tab.entries[tab.index - 1], 'index', tab.index - 1) : invalid('There is no earlier page.');
       case 'forward': return tab.index + 1 < tab.entries.length ? navigate(lease, tab.entries[tab.index + 1], 'index', tab.index + 1) : invalid('There is no later page.');

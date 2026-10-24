@@ -39,7 +39,7 @@ Use this order unless a scene requirement changes priority. Section order is a g
 7. **Remaining bundled apps and utilities:** Launchpad, Mission Control, Dashboard, Maps, Calculator, creative/office add-ons, and diagnostic interfaces.
 8. **Completion pass:** finish every researched app menu and secondary dialog; verify cross-app workflows and visual/state consistency.
 
-**Earlier stop point remains outside this resumed scope:** retain completed `SPOT-01`/`SPOT-02` and `NOTIF-01`–`NOTIF-03`; section3 `DIALOG-01`–`DIALOG-13` and previously deferred `STATUS-07`/`STATUS-08` stay unchecked. Uncommitted DIALOG-01 experiments were removed rather than shipped as unintegrated WIP. **Next item is `SAF-01`; sections6–18 are now required across all installed profiles.** Earlier checked work is evidence of its recorded checkpoint, not a new claim of five-profile feature parity. Rust/WebSocket transport remains deferred.
+**Earlier stop point remains outside this resumed scope:** retain completed `SPOT-01`/`SPOT-02` and `NOTIF-01`–`NOTIF-03`; section3 `DIALOG-01`–`DIALOG-13` and previously deferred `STATUS-07`/`STATUS-08` stay unchecked. Uncommitted DIALOG-01 experiments were removed rather than shipped as unintegrated WIP. **Next item is `SAF-03`; sections6–18 are now required across all installed profiles.** Earlier checked work is evidence of its recorded checkpoint, not a new claim of five-profile feature parity. The initial paired Messages controller is implemented.
 
 ## Architecture foundations and future OS profiles
 
@@ -153,7 +153,7 @@ Use this order unless a scene requirement changes priority. Section order is a g
 
 ## 6. Messages
 
-Current resumed checkpoint: `MSG-01`–`MSG-10` and `SAF-01` complete; application acceptance covers all five installed profiles. **70/286 checklist items complete,216 unchecked**. Next is `SAF-02` tabs/window lifecycle. Wider application code remains unaccepted work in progress; its discovery catalog does not complete backlog items. The earlier 60-item summary above describes the committed October7 checkpoint, not current progress.
+Current resumed checkpoint: `MSG-01`–`MSG-10` and `SAF-01`–`SAF-02` complete; application acceptance covers all five installed profiles. **71/286 checklist items complete,215 unchecked**. Next is `SAF-03` bookmarks/Reading List/history. Wider application code remains unaccepted work in progress; its discovery catalog does not complete backlog items. The earlier 60-item summary above describes the committed October7 checkpoint, not current progress.
 
 - [x] `MSG-01` — Researched Mojave light chrome and fixed reference conversation/history with local artwork.
 - [x] `MSG-02` — Select conversations, unread indicators, search conversation/contact/history, and appropriate empty states. **All five installed profiles: actual unread markers/native selection clear the same original record; literal participant/group/history searches and exact history-hit focus; unmatched, Escape-cleared, and zero-conversation surfaces. Windows uses 23H2-era personal Teams names search versus selected-chat Find in chat, not later unified Teams. Four Mac native captures and fresh Rust-served Windows production proof; no native pixel-identity claim.**
@@ -169,7 +169,7 @@ Current resumed checkpoint: `MSG-01`–`MSG-10` and `SAF-01` complete; applicati
 ## 7. Safari
 
 - [x] `SAF-01` — Offline browser: address/search field, local URL resolver, fictional search results, page loading/error states, back/forward/reload/stop, and actual rendered local pages. **All five Rust-served profiles: native address submission/page links, matching and empty search, offline-error recovery, Back/Forward/Reload/Stop, equivalent direct commands, retained closed-window history/last-page reopening, and narrow-viewport address presence. 130 browser checks, no page errors/external requests; 108 focused tests/1,305 assertions. Fixed missing empty-result feedback and Unicode/encoded URL bounds. Authored pages and existing chrome remain qualified simulations, not native pixel identity. See [acceptance notes](browser-navigation-acceptance.md).**
-- [ ] `SAF-02` — Tabs, new windows, close/reopen, tab overview, pinned tabs, private-window state, and session retention.
+- [x] `SAF-02` — Tabs, new windows, close/reopen, tab overview, pinned tabs, private-window state, and session retention. **All five Rust-served profiles: 140 browser checks, no page errors/external requests; 110 focused tests/1,316 assertions. Fixed foreground New Tab address focus/selection and Overview dismissal on new/reopened tabs. Explicit closed-window restoration retains original tabs/history; private windows leave no ordinary visits/closed tabs and are discarded on close. Overview/pinning/session limits are documented in [acceptance notes](browser-tabs-acceptance.md).**
 - [ ] `SAF-03` — Start/Favorites page, bookmarks bar, bookmark/folder editing, sidebar, Reading List, and history/search/clear history.
 - [ ] `SAF-04` — Downloads popover, progress/cancel/retry, virtual downloaded files, and reveal/open in Finder.
 - [ ] `SAF-05` — Reader view, page zoom, find on page, share sheet, print/save PDF, and local page source where supported.
