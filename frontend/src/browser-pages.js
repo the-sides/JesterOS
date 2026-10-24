@@ -28,7 +28,7 @@ export function browserCertificate(url) {
   return { status: fixtureURLs.get(url) === 'unsafe' ? 'fictional-warning' : 'fictional-valid', subject: url.slice(8), issuer: 'Studio Fixture Authority — NOT a trusted CA', serial: 'JESTER-FIXTURE-0001', validFrom: '2017-01-01', validTo: '2099-12-31', explanation: 'Authored certificate details for the reserved .invalid local page. No genuine certificate, TLS handshake or external request exists.' };
 }
 export function resolveBrowserURL(input, { blockFraud = true, svgAvailable = true, svgError = false } = {}) {
-  const value = String(input).toWellFormed().trim().slice(0, 2048);
+  const value = String(input).toWellFormed().trim().slice(0, 2048).toWellFormed();
   const normalized = value.toLowerCase().replace(/\/$/, '');
   const page = browserPages.find(page => page.address === normalized || page.id === normalized);
   const fileId = browserSVGFileId(value);
@@ -47,7 +47,7 @@ function searchEntry(value) {
   let query = '', encoded = '', count = 0;
   for (const character of value.toWellFormed()) {
     const part = encodeURIComponent(character);
-    if (count === 200 || 16 + encoded.length + part.length > 2048) break;
+    if (count === 200 || 'jester://search?q='.length + encoded.length + part.length > 2048) break;
     query += character; encoded += part; count++;
   }
   return { url: `jester://search?q=${encoded}`, title: query ? `Search: ${query}`.slice(0, 256).toWellFormed() : 'Studio Search', pageId: 'search', query, error: '' };

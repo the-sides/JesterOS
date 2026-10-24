@@ -750,3 +750,17 @@ test('opening a downloaded SVG retains its actual Files identity and bytes in a 
   expect(file.content.startsWith('<svg')).toBe(true);
   expect(validateBrowserState(s.state, profile)).toBe(true);
 });
+
+test('address limits preserve Unicode and exact encoded search URL bounds', () => {
+  const address = 'https://example.invalid/' + 'a'.repeat(2024) + '🦊';
+  const entry = resolveBrowserURL(address);
+  expect(entry.url.isWellFormed()).toBe(true);
+  expect(entry.url.length).toBeLessThanOrEqual(2048);
+  expect(resolveBrowserURL(entry.url)).toEqual(entry);
+  // A mixture can fill every final encoded unit, unlike repeated emoji alone.
+  for (let suffix = 0; suffix < 12; suffix++) {
+    const search = resolveBrowserURL('🦊'.repeat(169) + 'a'.repeat(suffix));
+    expect(search.url.length).toBeLessThanOrEqual(2048);
+    expect(resolveBrowserURL(search.url)).toEqual(search);
+  }
+});

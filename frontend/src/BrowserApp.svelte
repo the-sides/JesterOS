@@ -861,6 +861,9 @@
       {/each}
     </ul>
   {/if}
+  {#if page.kind === 'search' && !page.links?.length}
+    <p class="browser-empty" role="status" data-browser-node="search-empty">No local results found. Try a different search.</p>
+  {/if}
   {#if page.links?.length && page.id !== 'home'}
     <ul class="browser-page-links" data-browser-node="page-links">
       {#each page.links as link, index (link.url)}
